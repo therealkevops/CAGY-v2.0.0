@@ -6,12 +6,47 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Union
 
+def _get_map_file() -> Path:
+    state_dir = Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser().resolve()
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / "sessions" / "agy_session_map.json"
+
+def _load_agy_conv_id(session_id: str) -> Optional[str]:
+    if not session_id:
+        return None
+    map_file = _get_map_file()
+    if map_file.exists():
+        try:
+            data = json.loads(map_file.read_text(encoding="utf-8"))
+            return data.get(session_id)
+        except Exception:
+            pass
+    return None
+
+def _save_agy_conv_id(session_id: str, conv_id: str):
+    if not session_id or not conv_id:
+        return
+    map_file = _get_map_file()
+    map_file.parent.mkdir(parents=True, exist_ok=True)
+    data = {}
+    if map_file.exists():
+        try:
+            data = json.loads(map_file.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data[session_id] = conv_id
+    try:
+        map_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 class AIAgent:
     """Drop-in AIAgent implementation bridging the Hermes WebUI to the Antigravity (agy) CLI."""
 
     def __init__(
         self,
-        model: Optional[str] = "Antigravity CLI (agy)",
+        model: Optional[str] = "Antigravity 2.0 (agy CLI)",
         workspace: Optional[str] = None,
         system_prompt: Optional[str] = None,
         session_db: Any = None,
@@ -20,10 +55,11 @@ class AIAgent:
         tool_complete_callback: Optional[Callable[[str, Any], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         reasoning_callback: Optional[Callable[[str], None]] = None,
+        gateway_session_key: Optional[str] = None,
         **kwargs
     ):
-        self.model = model or "Antigravity CLI (agy)"
-        self.workspace = Path(workspace or os.getcwd()).resolve()
+        self.model = model or "Antigravity 2.0 (agy CLI)"
+        self.workspace = Path(workspace or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE", os.getcwd())).resolve()
         self.system_prompt = system_prompt
         self._session_db = session_db
         
@@ -33,7 +69,9 @@ class AIAgent:
         self.status_callback = status_callback
         self.reasoning_callback = reasoning_callback
         
-        self.conversation_id = None
+        self.session_id = gateway_session_key or kwargs.get("session_id")
+        self.conversation_id = _load_agy_conv_id(self.session_id) if self.session_id else None
+        
         self.clarify_timeout = 3600
         self.image_input_mode = "text"
         self.reasoning_config = {"enabled": False}
@@ -62,6 +100,8 @@ class AIAgent:
     def _get_env(self) -> Dict[str, str]:
         env = os.environ.copy()
         cert_path = self.workspace / "container_data" / "system_certs.pem"
+        if not cert_path.exists():
+            cert_path = Path(__file__).resolve().parent.parent / "container_data" / "system_certs.pem"
         if cert_path.exists():
             env["SSL_CERT_FILE"] = str(cert_path)
             env["REQUESTS_CA_BUNDLE"] = str(cert_path)
@@ -80,6 +120,11 @@ class AIAgent:
         **kwargs
     ) -> Dict[str, Any]:
         """Execute a turn by invoking agy CLI with stream-json format."""
+        if not self.session_id and kwargs.get("session_id"):
+            self.session_id = kwargs.get("session_id")
+            if not self.conversation_id:
+                self.conversation_id = _load_agy_conv_id(self.session_id)
+
         user_prompt = ""
 
         if user_message is not None:
@@ -161,7 +206,11 @@ class AIAgent:
                     event_type = event_data.get("event")
 
                     if event_type == "init":
-                        self.conversation_id = event_data.get("conversation_id")
+                        new_conv_id = event_data.get("conversation_id")
+                        if new_conv_id:
+                            self.conversation_id = new_conv_id
+                            if self.session_id:
+                                _save_agy_conv_id(self.session_id, new_conv_id)
                         continue
 
                     elif event_type == "step_update":
