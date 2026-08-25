@@ -158,6 +158,8 @@ function executeCommand(text){
   if(cmd.fn(parsed.args)===false)return null;
   // Return noEcho flag so send() knows whether to echo the command as a user message (#840).
   return {noEcho:!!cmd.noEcho};
+}
+
 function getMatchingCommands(prefix){
   const q=prefix.toLowerCase();
   return COMMANDS.filter(c=>c.name.startsWith(q)).map(c=>({...c,source:'builtin'}));
