@@ -6,3 +6,4 @@ workspace/*
 __pycache__/
 *.pyc
 *.pyo
+.hermes_uploads/

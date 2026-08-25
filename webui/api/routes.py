@@ -22163,7 +22163,8 @@ def _handle_memory_read(handler, parsed=None):
     memory_enabled = _webui_truthy(mem_cfg.get("memory_enabled", True))
     user_profile_enabled = _webui_truthy(mem_cfg.get("user_profile_enabled", True))
 
-    mem_file = mem_dir / "MEMORY.md" if memory_enabled else None
+    ws_mem = Path(get_last_workspace()) / "MEMORY.md"
+    mem_file = ws_mem if ws_mem.exists() else (mem_dir / "MEMORY.md" if memory_enabled else None)
     user_file = mem_dir / "USER.md" if user_profile_enabled else None
     soul_file = home / "SOUL.md"
     memory = (
@@ -28093,7 +28094,8 @@ def _handle_memory_write(handler, body):
         mem_dir = home / "memories"
     mem_dir.mkdir(parents=True, exist_ok=True)
     if section == "memory":
-        target = mem_dir / "MEMORY.md"
+        ws_mem = Path(get_last_workspace()) / "MEMORY.md"
+        target = ws_mem if ws_mem.exists() else (mem_dir / "MEMORY.md")
     elif section == "user":
         target = mem_dir / "USER.md"
     elif section == "soul":

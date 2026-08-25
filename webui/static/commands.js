@@ -1,38 +1,25 @@
-// ── Slash commands ──────────────────────────────────────────────────────────
-// Built-in commands intercepted before send(). Each command runs locally
-// (no round-trip to the agent) and shows feedback via toast or local message.
+function cmdPassToAgent(args){
+  return false;
+}
 
 const COMMANDS=[
-  // noEcho:true = action-only commands that don't produce a chat response.
-  // Commands without noEcho get a user message echoed to the chat (#840).
+  // Antigravity (AGY) Signature Commands
+  {name:'plan',      desc:'Antigravity: Step-by-step implementation planning before coding', fn:cmdPassToAgent, arg:'[plan description]'},
+  {name:'goal',      desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
+  {name:'grill-me',  desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
+  {name:'learn',     desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
+  {name:'schedule',  desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
+  // Built-in commands intercepted before send()
   {name:'help',      desc:t('cmd_help'),             fn:cmdHelp},
   {name:'clear',     desc:t('cmd_clear'),         fn:cmdClear,     noEcho:true},
-  {name:'compress',  desc:t('cmd_compress'),       fn:cmdCompress, arg:'[focus topic]', noEcho:true},
-  {name:'compact',   desc:t('cmd_compact_alias'),       fn:cmdCompact, noEcho:true},
-  {name:'model',     desc:t('cmd_model'),  fn:cmdModel,     arg:'model_name', subArgs:'models', noEcho:true},
   {name:'workspace', desc:t('cmd_workspace'),            fn:cmdWorkspace, arg:'name',           noEcho:true},
   {name:'terminal',  desc:t('cmd_terminal'),             fn:cmdTerminal,                        noEcho:true},
   {name:'new',       desc:t('cmd_new'),            fn:cmdNew,       noEcho:true},
-  {name:'usage',     desc:t('cmd_usage'),   fn:cmdUsage,     noEcho:true},
   {name:'theme',     desc:t('cmd_theme'), fn:cmdTheme, arg:'name',  noEcho:true},
-  {name:'personality', desc:t('cmd_personality'), fn:cmdPersonality, arg:'name', subArgs:'personalities'},
   {name:'skills',    desc:t('cmd_skills'),   fn:cmdSkills,   arg:'query'},
-  {name:'use',       desc:t('cmd_use'),      fn:cmdUse,      arg:'skill-name', subArgs:'skills', noEcho:true},
   {name:'stop',      desc:t('cmd_stop'),     fn:cmdStop,      noEcho:true},
-  {name:'goal',      desc:t('cmd_goal'),     fn:cmdGoal,      arg:'[status|pause|resume|clear|text]', subArgs:['status','pause','resume','clear']},
-  {name:'queue',     desc:t('cmd_queue'),    fn:cmdQueue,     arg:'message', noEcho:true},
-  {name:'interrupt', desc:t('cmd_interrupt'), fn:cmdInterrupt, arg:'message', noEcho:true},
-  {name:'steer',     desc:t('cmd_steer'),    fn:cmdSteer,     arg:'message', noEcho:true},
   {name:'title',     desc:t('cmd_title'),    fn:cmdTitle,    arg:'[title]'},
-  {name:'retry',     desc:t('cmd_retry'),    fn:cmdRetry,     noEcho:true},
-  {name:'undo',      desc:t('cmd_undo'),     fn:cmdUndo,      noEcho:true},
-  {name:'btw',       desc:t('cmd_btw'),      fn:cmdBtw,       arg:'question', noEcho:true},
-  {name:'background',desc:t('cmd_background'),fn:cmdBackground,arg:'prompt',  noEcho:true},
   {name:'status',    desc:t('cmd_status'),   fn:cmdStatus},
-  {name:'voice',     desc:t('cmd_voice'),    fn:cmdVoice,     noEcho:true},
-  {name:'reasoning', desc:t('cmd_reasoning'), fn:cmdReasoning, arg:'show|hide|none|minimal|low|medium|high|xhigh|max', subArgs:['show','hide','none','minimal','low','medium','high','xhigh','max'], noEcho:true},
-  {name:'yolo', desc:t('cmd_yolo'), fn:cmdYolo, noEcho:true},
-  {name:'branch', desc:t('cmd_branch'), fn:cmdBranch, arg:'[name]', noEcho:true},
 ];
 
 const SLASH_SUBARG_SOURCES={
