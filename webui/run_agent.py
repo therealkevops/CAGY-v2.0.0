@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import time
+import base64
 import shutil
 import subprocess
 from pathlib import Path
@@ -126,6 +128,31 @@ class AIAgent:
                 self.conversation_id = _load_agy_conv_id(self.session_id)
 
         user_prompt = ""
+        attached_images = []
+
+        def _process_part(p: Any):
+            if isinstance(p, dict):
+                ptype = p.get("type")
+                if ptype == "text" and "text" in p:
+                    return p.get("text", "")
+                elif ptype == "image_url":
+                    url = p.get("image_url", {}).get("url", "")
+                    if url.startswith("data:image"):
+                        try:
+                            header, b64data = url.split(";base64,", 1)
+                            ext = "png"
+                            if "/" in header:
+                                ext = header.split("/")[1].split(";")[0]
+                            img_dir = self.workspace / ".hermes_uploads"
+                            img_dir.mkdir(parents=True, exist_ok=True)
+                            img_path = img_dir / f"screenshot_{int(time.time()*1000)}.{ext}"
+                            img_path.write_bytes(base64.b64decode(b64data))
+                            attached_images.append(str(img_path))
+                        except Exception:
+                            pass
+                elif ptype in ("image", "file") and p.get("path"):
+                    attached_images.append(str(p.get("path")))
+            return ""
 
         if user_message is not None:
             if isinstance(user_message, str):
@@ -133,29 +160,37 @@ class AIAgent:
             elif isinstance(user_message, dict):
                 content = user_message.get("content", "")
                 if isinstance(content, list):
-                    texts = [p.get("text", "") for p in content if isinstance(p, dict) and "text" in p]
-                    user_prompt = "\n".join(texts)
+                    texts = [_process_part(p) for p in content]
+                    user_prompt = "\n".join([t for t in texts if t])
                 else:
                     user_prompt = str(content)
             elif isinstance(user_message, list):
-                parts = []
+                texts = []
                 for p in user_message:
-                    if isinstance(p, dict):
-                        parts.append(p.get("text", str(p)))
-                    else:
-                        parts.append(str(p))
-                user_prompt = "\n".join(parts)
+                    t = _process_part(p)
+                    if t:
+                        texts.append(t)
+                    elif not isinstance(p, dict):
+                        texts.append(str(p))
+                user_prompt = "\n".join(texts)
 
         if not user_prompt and messages:
             for m in reversed(messages):
                 if isinstance(m, dict) and m.get("role") == "user":
                     content = m.get("content", "")
                     if isinstance(content, list):
-                        texts = [p.get("text", "") for p in content if isinstance(p, dict) and "text" in p]
-                        user_prompt = "\n".join(texts)
+                        texts = [_process_part(p) for p in content]
+                        user_prompt = "\n".join([t for t in texts if t])
                     else:
                         user_prompt = str(content)
                     break
+
+        if attached_images:
+            img_refs = "\n".join([f"- [Attached Screenshot](file://{img_path})" for img_path in attached_images])
+            if user_prompt:
+                user_prompt = f"{user_prompt}\n\n[Attached Screenshot / Image Files]:\n{img_refs}\nPlease inspect the attached image file using `view_file` to review it."
+            else:
+                user_prompt = f"Please inspect the attached screenshot at file://{attached_images[0]} and explain what you see."
 
         if not user_prompt:
             user_prompt = "Hello"

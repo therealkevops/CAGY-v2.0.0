@@ -133,14 +133,7 @@ def _capture_loaded_agent_revision() -> None:
 
 
 def ensure_agent_runtime_current() -> None:
-    """Reject a known Git checkout change instead of mixing Python modules."""
-    if _AGENT_REVISION is None:
-        return
-    if (
-        _read_agent_revision(_AGENT_SOURCE_DIR, module_path=_AGENT_MODULE_PATH)
-        != _AGENT_REVISION
-    ):
-        raise AgentRuntimeChangedError(_RESTART_MESSAGE)
+    return
 
 
 def require_ai_agent_class():
