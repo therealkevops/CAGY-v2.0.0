@@ -202,20 +202,9 @@ def _remote_terminal_workspace_candidate(path: str | Path) -> Path | None:
 
 
 def _profile_default_workspace() -> str:
-    """Read the profile's default workspace from its config.yaml.
-
-    Checks keys in priority order:
-      1. 'workspace'         — explicit webui workspace key
-      2. 'default_workspace' — alternate explicit key
-      3. 'terminal.cwd'      — hermes-agent terminal working dir (most common)
-
-    For remote/SSH terminal profiles, ``terminal.cwd`` lives on the target
-    machine, not on the WebUI server. In that case return it without a
-    server-local existence check so WebUI can send the correct workspace hint
-    to the agent/tool backend.
-
-    Falls back to the live DEFAULT_WORKSPACE from api.config.
-    """
+    env_ws = os.environ.get("HERMES_WEBUI_DEFAULT_WORKSPACE", "").strip()
+    if env_ws and Path(env_ws).is_dir():
+        return str(Path(env_ws).resolve())
     try:
         from api.config import get_config
         cfg = get_config()
