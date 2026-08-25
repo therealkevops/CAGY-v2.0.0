@@ -251,6 +251,8 @@ class AIAgent:
                     elif event_type == "step_update":
                         update = event_data.get("step_update", {})
                         step_type = update.get("step_type")
+                        state = update.get("state")
+                        tool_name = update.get("tool_name") or update.get("tool_info", {}).get("name", "tool")
 
                         if "text_delta" in update:
                             delta = update["text_delta"]
@@ -262,23 +264,48 @@ class AIAgent:
                                 except Exception:
                                     pass
 
-                        if step_type == "tool_call" or "tool_call" in update:
-                            tc = update.get("tool_call", {})
-                            name = tc.get("name", update.get("name", "Tool"))
-                            args = tc.get("args", update.get("args", {}))
-                            tool_calls.append({"name": name, "args": args})
-                            if self.tool_start_callback:
+                        if step_type == "tool":
+                            tool_info = update.get("tool_info", {})
+                            name = tool_info.get("name") or tool_name
+                            params = tool_info.get("parameters", {})
+                            output = tool_info.get("output", "")
+
+                            if state == "ACTIVE":
+                                tool_calls.append({"name": name, "args": params})
+                                if self.status_callback:
+                                    try:
+                                        self.status_callback(f"Executing {name}...")
+                                    except Exception:
+                                        pass
+                                if self.tool_start_callback:
+                                    try:
+                                        self.tool_start_callback(name, params)
+                                    except Exception:
+                                        pass
+
+                            elif state == "DONE":
+                                if self.status_callback:
+                                    try:
+                                        self.status_callback("Analyzing results...")
+                                    except Exception:
+                                        pass
+                                if self.tool_complete_callback:
+                                    try:
+                                        self.tool_complete_callback(name, output)
+                                    except Exception:
+                                        pass
+
+                        elif step_type == "checkpoint":
+                            if self.status_callback:
                                 try:
-                                    self.tool_start_callback(name, args)
+                                    self.status_callback("Thinking & planning...")
                                 except Exception:
                                     pass
 
-                        elif step_type == "tool_result" or "tool_result" in update:
-                            res = update.get("tool_result", update.get("result", {}))
-                            name = update.get("name", "Tool")
-                            if self.tool_complete_callback:
+                        elif step_type == "agent_response" and state == "ACTIVE":
+                            if self.status_callback:
                                 try:
-                                    self.tool_complete_callback(name, res)
+                                    self.status_callback("Responding...")
                                 except Exception:
                                     pass
 
