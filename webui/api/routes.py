@@ -14270,12 +14270,20 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, {"git": info})
 
     if parsed.path == "/api/commands":
-        from api.commands import list_commands
-        return j(handler, {"commands": list_commands()})
+        return j(handler, {"commands": [
+            {"name": "plan", "description": "Antigravity: Step-by-step implementation planning before coding", "category": "Antigravity"},
+            {"name": "goal", "description": "Antigravity: Autonomous long-running goal execution until completion", "category": "Antigravity"},
+            {"name": "grill-me", "description": "Antigravity: Interactive design interview to stress-test requirements", "category": "Antigravity"},
+            {"name": "learn", "description": "Antigravity: Persist behavioral guidelines & conventions", "category": "Antigravity"},
+            {"name": "schedule", "description": "Antigravity: Schedule recurring or one-shot task timer", "category": "Antigravity"},
+            {"name": "new", "description": "Start a new conversation", "category": "Session"},
+            {"name": "clear", "description": "Clear the active chat view", "category": "Session"},
+            {"name": "theme", "description": "Switch UI theme or skin", "category": "Settings"},
+            {"name": "help", "description": "Show available commands", "category": "Help"}
+        ]})
 
     if parsed.path == "/api/commands/bundles":
-        from api.commands import list_command_bundles
-        return j(handler, {"bundles": list_command_bundles()})
+        return j(handler, {"bundles": []})
 
     if parsed.path == "/api/commands/moa/resolve":
         from api.commands import resolve_moa_config

@@ -3,29 +3,20 @@ function cmdPassToAgent(args){
 }
 
 const COMMANDS=[
-  // Antigravity (AGY) Signature Commands
+  // Antigravity (AGY) Signature Workflows
   {name:'plan',      desc:'Antigravity: Step-by-step implementation planning before coding', fn:cmdPassToAgent, arg:'[plan description]'},
   {name:'goal',      desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
   {name:'grill-me',  desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
   {name:'learn',     desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
   {name:'schedule',  desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
-  // Built-in commands intercepted before send()
-  {name:'help',      desc:t('cmd_help'),             fn:cmdHelp},
-  {name:'clear',     desc:t('cmd_clear'),         fn:cmdClear,     noEcho:true},
-  {name:'workspace', desc:t('cmd_workspace'),            fn:cmdWorkspace, arg:'name',           noEcho:true},
-  {name:'terminal',  desc:t('cmd_terminal'),             fn:cmdTerminal,                        noEcho:true},
-  {name:'new',       desc:t('cmd_new'),            fn:cmdNew,       noEcho:true},
-  {name:'theme',     desc:t('cmd_theme'), fn:cmdTheme, arg:'name',  noEcho:true},
-  {name:'skills',    desc:t('cmd_skills'),   fn:cmdSkills,   arg:'query'},
-  {name:'stop',      desc:t('cmd_stop'),     fn:cmdStop,      noEcho:true},
-  {name:'title',     desc:t('cmd_title'),    fn:cmdTitle,    arg:'[title]'},
-  {name:'status',    desc:t('cmd_status'),   fn:cmdStatus},
+  // Session Controls
+  {name:'new',       desc:'Start a new conversation',            fn:cmdNew,       noEcho:true},
+  {name:'clear',     desc:'Clear the active chat view',         fn:cmdClear,     noEcho:true},
+  {name:'theme',     desc:'Switch UI theme or skin', fn:cmdTheme, arg:'name',  noEcho:true},
+  {name:'help',      desc:'Show available commands',             fn:cmdHelp},
 ];
 
-const SLASH_SUBARG_SOURCES={
-  model:{desc:t('cmd_model'), subArgs:'models'},
-  personality:{desc:t('cmd_personality'), subArgs:'personalities'},
-};
+const SLASH_SUBARG_SOURCES={};
 
 function parseCommand(text){
   if(!text.startsWith('/'))return null;
@@ -167,66 +158,9 @@ function executeCommand(text){
   if(cmd.fn(parsed.args)===false)return null;
   // Return noEcho flag so send() knows whether to echo the command as a user message (#840).
   return {noEcho:!!cmd.noEcho};
-}
-
 function getMatchingCommands(prefix){
   const q=prefix.toLowerCase();
-  const matches=COMMANDS.filter(c=>c.name.startsWith(q)).map(c=>({...c,source:'builtin'}));
-  const seen=new Set(matches.map(c=>c.name));
-  const reserved=_getReservedSlashCommandSlugs();
-  const bundleSlugs=new Set(_bundleCommandCache.map(bundle=>bundle.name));
-  for(const [name, spec] of Object.entries(SLASH_SUBARG_SOURCES)){
-    if(!name.startsWith(q)||seen.has(name))continue;
-    matches.push({
-      name,
-      desc:spec.desc,
-      arg:'name',
-      source:'subarg-command',
-    });
-    seen.add(name);
-  }
-  if('pet'.startsWith(q)&&!seen.has('pet')){
-    const petMeta=Array.isArray(_agentCommandCache)
-      ? _agentCommandCache.find(cmd=>String(cmd&&cmd.name||'').toLowerCase()==='pet')
-      : null;
-    matches.push({
-      name:'pet',
-      desc:String((petMeta&&petMeta.description)||'Desktop Companion command').trim()||'Desktop Companion command',
-      source:'agent',
-    });
-    seen.add('pet');
-  }
-  // Include agent/plugin commands from /api/commands metadata
-  for(const cmd of (_agentCommandCache||[])){
-    const name=String(cmd&&cmd.name||'').toLowerCase();
-    if(!name.startsWith(q)||seen.has(name))continue;
-    if(cmd.cli_only&&name!=='pet')continue;
-    matches.push({
-      name,
-      desc:String(cmd&&cmd.description||'').trim()||'Agent command',
-      source:cmd.category==='Plugin'?'plugin':'agent',
-    });
-    seen.add(name);
-  }
-  if(_agentCommandCacheReady){
-    for(const bundle of _bundleCommandCache){
-      if(!bundle.name.startsWith(q)||seen.has(bundle.name)||reserved.has(bundle.name))continue;
-      matches.push(bundle);
-      seen.add(bundle.name);
-    }
-  }
-  // A same-slug bundle owns dispatch. Hold plain skills until the independent
-  // bundle metadata request settles so a slow bundle response cannot briefly
-  // expose a selectable, shadowed skill.
-  if(!_bundleCommandCacheReady)return matches;
-  for(const skill of _skillCommandCache){
-    const name=String(skill&&skill.name||'').toLowerCase();
-    const description=String(skill&&skill.desc||'').toLowerCase();
-    if((!name.includes(q)&&!description.includes(q))||seen.has(name)||reserved.has(name)||bundleSlugs.has(name))continue;
-    matches.push(skill);
-    seen.add(name);
-  }
-  return matches;
+  return COMMANDS.filter(c=>c.name.startsWith(q)).map(c=>({...c,source:'builtin'}));
 }
 
 let _forcedSkillDirectivePending=null;
