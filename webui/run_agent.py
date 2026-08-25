@@ -225,6 +225,7 @@ class AIAgent:
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.workspace),
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
