@@ -284,6 +284,8 @@ class AIAgent:
                                         pass
 
                             elif state == "DONE":
+                                if tool_calls and tool_calls[-1]["name"] == name:
+                                    tool_calls[-1]["output"] = output
                                 if self.status_callback:
                                     try:
                                         self.status_callback("Analyzing results...")
@@ -345,10 +347,33 @@ class AIAgent:
         history = list(messages) if messages else []
         if not history or history[-1].get("role") != "user":
             history.append({"role": "user", "content": user_prompt})
+
+        if tool_calls:
+            formatted_tc = []
+            for i, tc in enumerate(tool_calls):
+                call_id = f"call_{i}"
+                formatted_tc.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc.get("args", {}))}
+                })
+            history.append({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": formatted_tc
+            })
+            for i, tc in enumerate(tool_calls):
+                call_id = f"call_{i}"
+                history.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": str(tc.get("output") or "")
+                })
+
         history.append({
             "role": "assistant",
             "content": assistant_text,
-            "tool_calls": tool_calls if tool_calls else []
+            "tool_calls": []
         })
 
         return {
