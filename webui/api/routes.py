@@ -13235,18 +13235,7 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, {
             "active_provider": "antigravity",
             "default_model": "Gemini 3.7 Flash (High)",
-            "configured_model_badges": {
-                "Gemini 3.7 Flash (High)": "⚡ 3.7 Flash",
-                "Gemini 3.7 Flash (Medium)": "⚡ 3.7 Flash",
-                "Gemini 3.7 Flash (Low)": "⚡ 3.7 Flash",
-                "Gemini 3.1 Pro (High)": "🧠 3.1 Pro",
-                "Gemini 3.1 Pro (Low)": "🧠 3.1 Pro",
-                "Gemini 3.6 Flash (High)": "⚡ 3.6 Flash",
-                "Gemini 3.5 Flash (High)": "⚡ 3.5 Flash",
-                "Claude Sonnet 4.6 (Thinking)": "🎭 Claude Sonnet",
-                "Claude Opus 4.6 (Thinking)": "🎭 Claude Opus",
-                "GPT-OSS 120B (Medium)": "🤖 GPT-OSS 120B"
-            },
+            "configured_model_badges": {},
             "groups": [
                 {
                     "provider": "Google Gemini",
@@ -21465,18 +21454,7 @@ def _handle_live_models(handler, parsed):
         if provider == "antigravity":
             return j(handler, {
                 "provider": "antigravity",
-                "models": [
-                    "Gemini 3.7 Flash (High)",
-                    "Gemini 3.7 Flash (Medium)",
-                    "Gemini 3.7 Flash (Low)",
-                    "Gemini 3.1 Pro (High)",
-                    "Gemini 3.1 Pro (Low)",
-                    "Gemini 3.6 Flash (High)",
-                    "Gemini 3.5 Flash (High)",
-                    "Claude Sonnet 4.6 (Thinking)",
-                    "Claude Opus 4.6 (Thinking)",
-                    "GPT-OSS 120B (Medium)"
-                ]
+                "models": []
             })
 
         from api.config import _resolve_provider_alias
