@@ -13234,26 +13234,94 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/models":
         return j(handler, {
             "active_provider": "antigravity",
-            "default_model": "Antigravity 2.0 (agy CLI)",
+            "default_model": "Gemini 3.7 Flash (High)",
             "configured_model_badges": {
-                "Antigravity 2.0 (agy CLI)": "⚡ AGY CLI"
+                "Gemini 3.7 Flash (High)": "⚡ 3.7 Flash",
+                "Gemini 3.7 Flash (Medium)": "⚡ 3.7 Flash",
+                "Gemini 3.7 Flash (Low)": "⚡ 3.7 Flash",
+                "Gemini 3.1 Pro (High)": "🧠 3.1 Pro",
+                "Gemini 3.1 Pro (Low)": "🧠 3.1 Pro",
+                "Gemini 3.6 Flash (High)": "⚡ 3.6 Flash",
+                "Gemini 3.5 Flash (High)": "⚡ 3.5 Flash",
+                "Claude Sonnet 4.6 (Thinking)": "🎭 Claude Sonnet",
+                "Claude Opus 4.6 (Thinking)": "🎭 Claude Opus",
+                "GPT-OSS 120B (Medium)": "🤖 GPT-OSS 120B"
             },
             "groups": [
                 {
-                    "provider": "⚡ Antigravity Engine",
+                    "provider": "Google Gemini",
                     "provider_id": "antigravity",
                     "models": [
                         {
-                            "id": "Antigravity 2.0 (agy CLI)",
-                            "label": "Antigravity (AGY CLI Engine)",
-                            "description": "Native Antigravity AGY Engine on Local Host"
+                            "id": "Gemini 3.7 Flash (High)",
+                            "label": "Gemini 3.7 Flash (High Reasoning)",
+                            "description": "Flagship hybrid reasoning model with deep thinking"
+                        },
+                        {
+                            "id": "Gemini 3.7 Flash (Medium)",
+                            "label": "Gemini 3.7 Flash (Medium Reasoning)",
+                            "description": "Balanced latency and reasoning depth"
+                        },
+                        {
+                            "id": "Gemini 3.7 Flash (Low)",
+                            "label": "Gemini 3.7 Flash (Fast / Low Reasoning)",
+                            "description": "High-throughput rapid execution"
+                        },
+                        {
+                            "id": "Gemini 3.1 Pro (High)",
+                            "label": "Gemini 3.1 Pro (High Reasoning)",
+                            "description": "Deep frontier reasoning and complex code architecture"
+                        },
+                        {
+                            "id": "Gemini 3.1 Pro (Low)",
+                            "label": "Gemini 3.1 Pro (Low Reasoning)",
+                            "description": "Direct pro-tier code generation"
+                        },
+                        {
+                            "id": "Gemini 3.6 Flash (High)",
+                            "label": "Gemini 3.6 Flash (High Reasoning)",
+                            "description": "Fast reasoning model"
+                        },
+                        {
+                            "id": "Gemini 3.5 Flash (High)",
+                            "label": "Gemini 3.5 Flash (High Reasoning)",
+                            "description": "Lightweight reasoning model"
+                        }
+                    ]
+                },
+                {
+                    "provider": "Anthropic Claude",
+                    "provider_id": "antigravity",
+                    "models": [
+                        {
+                            "id": "Claude Sonnet 4.6 (Thinking)",
+                            "label": "Claude Sonnet 4.6 (Thinking)",
+                            "description": "Frontier coding with extended thinking"
+                        },
+                        {
+                            "id": "Claude Opus 4.6 (Thinking)",
+                            "label": "Claude Opus 4.6 (Thinking)",
+                            "description": "Maximum capability frontier model"
+                        }
+                    ]
+                },
+                {
+                    "provider": "Open Source & Local",
+                    "provider_id": "antigravity",
+                    "models": [
+                        {
+                            "id": "GPT-OSS 120B (Medium)",
+                            "label": "GPT-OSS 120B (Medium)",
+                            "description": "120B open weights reasoning model"
                         }
                     ]
                 }
             ],
             "aliases": {
-                "agy": "Antigravity 2.0 (agy CLI)",
-                "gemini": "Antigravity 2.0 (agy CLI)"
+                "flash": "Gemini 3.7 Flash (High)",
+                "pro": "Gemini 3.1 Pro (High)",
+                "sonnet": "Claude Sonnet 4.6 (Thinking)",
+                "opus": "Claude Opus 4.6 (Thinking)"
             }
         })
 

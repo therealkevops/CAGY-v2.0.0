@@ -207,6 +207,9 @@ class AIAgent:
         if self.conversation_id:
             cmd.extend(["--conversation", self.conversation_id])
 
+        if self.model and self.model not in ("Antigravity 2.0 (agy CLI)", "default", "auto", ""):
+            cmd.extend(["--model", self.model])
+
         assistant_text = ""
         tool_calls = []
         input_tokens = 0
