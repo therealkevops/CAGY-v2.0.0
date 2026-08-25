@@ -193,6 +193,9 @@
     <div class="panel-view active" id="panelChat">
       <div class="panel-head">
         <span data-i18n="tab_chat">Chat</span>
+        <span id="sidebarGitBranchPill" style="display:inline-flex; align-items:center; gap:4px; background: rgba(147,51,234,0.15); border: 1px solid rgba(168,85,247,0.35); padding: 2px 8px; border-radius: 12px; font-size: 11px; color: #c084fc; font-weight: 500; margin-left: 8px;">
+          🌿 <span id="sidebarGitBranchLabel">feature/agy-capabilities</span>
+        </span>
         <div class="panel-head-actions">
           <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="New conversation (Cmd+K)" data-i18n-title="new_conversation" aria-label="New conversation">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -635,6 +638,12 @@
               <select id="modelSelect" class="composer-model-select" title="Conversation model" aria-hidden="true" tabindex="-1">
                 <option value="Antigravity 2.0 (agy CLI)" selected>Antigravity 2.0 (agy CLI)</option>
               </select>
+            </div>
+            <div class="composer-git-wrap" style="display:inline-flex; align-items:center;">
+              <div class="composer-git-chip" id="composerGitChip" style="display:inline-flex; align-items:center; gap:5px; background: rgba(147,51,234,0.15); border: 1px solid rgba(168,85,247,0.4); padding: 3px 8px; border-radius: 6px; font-size: 11px; color: #c084fc; font-weight: 500; height: 26px; box-sizing: border-box;" title="Active Git Branch">
+                <span aria-hidden="true">🌿</span>
+                <span id="composerGitBranchLabel">feature/agy-capabilities</span>
+              </div>
             </div>
             <div class="composer-toolsets-wrap" id="composerToolsetsWrap">
               <button class="composer-toolsets-chip" id="composerToolsetsChip" type="button" onclick="toggleToolsetsDropdown()" title="Session toolsets">

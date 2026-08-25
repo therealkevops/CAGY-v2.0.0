@@ -806,28 +806,29 @@ function refreshWorkspacePanel(){
 
 async function _refreshGitBadge(){
   const badge=$('gitBadge');
-  if(!badge||!S.session)return;
-  const sessionId=S.session.session_id;
+  const sessionId=S.session?S.session.session_id:'';
   try{
-    const data=await api(`/api/git-info?session_id=${encodeURIComponent(sessionId)}`);
-    if(!S.session||S.session.session_id!==sessionId)return;
+    const url=sessionId?`/api/git-info?session_id=${encodeURIComponent(sessionId)}`:'/api/git-info';
+    const data=await api(url);
     if(data.git&&data.git.is_git){
       const g=data.git;
       let text=g.branch||'git';
-      if(g.dirty>0) text+=` \u00b7 ${g.dirty}\u2206`; // middot + delta
-      if(g.behind>0) text+=` \u2193${g.behind}`;
-      if(g.ahead>0) text+=` \u2191${g.ahead}`;
-      badge.textContent=text;
-      badge.className='git-badge'+(g.dirty>0?' dirty':'');
-      badge.style.display='';
-    } else {
-      badge.style.display='none';
-      badge.textContent='';
+      if(g.dirty>0) text+=` · ${g.dirty}∆`; // middot + delta
+      if(g.behind>0) text+=` ↓${g.behind}`;
+      if(g.ahead>0) text+=` ↑${g.ahead}`;
+      if(badge){
+        badge.textContent=text;
+        badge.className='git-badge'+(g.dirty>0?' dirty':'');
+        badge.style.display='';
+      }
+      const el1=$('agyGitBranchLabel');
+      if(el1) el1.textContent=text;
+      const el2=$('composerGitBranchLabel');
+      if(el2) el2.textContent=text;
+      const el3=$('sidebarGitBranchLabel');
+      if(el3) el3.textContent=text;
     }
-  }catch(e){
-    if(!S.session||S.session.session_id!==sessionId)return;
-    badge.style.display='none';
-  }
+  }catch(e){}
 }
 
 function navigateUp(){
