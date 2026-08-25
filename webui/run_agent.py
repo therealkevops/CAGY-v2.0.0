@@ -271,7 +271,8 @@ class AIAgent:
                             output = tool_info.get("output", "")
 
                             if state == "ACTIVE":
-                                tool_calls.append({"name": name, "args": params})
+                                tid = f"call_{len(tool_calls)}"
+                                tool_calls.append({"id": tid, "name": name, "args": params})
                                 if self.status_callback:
                                     try:
                                         self.status_callback(f"Executing {name}...")
@@ -279,11 +280,17 @@ class AIAgent:
                                         pass
                                 if self.tool_start_callback:
                                     try:
-                                        self.tool_start_callback(name, params)
+                                        self.tool_start_callback(tid, name, params)
+                                    except TypeError:
+                                        try:
+                                            self.tool_start_callback(name, params)
+                                        except Exception:
+                                            pass
                                     except Exception:
                                         pass
 
                             elif state == "DONE":
+                                tid = tool_calls[-1]["id"] if tool_calls else "call_0"
                                 if tool_calls and tool_calls[-1]["name"] == name:
                                     tool_calls[-1]["output"] = output
                                 if self.status_callback:
@@ -293,7 +300,12 @@ class AIAgent:
                                         pass
                                 if self.tool_complete_callback:
                                     try:
-                                        self.tool_complete_callback(name, output)
+                                        self.tool_complete_callback(tid, name, params, output)
+                                    except TypeError:
+                                        try:
+                                            self.tool_complete_callback(name, output)
+                                        except Exception:
+                                            pass
                                     except Exception:
                                         pass
 
