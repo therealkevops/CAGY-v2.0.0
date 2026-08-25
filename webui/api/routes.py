@@ -704,41 +704,25 @@ def _skill_category_from_path(
     skills_dirs: list[Path],
     local_skills_dir: Path | None = None,
 ) -> str | None:
-    """Return the UI category for a discovered skill path.
-
-    Flat skills directly under the active *local* skills root stay uncategorized,
-    while flat skills under an *external* root use that root's directory name as
-    their category. ``local_skills_dir`` identifies the local root explicitly; if
-    omitted it falls back to ``skills_dirs[0]`` for backward compatibility, but
-    callers should pass it directly because the local root can be filtered out of
-    ``skills_dirs`` (e.g. when it does not exist yet on a host with only external
-    skills configured), which would otherwise misclassify the first external root
-    as local.
-    """
-    if local_skills_dir is None:
-        local_skills_dir = skills_dirs[0] if skills_dirs else None
-    for skills_dir in skills_dirs:
-        try:
-            rel_path = skill_md.relative_to(skills_dir)
-        except ValueError:
-            continue
-        parts = rel_path.parts
-        if len(parts) >= 3:
-            return parts[0]
-        if len(parts) >= 2 and local_skills_dir is not None and skills_dir != local_skills_dir:
-            return skills_dir.name
-        return None
-    return None
+    path_str = str(skill_md)
+    if "builtin" in path_str and "antigravity-cli" in path_str:
+        return "Built-in (AGY)"
+    if ".gemini" in path_str:
+        return "Antigravity"
+    if ".hermes" in path_str:
+        return "Hermes"
+    return "Custom"
 
 
 def _active_skill_search_dirs(skills_dir: Path) -> list[Path]:
     dirs = [skills_dir]
-    try:
-        from agent.skill_utils import get_external_skills_dirs
-
-        dirs.extend(Path(p) for p in get_external_skills_dirs())
-    except Exception:
-        pass
+    builtin_skills = Path.home() / ".gemini" / "antigravity-cli" / "builtin" / "skills"
+    user_skills = Path.home() / ".gemini" / "antigravity-cli" / "skills"
+    ws_skills = Path.cwd() / ".gemini" / "skills"
+    ws_skills_root = Path.cwd() / "skills"
+    for d in (builtin_skills, user_skills, ws_skills, ws_skills_root):
+        if d.exists() and d not in dirs:
+            dirs.append(d)
     return [p for p in dirs if p.exists()]
 
 
@@ -866,31 +850,68 @@ def _normalize_disabled_set(values) -> set:
     return {str(v).strip() for v in values if str(v).strip()}
 
 
+MAX_DESCRIPTION_LENGTH = 300
+_EXCLUDED_SKILL_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea"}
+
+
+def _parse_frontmatter(content: str) -> tuple[dict, str]:
+    if not content or not content.startswith("---"):
+        return {}, content
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return {}, content
+    frontmatter_raw = parts[1]
+    body = parts[2]
+    data = {}
+    try:
+        import yaml
+        data = yaml.safe_load(frontmatter_raw) or {}
+    except Exception:
+        for line in frontmatter_raw.strip().split("\n"):
+            if ":" in line:
+                k, v = line.split(":", 1)
+                data[k.strip()] = v.strip().strip("'\"")
+    return data if isinstance(data, dict) else {}, body
+
+
+def _parse_tags(raw) -> list[str]:
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    if isinstance(raw, str):
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return []
+
+
+def skill_matches_platform(frontmatter: dict) -> bool:
+    platforms = frontmatter.get("platforms") or frontmatter.get("platform")
+    if not platforms:
+        return True
+    if isinstance(platforms, str):
+        platforms = [p.strip().lower() for p in platforms.split(",")]
+    elif isinstance(platforms, list):
+        platforms = [str(p).strip().lower() for p in platforms]
+    import sys
+    current = "macos" if sys.platform == "darwin" else ("windows" if sys.platform == "win32" else "linux")
+    return current in platforms or "all" in platforms or sys.platform in platforms
+
+
+def _sort_skills(skills: list[dict]) -> list[dict]:
+    return sorted(skills, key=lambda s: s.get("name", "").lower())
+
+
+def iter_skill_index_files(scan_dir: Path, filename: str = "SKILL.md"):
+    if not scan_dir.exists():
+        return
+    try:
+        for path in scan_dir.rglob(filename):
+            if not any(part in _EXCLUDED_SKILL_DIRS for part in path.parts):
+                yield path
+    except Exception:
+        pass
+
+
 def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict:
-    """List skills using an explicit local skills directory.
-
-    This mirrors ``tools.skills_tool.skills_list`` closely, but keeps the local
-    scan root explicit so per-client WebUI profile switches do not race on or
-    leak through the skills tool's module-global ``SKILLS_DIR``.
-    """
-    from agent.skill_utils import iter_skill_index_files
-    from tools.skills_tool import (
-        MAX_DESCRIPTION_LENGTH,
-        _EXCLUDED_SKILL_DIRS,
-        _parse_frontmatter,
-        _sort_skills,
-        skill_matches_platform,
-    )
-
-    if not skills_dir.exists():
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        return {
-            "success": True,
-            "skills": [],
-            "categories": [],
-            "message": f"No skills found. Skills directory created at {skills_dir}/",
-        }
-
+    """List skills across all search directories."""
     all_skills = []
     seen_names: set[str] = set()
     disabled = _get_disabled_skill_names_for_profile()
@@ -949,15 +970,12 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
     if all_skills:
         result["hint"] = "Use skill_view(name) to see full content, tags, and linked files"
     else:
-        result["message"] = "No skills found in skills/ directory."
+        result["message"] = "No skills found."
     return result
 
 
 def _find_skill_in_dirs(name: str, skills_dirs: list[Path]) -> tuple[Path | None, Path | None]:
     """Resolve a WebUI skill name inside explicit skills directories."""
-    from agent.skill_utils import iter_skill_index_files
-    from tools.skills_tool import _EXCLUDED_SKILL_DIRS, _parse_frontmatter
-
     raw_name = str(name or "").strip().strip("/")
     if not raw_name:
         return None, None
@@ -1054,8 +1072,6 @@ def _linked_files_for_skill(skill_dir: Path | None) -> dict:
 
 
 def _skill_view_from_file(skill_dir: Path | None, skill_md: Path) -> dict:
-    from tools.skills_tool import _parse_frontmatter, _parse_tags, skill_matches_platform
-
     content = skill_md.read_text(encoding="utf-8")
     frontmatter, _body = _parse_frontmatter(content)
     if not skill_matches_platform(frontmatter):
@@ -1086,28 +1102,10 @@ def _skill_view_from_file(skill_dir: Path | None, skill_md: Path) -> dict:
 
 
 def _skill_view_from_active_dir(name: str) -> dict:
-    from tools.skills_tool import skill_view as _skill_view
-
     skills_dir = _active_skills_dir()
     search_dirs = _active_skill_search_dirs(skills_dir)
     skill_dir, skill_md = _find_skill_in_dirs(name, search_dirs)
     if not skill_md:
-        # Preserve plugin-qualified skill viewing without falling back to the
-        # startup/root profile's local skills tree for ordinary missing skills.
-        if ":" in str(name or ""):
-            try:
-                from agent.skill_utils import is_valid_namespace, parse_qualified_name
-                from hermes_cli.plugins import discover_plugins, get_plugin_manager
-
-                namespace, _bare = parse_qualified_name(name)
-                if is_valid_namespace(namespace):
-                    discover_plugins()
-                    pm = get_plugin_manager()
-                    if pm.find_plugin_skill(name) is not None or pm.list_plugin_skills(namespace):
-                        raw = _skill_view(name)
-                        return json.loads(raw) if isinstance(raw, str) else raw
-            except Exception:
-                pass
         return _skill_not_found_payload(name, skills_dir)
     return _skill_view_from_file(skill_dir, skill_md)
 
