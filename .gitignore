@@ -1,0 +1,8 @@
+.env
+container_data/
+workspace/*
+!workspace/.gitkeep
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo

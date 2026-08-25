@@ -1,0 +1,29 @@
+services:
+  agy-unified:
+    build: .
+    container_name: agy-unified
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATA_DIR=/opt/data
+      - WORKSPACE_DIR=/workspace
+      - SSL_CERT_FILE=/opt/data/system_certs.pem
+      - REQUESTS_CA_BUNDLE=/opt/data/system_certs.pem
+      - NODE_EXTRA_CA_CERTS=/opt/data/system_certs.pem
+      - CURL_CA_BUNDLE=/opt/data/system_certs.pem
+    volumes:
+      # Isolated container configuration & credential data
+      - ./container_data:/opt/data
+      - ./container_data/gemini:/root/.gemini
+      - ./container_data/config:/root/.config
+      # Mount host project root to container workspace
+      - ./:/workspace
+      - ./supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      # Optional: Uncomment below if mounting host Docker socket to permit docker commands inside container
+      # - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8989:8989"
+    stdin_open: true
+    tty: true

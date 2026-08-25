@@ -1,0 +1,246 @@
+import os
+import sys
+import json
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Callable, Union
+
+class AIAgent:
+    """Drop-in AIAgent implementation bridging the Hermes WebUI to the Antigravity (agy) CLI."""
+
+    def __init__(
+        self,
+        model: Optional[str] = "Antigravity CLI (agy)",
+        workspace: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        session_db: Any = None,
+        stream_delta_callback: Optional[Callable[[str], None]] = None,
+        tool_start_callback: Optional[Callable[[str, Any], None]] = None,
+        tool_complete_callback: Optional[Callable[[str, Any], None]] = None,
+        status_callback: Optional[Callable[[str], None]] = None,
+        reasoning_callback: Optional[Callable[[str], None]] = None,
+        **kwargs
+    ):
+        self.model = model or "Antigravity CLI (agy)"
+        self.workspace = Path(workspace or os.getcwd()).resolve()
+        self.system_prompt = system_prompt
+        self._session_db = session_db
+        
+        self.stream_delta_callback = stream_delta_callback
+        self.tool_start_callback = tool_start_callback
+        self.tool_complete_callback = tool_complete_callback
+        self.status_callback = status_callback
+        self.reasoning_callback = reasoning_callback
+        
+        self.conversation_id = None
+        self.clarify_timeout = 3600
+        self.image_input_mode = "text"
+        self.reasoning_config = {"enabled": False}
+        self.api_key = "AGY Auth"
+        self.base_url = ""
+        self._last_error = None
+
+    def switch_model(self, model: str, **kwargs):
+        self.model = model
+
+    def handle_max_iterations(self, *args, **kwargs):
+        return None
+
+    def _find_agy_bin(self) -> str:
+        candidates = [
+            "/Users/kev.gorman/.local/bin/agy",
+            str(Path.home() / ".local" / "bin" / "agy"),
+            shutil.which("agy"),
+            "/usr/local/bin/agy"
+        ]
+        for cand in candidates:
+            if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
+        return "agy"
+
+    def _get_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        cert_path = self.workspace / "container_data" / "system_certs.pem"
+        if cert_path.exists():
+            env["SSL_CERT_FILE"] = str(cert_path)
+            env["REQUESTS_CA_BUNDLE"] = str(cert_path)
+            env["CURL_CA_BUNDLE"] = str(cert_path)
+            env["NODE_EXTRA_CA_CERTS"] = str(cert_path)
+
+        local_bin = str(Path.home() / ".local" / "bin")
+        if local_bin not in env.get("PATH", ""):
+            env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
+        return env
+
+    def run_conversation(
+        self,
+        user_message: Union[str, Dict[str, Any], List[Any], None] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Execute a turn by invoking agy CLI with stream-json format."""
+        user_prompt = ""
+
+        if user_message is not None:
+            if isinstance(user_message, str):
+                user_prompt = user_message
+            elif isinstance(user_message, dict):
+                content = user_message.get("content", "")
+                if isinstance(content, list):
+                    texts = [p.get("text", "") for p in content if isinstance(p, dict) and "text" in p]
+                    user_prompt = "\n".join(texts)
+                else:
+                    user_prompt = str(content)
+            elif isinstance(user_message, list):
+                parts = []
+                for p in user_message:
+                    if isinstance(p, dict):
+                        parts.append(p.get("text", str(p)))
+                    else:
+                        parts.append(str(p))
+                user_prompt = "\n".join(parts)
+
+        if not user_prompt and messages:
+            for m in reversed(messages):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    content = m.get("content", "")
+                    if isinstance(content, list):
+                        texts = [p.get("text", "") for p in content if isinstance(p, dict) and "text" in p]
+                        user_prompt = "\n".join(texts)
+                    else:
+                        user_prompt = str(content)
+                    break
+
+        if not user_prompt:
+            user_prompt = "Hello"
+
+        agy_bin = self._find_agy_bin()
+        cmd = [
+            agy_bin,
+            "--print", user_prompt,
+            "--output-format", "stream-json",
+            "--dangerously-skip-permissions",
+            "--add-dir", str(self.workspace)
+        ]
+
+        if self.conversation_id:
+            cmd.extend(["--conversation", self.conversation_id])
+
+        assistant_text = ""
+        tool_calls = []
+        input_tokens = 0
+        output_tokens = 0
+
+        try:
+            if self.status_callback:
+                try:
+                    self.status_callback("Antigravity thinking...")
+                except Exception:
+                    pass
+
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(self.workspace),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=self._get_env(),
+                bufsize=1
+            )
+
+            has_streamed_deltas = False
+
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    event_data = json.loads(line)
+                    event_type = event_data.get("event")
+
+                    if event_type == "init":
+                        self.conversation_id = event_data.get("conversation_id")
+                        continue
+
+                    elif event_type == "step_update":
+                        update = event_data.get("step_update", {})
+                        step_type = update.get("step_type")
+
+                        if "text_delta" in update:
+                            delta = update["text_delta"]
+                            has_streamed_deltas = True
+                            assistant_text += delta
+                            if self.stream_delta_callback:
+                                try:
+                                    self.stream_delta_callback(delta)
+                                except Exception:
+                                    pass
+
+                        if step_type == "tool_call" or "tool_call" in update:
+                            tc = update.get("tool_call", {})
+                            name = tc.get("name", update.get("name", "Tool"))
+                            args = tc.get("args", update.get("args", {}))
+                            tool_calls.append({"name": name, "args": args})
+                            if self.tool_start_callback:
+                                try:
+                                    self.tool_start_callback(name, args)
+                                except Exception:
+                                    pass
+
+                        elif step_type == "tool_result" or "tool_result" in update:
+                            res = update.get("tool_result", update.get("result", {}))
+                            name = update.get("name", "Tool")
+                            if self.tool_complete_callback:
+                                try:
+                                    self.tool_complete_callback(name, res)
+                                except Exception:
+                                    pass
+
+                    elif event_type == "result":
+                        res_obj = event_data.get("result", {})
+                        usage = res_obj.get("usage", {})
+                        input_tokens = usage.get("input_tokens", 0)
+                        output_tokens = usage.get("output_tokens", 0)
+
+                        if not has_streamed_deltas and "response" in res_obj:
+                            resp = res_obj["response"]
+                            assistant_text = resp
+                            if self.stream_delta_callback:
+                                try:
+                                    self.stream_delta_callback(resp)
+                                except Exception:
+                                    pass
+
+                except json.JSONDecodeError:
+                    assistant_text += line + "\n"
+                    if self.stream_delta_callback:
+                        try:
+                            self.stream_delta_callback(line + "\n")
+                        except Exception:
+                            pass
+
+            proc.wait()
+
+        except Exception as e:
+            assistant_text += f"\n[Error: {e}]"
+            if self.stream_delta_callback:
+                try:
+                    self.stream_delta_callback(f"\n[Error: {e}]")
+                except Exception:
+                    pass
+
+        history = list(messages) if messages else []
+        history.append({"role": "user", "content": user_prompt})
+        history.append({
+            "role": "assistant",
+            "content": assistant_text,
+            "tool_calls": tool_calls if tool_calls else []
+        })
+
+        return {
+            "messages": history,
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+            "status": "completed"
+        }
