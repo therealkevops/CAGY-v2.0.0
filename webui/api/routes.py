@@ -21462,11 +21462,23 @@ def _handle_live_models(handler, parsed):
         if not provider:
             return j(handler, {"error": "no_provider", "models": []})
 
-        # Normalize provider alias so 'z.ai' -> 'zai', 'x.ai' -> 'xai', etc.
-        # The browser sends whatever active_provider the static endpoint returned;
-        # without normalization, provider_model_ids() misses the alias and returns [].
-        # Uses the WebUI-owned table (api/config._resolve_provider_alias) which
-        # works even when hermes_cli is not on sys.path.
+        if provider == "antigravity":
+            return j(handler, {
+                "provider": "antigravity",
+                "models": [
+                    "Gemini 3.7 Flash (High)",
+                    "Gemini 3.7 Flash (Medium)",
+                    "Gemini 3.7 Flash (Low)",
+                    "Gemini 3.1 Pro (High)",
+                    "Gemini 3.1 Pro (Low)",
+                    "Gemini 3.6 Flash (High)",
+                    "Gemini 3.5 Flash (High)",
+                    "Claude Sonnet 4.6 (Thinking)",
+                    "Claude Opus 4.6 (Thinking)",
+                    "GPT-OSS 120B (Medium)"
+                ]
+            })
+
         from api.config import _resolve_provider_alias
         provider = _resolve_provider_alias(provider)
 
