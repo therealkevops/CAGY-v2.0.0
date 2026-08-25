@@ -343,7 +343,8 @@ class AIAgent:
                     pass
 
         history = list(messages) if messages else []
-        history.append({"role": "user", "content": user_prompt})
+        if not history or history[-1].get("role") != "user":
+            history.append({"role": "user", "content": user_prompt})
         history.append({
             "role": "assistant",
             "content": assistant_text,
