@@ -670,25 +670,10 @@ def _guard_request_session_visibility(handler, parsed, body=None, method="GET") 
 
 
 def _active_skills_dir() -> Path:
-    """Return the skills directory for the request's active Hermes profile.
-
-    WebUI profile switches are cookie/thread-local scoped, so the agent
-    module-level ``tools.skills_tool.SKILLS_DIR`` can still point at the server
-    startup profile. Skills UI endpoints must derive the directory from
-    ``get_active_hermes_home()`` for every request instead of reading that
-    process-global constant.
-    """
-    try:
-        from api.profiles import get_active_hermes_home
-
-        return Path(get_active_hermes_home()) / "skills"
-    except Exception:
-        try:
-            from tools.skills_tool import SKILLS_DIR
-
-            return Path(SKILLS_DIR)
-        except Exception:
-            return Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser() / "skills"
+    """Return the active skills directory for Antigravity skills."""
+    skills_dir = Path.home() / ".gemini" / "antigravity-cli" / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    return skills_dir
 
 
 def _skill_path_within(base_dir: Path, candidate: Path) -> bool:
