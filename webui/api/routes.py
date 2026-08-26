@@ -21077,7 +21077,10 @@ def _handle_file_read(handler, parsed):
     if not rel:
         return bad(handler, "path is required")
     try:
-        return j(handler, read_file_content(Path(s.workspace), rel))
+        ws_path = Path(s.workspace) if s and hasattr(s, "workspace") and s.workspace else Path("/workspace")
+        if not ws_path.exists():
+            ws_path = Path("/workspace")
+        return j(handler, read_file_content(ws_path, rel))
     except ImportError as e:
         return bad(handler, str(e), 503)
     except (FileNotFoundError, ValueError) as e:

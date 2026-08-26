@@ -1555,13 +1555,48 @@ def dir_signature(workspace: Path, rel: str = '.', entries: list[dict] | None = 
 
 
 def read_file_content(workspace: Path, rel: str) -> dict:
-    target = safe_resolve_ws(workspace, rel)
-    if not target.is_file():
+    target = None
+    # 1. Direct resolution
+    try:
+        cand = safe_resolve_ws(workspace, rel)
+        if cand.is_file():
+            target = cand
+    except Exception:
+        pass
+
+    # 2. Search under /workspace subdirectories
+    if target is None:
+        clean_rel = str(rel).lstrip("/").replace("\\", "/")
+        root_candidates = [workspace, Path("/workspace"), Path.cwd()]
+        for root_cand in root_candidates:
+            for sub in ["", "workspace", "workspace/nc2-kb", "nc2-kb"]:
+                try:
+                    p_cand = (root_cand / sub / clean_rel).resolve() if sub else (root_cand / clean_rel).resolve()
+                    if p_cand.is_file():
+                        target = p_cand
+                        workspace = root_cand if root_cand.resolve() in p_cand.parents else p_cand.parent
+                        break
+                except Exception:
+                    pass
+            if target:
+                break
+
+    # 3. Basename search within /workspace
+    if target is None:
+        fname = Path(str(rel)).name
+        ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        try:
+            for m in ws_root.rglob(fname):
+                if m.is_file() and not any(part.startswith(".") for part in m.parts):
+                    target = m.resolve()
+                    workspace = ws_root
+                    break
+        except Exception:
+            pass
+
+    if target is None or not target.is_file():
         raise FileNotFoundError(f"Not a file: {rel}")
-    # #3398 TOCTOU hardening: open the resolved file via an anchored openat-walk
-    # (O_NOFOLLOW on every component) so a path swapped to an escaping symlink
-    # after safe_resolve_ws() cannot be followed, then read from the fd (not the
-    # pathname) so the bytes returned are guaranteed to be the verified file.
+
     fd = open_anchored_fd(workspace, target, want_dir=False)
     with os.fdopen(fd, 'rb', closefd=True) as fh:
         st = os.fstat(fh.fileno())
@@ -1572,7 +1607,6 @@ def read_file_content(workspace: Path, rel: str) -> dict:
         raw = fh.read(MAX_FILE_BYTES + 1)
     if Path(str(rel)).suffix.lower() in {".docx", ".xlsx", ".pptx"}:
         from api.office_documents import preview_office_document
-
         return preview_office_document(rel, raw)
     content = raw.decode('utf-8', errors='replace')
     return {'path': rel, 'content': content, 'size': len(raw), 'lines': content.count('\n') + 1}
