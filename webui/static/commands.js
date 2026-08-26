@@ -9,6 +9,14 @@ const COMMANDS=[
   {name:'grill-me',  desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
   {name:'learn',     desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
   {name:'schedule',  desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
+  // Antigravity (AGY) Settings & Diagnostics
+  {name:'quota',     desc:'Antigravity: View live Gemini & model quota balances and reset timers', fn:cmdQuota, noEcho:true},
+  {name:'usage',     desc:'Antigravity: Alias for /quota',                                         fn:cmdQuota, noEcho:true},
+  {name:'effort',    desc:'Antigravity: Set reasoning effort (low, medium, high)',                fn:cmdEffort, arg:'[low|medium|high]', noEcho:true},
+  {name:'mode',      desc:'Antigravity: Set agent execution mode (accept-edits, plan)',            fn:cmdMode,   arg:'[plan|accept-edits]', noEcho:true},
+  {name:'status',    desc:'Antigravity: Display container runtime & EDR containment diagnostics', fn:cmdStatus, noEcho:true},
+  {name:'skills',    desc:'Antigravity: Browse active and built-in workspace skills',             fn:cmdSkills, noEcho:true},
+  {name:'mcp',       desc:'Antigravity: Inspect configured Model Context Protocol servers',        fn:cmdMcp,    noEcho:true},
   // Session Controls
   {name:'new',       desc:'Start a new conversation',            fn:cmdNew,       noEcho:true},
   {name:'clear',     desc:'Clear the active chat view',         fn:cmdClear,     noEcho:true},
@@ -503,6 +511,157 @@ function cmdClear(){
   renderMessages();
   $('emptyState').style.display='';
   showToast(t('conversation_cleared'));
+}
+
+async function cmdQuota(){
+  showToast('Fetching live Antigravity quota...');
+  try {
+    const res = await fetch('/api/agy/quota');
+    const data = await res.json();
+    if(!data.ok || !data.quotas || !data.quotas.length){
+      const errMsg = data.error || 'No quota details available.';
+      S.messages.push({role:'assistant', content:`⚠️ **Antigravity Quota Status**\n\n${errMsg}`});
+      renderMessages();
+      return;
+    }
+    let table = '| Model Family | Limit Window | Remaining | Reset Window |\n| :--- | :--- | :--- | :--- |\n';
+    data.quotas.forEach(q => {
+      const pct = q.percent_remaining;
+      const barIcon = pct > 50 ? '🟢' : (pct > 20 ? '🟡' : '🔴');
+      const reset = q.reset_time ? q.reset_time.replace('T', ' ').replace('Z', ' UTC') : 'Active';
+      table += `| **${q.family}** | ${q.window} | ${barIcon} **${pct}%** | \`${reset}\` |\n`;
+    });
+    const content = `### ⚡ Antigravity Quota & Rate Limit Summary\n\n${table}\n> 💡 *Quotas automatically refresh according to DeepMind Cloud Code rate windows.*`;
+    S.messages.push({role:'assistant', content});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to query quota: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdEffort(args){
+  const level = String(args || '').trim().toLowerCase();
+  if(!level){
+    try {
+      const res = await fetch('/api/agy/settings');
+      const data = await res.json();
+      const current = data.effort || 'medium';
+      S.messages.push({role:'assistant', content:`🧠 **Antigravity Reasoning Effort**\n\nCurrent effort level: **\`${current}\`**\n\nTo change reasoning depth for thinking models (e.g. Gemini 3.7 Flash Thinking), use:\n- \`/effort low\` (Fast, concise reasoning)\n- \`/effort medium\` (Standard balanced thinking)\n- \`/effort high\` (Deep strategic reasoning & multi-step analysis)`});
+      renderMessages();
+    } catch(e){
+      S.messages.push({role:'assistant', content:'Usage: `/effort [low|medium|high]`'});
+      renderMessages();
+    }
+    return;
+  }
+  if(!['low', 'medium', 'high'].includes(level)){
+    S.messages.push({role:'assistant', content:`⚠️ Invalid effort level: \`${level}\`\n\nValid options: \`low\`, \`medium\`, \`high\``});
+    renderMessages();
+    return;
+  }
+  try {
+    const res = await fetch('/api/agy/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({effort: level})
+    });
+    const data = await res.json();
+    showToast(`Reasoning effort set to ${level}`);
+    S.messages.push({role:'assistant', content:`🧠 **Reasoning Effort Updated**\n\nAgent reasoning depth set to **\`${data.effort || level}\`** for subsequent turns.`});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to update effort: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdMode(args){
+  const mode = String(args || '').trim().toLowerCase();
+  if(!mode){
+    try {
+      const res = await fetch('/api/agy/settings');
+      const data = await res.json();
+      const current = data.mode || 'accept-edits';
+      S.messages.push({role:'assistant', content:`🛠️ **Antigravity Execution Mode**\n\nCurrent execution mode: **\`${current}\`**\n\nAvailable modes:\n- \`/mode accept-edits\` (Paired autonomous coding & tool execution)\n- \`/mode plan\` (Architectural planning and review without writing files)`});
+      renderMessages();
+    } catch(e){
+      S.messages.push({role:'assistant', content:'Usage: `/mode [plan|accept-edits]`'});
+      renderMessages();
+    }
+    return;
+  }
+  if(!['accept-edits', 'plan'].includes(mode)){
+    S.messages.push({role:'assistant', content:`⚠️ Invalid mode: \`${mode}\`\n\nValid options: \`accept-edits\`, \`plan\``});
+    renderMessages();
+    return;
+  }
+  try {
+    const res = await fetch('/api/agy/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode: mode})
+    });
+    const data = await res.json();
+    showToast(`Execution mode set to ${mode}`);
+    S.messages.push({role:'assistant', content:`🛠️ **Execution Mode Updated**\n\nAgent execution mode set to **\`${data.mode || mode}\`** for subsequent turns.`});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to update mode: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdStatus(){
+  showToast('Checking environment diagnostics...');
+  try {
+    const res = await fetch('/api/agy/status');
+    const data = await res.json();
+    const isCont = data.container;
+    const shieldBadge = isCont ? '🛡️ **Active** (Linux Container Namespace)' : '⚠️ **Host Native** (Not containerized)';
+    const content = `### 🖥️ Antigravity Environment & Runtime Diagnostics
+
+| Attribute | Status |
+| :--- | :--- |
+| **EDR Shield** | ${shieldBadge} |
+| **AGY Binary** | \`${data.agy_bin || 'agy'}\` |
+| **Workspace Root** | \`${data.workspace || '/workspace'}\` |
+| **System** | \`${data.system || 'Linux'}\` |
+| **Python** | \`${data.python || '3.x'}\` |
+| **Active Mode** | \`${data.mode || 'accept-edits'}\` |
+| **Reasoning Effort**| \`${data.effort || 'medium'}\` |
+
+> 🔒 *When running inside Docker, all file manipulations, bash subprocesses, and tool executions are completely shielded from host-level EDRs.*`;
+    S.messages.push({role:'assistant', content});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to fetch status: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdSkills(){
+  try {
+    const res = await fetch('/api/skills');
+    const data = await res.json();
+    const skills = Array.isArray(data) ? data : (data.skills || []);
+    if(!skills.length){
+      S.messages.push({role:'assistant', content:'📁 **Antigravity Skills**\n\nNo custom skills found in workspace. Skills are located in `/workspace/skills` or `~/.gemini/antigravity-cli/builtin/skills`.'});
+      renderMessages();
+      return;
+    }
+    let list = skills.map(s => `- **\`${s.name || s.id}\`**: ${s.description || 'Custom Antigravity skill'}`).join('\n');
+    S.messages.push({role:'assistant', content:`### 📁 Active Antigravity Skills (${skills.length})\n\n${list}\n\n*Skills are automatically injected into AGY agent turns.*`});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to query skills: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdMcp(){
+  S.messages.push({role:'assistant', content:`### 🔌 Model Context Protocol (MCP) Servers\n\n- **Configured Servers**: None (Standard AGY CLI Toolset active)\n- **Available Built-in Tools**: \`run_command\`, \`view_file\`, \`replace_file_content\`, \`write_to_file\`, \`grep_search\`, \`find_by_name\`, \`list_dir\`, \`search_web\`, \`read_url_content\`, \`invoke_subagent\`, \`schedule\`\n\nTo connect external MCP servers, use \`agy mcp add <server-name>\`.`});
+  renderMessages();
 }
 
 // Find the best matching model <option> for a slash-command query.

@@ -13360,6 +13360,66 @@ def handle_get(handler, parsed) -> bool:
             days = 7
         return j(handler, get_provider_cost_history(provider_id, days))
 
+    # ── Antigravity (AGY) Live Quota & Diagnostics (GET) ──
+    if parsed.path == "/api/agy/quota":
+        try:
+            try:
+                from run_agent import AIAgent
+            except ImportError:
+                from webui.run_agent import AIAgent
+            agent = AIAgent()
+            agy_bin = agent._find_agy_bin()
+            env = agent._get_env()
+            cmd = [agy_bin, "--print", "/quota", "--dangerously-skip-permissions"]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15, env=env, cwd=str(agent.workspace))
+            lines = [l.strip() for l in res.stdout.split("\n") if l.strip()]
+            quotas = []
+            for line in lines:
+                parts = [p.strip() for p in line.split("\t") if p.strip()]
+                if len(parts) >= 3:
+                    pct_str = parts[2].replace("%", "")
+                    try:
+                        pct_val = int(pct_str)
+                    except ValueError:
+                        pct_val = 100
+                    quotas.append({
+                        "family": parts[0],
+                        "window": parts[1],
+                        "percent_remaining": pct_val,
+                        "reset_time": parts[3] if len(parts) > 3 else ""
+                    })
+            return j(handler, {"ok": True, "quotas": quotas, "raw": res.stdout})
+        except Exception as exc:
+            logger.warning("Failed to fetch AGY quota: %s", exc)
+            return j(handler, {"ok": False, "error": str(exc), "quotas": []})
+
+    if parsed.path == "/api/agy/status":
+        is_container = os.path.exists("/.dockerenv") or os.environ.get("WORKSPACE_DIR") == "/workspace"
+        try:
+            from run_agent import AIAgent
+        except ImportError:
+            from webui.run_agent import AIAgent
+        agent = AIAgent()
+        agy_bin = agent._find_agy_bin()
+        return j(handler, {
+            "ok": True,
+            "container": is_container,
+            "edr_shield": "Active (Linux Container Namespace)" if is_container else "Host Native",
+            "agy_bin": agy_bin,
+            "workspace": str(agent.workspace),
+            "python": sys.version.split()[0],
+            "system": platform.platform(),
+            "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
+            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+        })
+
+    if parsed.path == "/api/agy/settings":
+        return j(handler, {
+            "ok": True,
+            "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
+            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+        })
+
     if parsed.path == "/api/settings":
         settings = load_settings()
         settings["persisted_speech_keys"] = persisted_speech_settings_keys()
@@ -16751,6 +16811,22 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, _sanitize_error(e))
         except RuntimeError as e:
             return bad(handler, str(e), 409)
+
+    # ── Antigravity (AGY) Settings (POST) ──
+    if parsed.path == "/api/agy/settings":
+        try:
+            req_body = body if isinstance(body, dict) else {}
+            if "effort" in req_body and req_body["effort"] in ("low", "medium", "high"):
+                os.environ["AGY_DEFAULT_EFFORT"] = req_body["effort"]
+            if "mode" in req_body and req_body["mode"] in ("accept-edits", "plan"):
+                os.environ["AGY_DEFAULT_MODE"] = req_body["mode"]
+            return j(handler, {
+                "ok": True,
+                "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
+                "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+            })
+        except Exception as exc:
+            return bad(handler, str(exc), status=400)
 
     # ── Settings (POST) ──
     if parsed.path == "/api/settings":

@@ -211,6 +211,14 @@ class AIAgent:
         if self.model and self.model not in ("Antigravity 2.0 (agy CLI)", "default", "auto", ""):
             cmd.extend(["--model", self.model])
 
+        effort = kwargs.get("effort") or os.environ.get("AGY_DEFAULT_EFFORT")
+        if effort and effort in ("low", "medium", "high"):
+            cmd.extend(["--effort", effort])
+
+        mode = kwargs.get("mode") or os.environ.get("AGY_DEFAULT_MODE")
+        if mode and mode in ("accept-edits", "plan"):
+            cmd.extend(["--mode", mode])
+
         assistant_text = ""
         tool_calls = []
         input_tokens = 0
