@@ -671,7 +671,10 @@ def _guard_request_session_visibility(handler, parsed, body=None, method="GET") 
 
 def _active_skills_dir() -> Path:
     """Return the active skills directory for Antigravity skills."""
-    skills_dir = Path.home() / ".gemini" / "antigravity-cli" / "skills"
+    ws = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+    if not ws.exists():
+        ws = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+    skills_dir = ws / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
     return skills_dir
 
@@ -692,6 +695,8 @@ def _skill_category_from_path(
     path_str = str(skill_md)
     if "builtin" in path_str and "antigravity-cli" in path_str:
         return "Built-in (AGY)"
+    if "/skills/" in path_str or "skills/nc2-advisor" in path_str or "skills/agy-webui-bridge" in path_str or "/workspace/skills" in path_str:
+        return "Custom (Workspace)"
     if ".gemini" in path_str:
         return "Antigravity"
     if ".hermes" in path_str:
@@ -701,11 +706,25 @@ def _skill_category_from_path(
 
 def _active_skill_search_dirs(skills_dir: Path) -> list[Path]:
     dirs = [skills_dir]
-    builtin_skills = Path.home() / ".gemini" / "antigravity-cli" / "builtin" / "skills"
-    user_skills = Path.home() / ".gemini" / "antigravity-cli" / "skills"
-    ws_skills = Path.cwd() / ".gemini" / "skills"
-    ws_skills_root = Path.cwd() / "skills"
-    for d in (builtin_skills, user_skills, ws_skills, ws_skills_root):
+    ws = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+    if not ws.exists():
+        ws = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+
+    candidates = [
+        ws / "skills",
+        ws / ".gemini" / "skills",
+        ws / "workspace" / "skills",
+        Path.home() / ".gemini" / "antigravity-cli" / "builtin" / "skills",
+        Path.home() / ".gemini" / "antigravity-cli" / "skills",
+        Path.home() / ".gemini" / "skills",
+        Path("/workspace/skills"),
+        Path("/workspace/.gemini/skills"),
+        Path.cwd() / "skills",
+        Path.cwd() / ".gemini" / "skills",
+        Path.cwd().parent / "skills",
+        Path.cwd().parent / ".gemini" / "skills",
+    ]
+    for d in candidates:
         if d.exists() and d not in dirs:
             dirs.append(d)
     return [p for p in dirs if p.exists()]
