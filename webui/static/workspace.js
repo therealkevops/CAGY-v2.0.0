@@ -891,8 +891,15 @@ function setLargeMarkdownForceRenderVisible(visible){
 function renderMarkdownPreviewContent(data){
   const target=data&&data.el?data.el:$('previewMd');
   if(!data||!data.el) showPreview('md');
-  target.innerHTML=renderMd(data.content);
-  requestAnimationFrame(()=>{if(typeof renderKatexBlocks==='function')renderKatexBlocks();});
+  try {
+    target.innerHTML=renderMd(data.content || '');
+  } catch(err){
+    target.innerHTML=`<pre style="white-space:pre-wrap;font-family:monospace;padding:16px;"><code>${esc(data.content || '')}</code></pre>`;
+  }
+  requestAnimationFrame(()=>{
+    if(typeof renderKatexBlocks==='function')try{renderKatexBlocks(target);}catch(e){}
+    if(typeof renderMermaidBlocks==='function')try{renderMermaidBlocks(target);}catch(e){}
+  });
 }
 
 function renderCodePreviewContent(path, content){
@@ -1168,8 +1175,16 @@ async function openFile(path, opts={}){
         setStatus(largeMarkdownPlainTextStatus(data.content));
         return;
       }
-      renderMarkdownPreviewContent(data);
-    }catch(e){setStatus(t('file_open_failed'));}
+      try {
+        renderMarkdownPreviewContent(data);
+      } catch(renderErr){
+        showPreview('code');
+        $('previewCode').textContent=data.content || '';
+      }
+    }catch(e){
+      console.error("Failed to load markdown file:", e);
+      setStatus(t('file_open_failed'));
+    }
   } else if(HTML_EXTS.has(ext)){
     // HTML: render in sandboxed iframe via raw endpoint.
     // SECURITY TRADEOFF: We use sandbox="allow-scripts" which lets inline JS run
