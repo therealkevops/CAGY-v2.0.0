@@ -607,66 +607,9 @@ def main() -> None:
         print(f'        and memory via the local API. Set HERMES_WEBUI_PASSWORD to', flush=True)
         print(f'        enable authentication.', flush=True)
 
-    oidc_startup_warning = get_oidc_startup_warning()
-    if oidc_startup_warning:
-        print(f'[!!] WARNING: {oidc_startup_warning}', flush=True)
-
-    ok, missing, errors = verify_hermes_imports()
-    if not ok and _HERMES_FOUND:
-        print(f'[!!] Warning: Hermes agent found but missing modules: {missing}', flush=True)
-        for mod, err in errors.items():
-            print(f'     {mod}: {err}', flush=True)
-        print('     Attempting to install missing dependencies from agent requirements.txt...', flush=True)
-        auto_install_agent_deps()
-        ok, missing, errors = verify_hermes_imports()
-        if not ok:
-            print(f'[!!] Still missing after install attempt: {missing}', flush=True)
-            for mod, err in errors.items():
-                print(f'     {mod}: {err}', flush=True)
-            print('     Agent features may not work correctly.', flush=True)
-        else:
-            print('[ok] Agent dependencies installed successfully.', flush=True)
-
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
     DEFAULT_WORKSPACE.mkdir(parents=True, exist_ok=True)
-
-    try:
-        from api.gateway_watcher import start_watcher
-
-        def _start_watcher_safe():
-            try:
-                start_watcher()
-            except Exception as e:
-                print(f'[!!] WARNING: Gateway watcher failed to start: {e}', flush=True)
-
-        t = threading.Thread(target=_start_watcher_safe, daemon=True)
-        t.start()
-        t.join(timeout=5)
-        if t.is_alive():
-            print('[tip] Gateway watcher still initializing (non-blocking)', flush=True)
-    except Exception as e:
-        print(f'[!!] WARNING: Gateway watcher failed to start: {e}', flush=True)
-
-    try:
-        from api.background_process import start_drain_thread
-        if start_drain_thread():
-            print('[ok] bg_task_complete drain thread started', flush=True)
-    except Exception as e:
-        print(f'[!!] WARNING: bg_task_complete drain failed to start: {e}', flush=True)
-
-    try:
-        from api.background_process import start_session_channel_reaper
-        if start_session_channel_reaper():
-            print('[ok] SessionChannel reaper thread started', flush=True)
-    except Exception as e:
-        print(f'[!!] WARNING: SessionChannel reaper failed to start: {e}', flush=True)
-
-    try:
-        from api.plugins import load_plugins
-        load_plugins()
-    except Exception as e:
-        print(f'[!!] WARNING: Plugin loading failed: {e}', flush=True)
 
     _abort_if_already_serving(HOST, PORT)
     httpd = QuietHTTPServer((HOST, PORT), Handler)
@@ -685,10 +628,8 @@ def main() -> None:
             print(f'[!!] WARNING: TLS setup failed ({e}), falling back to HTTP', flush=True)
             scheme = 'http'
 
-    print(f'  Hermes Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
-    if HOST in ('127.0.0.1', '::1') or within_container:
-        print(f'  Remote access: ssh -N -L {PORT}:127.0.0.1:{PORT} <user>@<your-server>', flush=True)
-    print(f'  Then open:     {scheme}://localhost:{PORT}', flush=True)
+    print(f'  Antigravity Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
+    print(f'  Open in browser: {scheme}://localhost:{PORT}', flush=True)
     print('', flush=True)
 
     # ctl.sh stops the WebUI with SIGTERM. Python's default SIGTERM handler
@@ -716,9 +657,9 @@ def main() -> None:
 
     try:
         signal.signal(signal.SIGTERM, _request_shutdown)
+        signal.signal(signal.SIGINT, _request_shutdown)
     except (ValueError, OSError):
-        # Not on the main thread (e.g. embedded/test harness); skip handler.
-        logger.debug("Could not install SIGTERM handler", exc_info=True)
+        logger.debug("Could not install shutdown signal handlers", exc_info=True)
 
     try:
         httpd.serve_forever()
@@ -726,24 +667,9 @@ def main() -> None:
         httpd.server_close()
         _log_shutdown_audit()
         try:
-            from api.gateway_watcher import stop_watcher
-            stop_watcher()
-        except Exception:
-            logger.debug("Failed to stop gateway watcher during shutdown")
-        try:
             from api.session_lifecycle import drain_all_on_shutdown
             drain_all_on_shutdown()
         except Exception:
             logger.debug("Failed to drain lifecycle on shutdown", exc_info=True)
-        try:
-            from api.background_process import stop_drain_thread
-            stop_drain_thread()
-        except Exception:
-            logger.debug("Failed to stop bg_task_complete drain thread during shutdown", exc_info=True)
-        try:
-            from api.background_process import stop_session_channel_reaper
-            stop_session_channel_reaper()
-        except Exception:
-            logger.debug("Failed to stop SessionChannel reaper during shutdown", exc_info=True)
 if __name__ == '__main__':
     main()

@@ -46,6 +46,15 @@ else
 fi
 echo "✓ SSL certificate bundle configured in ./container_data/system_certs.pem"
 
+# Sync host Antigravity authentication credentials to isolated container volume
+if [ -d "$HOME/.gemini/antigravity-cli" ]; then
+    echo "Syncing Antigravity CLI credentials to container_data/gemini..."
+    mkdir -p ./container_data/gemini/antigravity-cli ./container_data/gemini/config
+    rsync -a --exclude="brain" --exclude="log" --exclude="*.log" "$HOME/.gemini/antigravity-cli/" ./container_data/gemini/antigravity-cli/
+    [ -d "$HOME/.gemini/config" ] && rsync -a "$HOME/.gemini/config/" ./container_data/gemini/config/
+    echo "✓ Antigravity credentials synced to container volume"
+fi
+
 # Create initial .env if not present
 if [ ! -f .env ]; then
     echo "Creating .env from .env.example..."

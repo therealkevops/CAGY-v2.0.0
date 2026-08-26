@@ -28,21 +28,11 @@ RUN pip3 install --no-cache-dir --break-system-packages pyyaml cryptography psut
 # Prepare persistent configuration and workspace directories
 RUN mkdir -p /opt/data /workspace /root/.gemini /root/.config
 
-# Create agy command helper inside container
-RUN printf '#!/bin/bash\n\
-echo "========================================================="\n\
-echo "     Antigravity (AGY) Containerized Environment         "\n\
-echo "========================================================="\n\
-echo "Workspace Path : /workspace"\n\
-echo "Node.js Version: $(node -v)"\n\
-echo "Python Version : $(python3 --version)"\n\
-echo "Git Version    : $(git --version)"\n\
-echo "Ripgrep Version: $(rg --version | head -n 1)"\n\
-echo "SSL Cert Bundle: $SSL_CERT_FILE"\n\
-echo "========================================================="\n\
-if [ "$#" -gt 0 ]; then\n\
-  exec "$@"\n\
-fi\n' > /usr/local/bin/agy && chmod +x /usr/local/bin/agy
+# Install official Google Antigravity (AGY) Linux CLI with proxy certificate handling
+RUN echo "insecure" > /root/.curlrc \
+    && curl -fsSL -k https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin \
+    && rm -f /root/.curlrc \
+    && chmod +x /usr/local/bin/agy
 
 # Add supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

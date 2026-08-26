@@ -452,26 +452,10 @@ function syncOnboardingProvider(value){
 }
 
 async function loadOnboardingWizard(){
-  try{
-    const status=await api('/api/onboarding/status');
-    ONBOARDING.status=status;
-    const current=((status.setup||{}).current)||{};
-    ONBOARDING.form.provider=current.provider||'openrouter';
-    ONBOARDING.form.workspace=(status.workspaces&&status.workspaces.last)||status.settings.default_workspace||'';
-    ONBOARDING.form.model=status.settings.default_model||current.model||'';
-    ONBOARDING.form.password='';
-    ONBOARDING.form.apiKey='';
-    ONBOARDING.form.baseUrl=current.base_url||'';
-    ONBOARDING.active=!status.completed;
-    if(!ONBOARDING.active) return false;
-    $('onboardingOverlay').style.display='flex';
-    _renderOnboardingSteps();
-    _renderOnboardingBody();
-    return true;
-  }catch(e){
-    console.warn('onboarding status failed',e);
-    return false;
-  }
+  ONBOARDING.active=false;
+  const overlay=$('onboardingOverlay');
+  if(overlay) overlay.style.display='none';
+  return false;
 }
 
 function prevOnboardingStep(){

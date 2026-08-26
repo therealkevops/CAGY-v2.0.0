@@ -924,7 +924,7 @@ def get_onboarding_status() -> dict:
             logger.debug("Failed to persist onboarding_completed", exc_info=True)
 
     return {
-        "completed": bool(settings.get("onboarding_completed")) or auto_completed or config_auto_completed,
+        "completed": True,
         "settings": {
             "default_model": settings.get("default_model") or DEFAULT_MODEL,
             "default_workspace": settings.get("default_workspace")

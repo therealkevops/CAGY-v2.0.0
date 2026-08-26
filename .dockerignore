@@ -1,0 +1,11 @@
+container_data
+.git
+.gemini
+.memory
+.hermes_uploads
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.pbtxt
+*.log

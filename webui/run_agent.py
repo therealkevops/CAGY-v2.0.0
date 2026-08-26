@@ -89,10 +89,11 @@ class AIAgent:
 
     def _find_agy_bin(self) -> str:
         candidates = [
+            "/usr/local/bin/agy",
+            "/usr/bin/agy",
+            shutil.which("agy"),
             "/Users/kev.gorman/.local/bin/agy",
             str(Path.home() / ".local" / "bin" / "agy"),
-            shutil.which("agy"),
-            "/usr/local/bin/agy"
         ]
         for cand in candidates:
             if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
