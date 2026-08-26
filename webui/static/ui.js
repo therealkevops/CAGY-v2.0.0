@@ -19971,22 +19971,37 @@ function renderMermaidBlocks(container){
   const blocks=root.querySelectorAll('.mermaid-block:not([data-rendered])');
   if(!blocks.length) return;
   if(!_mermaidReady){
+    if(typeof mermaid !== 'undefined'){
+      try {
+        mermaid.initialize({startOnLoad:false,theme:document.documentElement.classList.contains('dark')?'dark':'default',themeVariables:{
+          fontFamily:'inherit',fontSize:'14px',
+          primaryColor:'#4a6fa5',primaryTextColor:'#e2e8f0',lineColor:'#718096',
+          secondaryColor:'#2d3748',tertiaryColor:'#1a202c',primaryBorderColor:'#4a5568',
+        }});
+        _mermaidReady=true;
+        renderMermaidBlocks(container);
+      } catch(e){}
+      return;
+    }
     if(!_mermaidLoading){
       _mermaidLoading=true;
       const script=document.createElement('script');
-      script.src='https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js';
-      script.integrity='sha384-R63zfMfSwJF4xCR11wXii+QUsbiBIdiDzDbtxia72oGWfkT7WHJfmD/I/eeHPJyT';
-      script.crossOrigin='anonymous';
+      script.src='static/vendor/mermaid/mermaid.min.js';
       script.onload=()=>{
         if(typeof mermaid!=='undefined'){
-          mermaid.initialize({startOnLoad:false,theme:document.documentElement.classList.contains('dark')?'dark':'default',themeVariables:{
-            fontFamily:'inherit',fontSize:'14px',
-            primaryColor:'#4a6fa5',primaryTextColor:'#e2e8f0',lineColor:'#718096',
-            secondaryColor:'#2d3748',tertiaryColor:'#1a202c',primaryBorderColor:'#4a5568',
-          }});
-          _mermaidReady=true;
-          renderMermaidBlocks();
+          try {
+            mermaid.initialize({startOnLoad:false,theme:document.documentElement.classList.contains('dark')?'dark':'default',themeVariables:{
+              fontFamily:'inherit',fontSize:'14px',
+              primaryColor:'#4a6fa5',primaryTextColor:'#e2e8f0',lineColor:'#718096',
+              secondaryColor:'#2d3748',tertiaryColor:'#1a202c',primaryBorderColor:'#4a5568',
+            }});
+            _mermaidReady=true;
+            renderMermaidBlocks();
+          } catch(e){}
         }
+      };
+      script.onerror=()=>{
+        _mermaidLoading=false;
       };
       document.head.appendChild(script);
     }
