@@ -7623,8 +7623,9 @@ function renderMd(raw){
     code=code||'';
     const codeLines=code.split('\n');
     const firstCodeLine=codeLines.find(line=>line.trim())||'';
-    const firstMermaidLine=codeLines.map(line=>line.trim()).find(line=>line&&!line.startsWith('%%'))||'';
     const looksLikeLineNumberedToolOutput=/^\s*\d+\|/.test(firstCodeLine);
+    const firstMermaidLine=codeLines.map(line=>line.trim()).find(line=>line&&!line.startsWith('%%'))||'';
+    const looksLikeMermaidStart=firstMermaidLine==='---'||/^(graph|flowchart|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|c4Context|c4Container|c4Component|c4Dynamic|sankey-beta|block-beta|packet-beta|xychart-beta|kanban|architecture-beta)\b/.test(firstMermaidLine);
     if((lang==='mermaid'||(!lang&&looksLikeMermaidStart))&&!looksLikeLineNumberedToolOutput){
       const id='mermaid-'+Math.random().toString(36).slice(2,10);
       _preBlock_stash.push(`<div class="mermaid-block" data-mermaid-id="${id}">${esc(code.trim())}</div>`);
