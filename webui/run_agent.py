@@ -61,7 +61,27 @@ class AIAgent:
         **kwargs
     ):
         self.model = model or "Antigravity 2.0 (agy CLI)"
-        self.workspace = Path(workspace or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE", os.getcwd())).resolve()
+        
+        # Resolve workspace path safely across Host and Container environments
+        raw_ws = str(workspace or "").strip()
+        is_container = os.environ.get("WORKSPACE_DIR") == "/workspace" or os.path.exists("/.dockerenv")
+        if is_container:
+            if not raw_ws or raw_ws.startswith("/Users/") or not os.path.exists(raw_ws):
+                if "/workspace/" in raw_ws:
+                    sub = raw_ws.split("/workspace/", 1)[1]
+                    self.workspace = (Path("/workspace") / sub).resolve()
+                else:
+                    self.workspace = Path("/workspace")
+            else:
+                self.workspace = Path(raw_ws).resolve()
+        else:
+            self.workspace = Path(raw_ws or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE", os.getcwd())).resolve()
+
+        try:
+            self.workspace.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            self.workspace = Path("/workspace") if is_container else Path.cwd()
+
         self.system_prompt = system_prompt
         self._session_db = session_db
         
@@ -360,6 +380,16 @@ class AIAgent:
                             pass
 
             proc.wait()
+
+            if not assistant_text and not tool_calls and proc.stderr:
+                try:
+                    err_output = proc.stderr.read().strip()
+                    if err_output:
+                        assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
+                        if self.stream_delta_callback:
+                            self.stream_delta_callback(assistant_text)
+                except Exception:
+                    pass
 
         except Exception as e:
             assistant_text += f"\n[Error: {e}]"
