@@ -22329,6 +22329,16 @@ def _handle_memory_read(handler, parsed=None):
         if soul_file.exists()
         else ""
     )
+    ws_root = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+    if not ws_root.exists():
+        ws_root = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+
+    gemini_file = ws_root / "GEMINI.md"
+    gemini_rules = gemini_file.read_text(encoding="utf-8", errors="replace") if gemini_file.exists() else ""
+
+    container_rules_file = ws_root / ".gemini" / "rules" / "container_confinement.md"
+    container_rules = container_rules_file.read_text(encoding="utf-8", errors="replace") if container_rules_file.exists() else ""
+
     project_context = _read_active_project_context(_memory_project_context_workspace(parsed))
     return j(
         handler,
@@ -22336,16 +22346,22 @@ def _handle_memory_read(handler, parsed=None):
             "memory": _redact_text(memory),
             "user": _redact_text(user),
             "soul": _redact_text(soul),
+            "gemini_rules": _redact_text(gemini_rules),
+            "container_rules": _redact_text(container_rules),
             "project_context": _redact_text(project_context["content"]),
             "memory_path": str(mem_file) if mem_file else "",
             "user_path": str(user_file) if user_file else "",
             "soul_path": str(soul_file),
+            "gemini_rules_path": str(gemini_file),
+            "container_rules_path": str(container_rules_file),
             "project_context_path": project_context["path"],
             "project_context_name": project_context.get("name", ""),
             "project_context_workspace": project_context["workspace"],
             "memory_mtime": mem_file.stat().st_mtime if mem_file and mem_file.exists() else None,
             "user_mtime": user_file.stat().st_mtime if user_file and user_file.exists() else None,
             "soul_mtime": soul_file.stat().st_mtime if soul_file.exists() else None,
+            "gemini_rules_mtime": gemini_file.stat().st_mtime if gemini_file.exists() else None,
+            "container_rules_mtime": container_rules_file.stat().st_mtime if container_rules_file.exists() else None,
             "project_context_mtime": project_context["mtime"],
             "project_context_shadowed": project_context["shadowed"],
             "external_notes_enabled": _external_notes_sources_enabled(cfg),
@@ -28247,8 +28263,13 @@ def _handle_memory_write(handler, body):
         target = mem_dir / "USER.md"
     elif section == "soul":
         target = home / "SOUL.md"
+    elif section == "gemini_rules":
+        ws_root = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+        if not ws_root.exists():
+            ws_root = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+        target = ws_root / "GEMINI.md"
     else:
-        return bad(handler, 'section must be "memory", "user", or "soul"')
+        return bad(handler, 'section must be "gemini_rules", "memory", "user", or "soul"')
     # Refuse to write through a symlinked target file: a symlink planted at the
     # memory path (e.g. via a restored/imported workspace) would otherwise let a
     # memory write clobber an arbitrary file outside the memories directory. This

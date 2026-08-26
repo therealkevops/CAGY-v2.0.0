@@ -5285,11 +5285,12 @@ let _currentMemorySection = null; // 'memory' | 'user' | 'soul' | 'project_conte
 let _memoryMode = 'empty'; // 'empty' | 'read' | 'edit'
 
 const MEMORY_SECTIONS = [
-  { key: 'memory', labelKey: 'my_notes', emptyKey: 'no_notes_yet', iconKey: 'brain' },
-  { key: 'user',   labelKey: 'user_profile', emptyKey: 'no_profile_yet', iconKey: 'user' },
-  { key: 'soul',   labelKey: 'agent_soul', emptyKey: 'no_soul_yet', iconKey: 'sparkles' },
-  { key: 'project_context', label: 'Project Context', empty: 'No project context file found for this workspace.', iconKey: 'file-text', readOnly: true },
-  { key: 'external_notes', labelKey: 'external_notes_sources', emptyKey: 'external_notes_empty', iconKey: 'book-open' },
+  { key: 'gemini_rules', label: 'Workspace Rules (GEMINI.md)', empty: 'No workspace GEMINI.md rules configured yet.', iconKey: 'file-code' },
+  { key: 'user', label: 'User Profile & Preferences', empty: 'No user profile configured yet.', iconKey: 'user' },
+  { key: 'soul', label: 'Agent Persona & Role (Soul)', empty: 'No agent persona configured yet.', iconKey: 'sparkles' },
+  { key: 'memory', label: 'Persistent Knowledge (MEMORY.md)', empty: 'No persistent memory notes recorded yet.', iconKey: 'brain' },
+  { key: 'container_rules', label: 'Container Confinement Rules', empty: 'No container confinement rules defined.', iconKey: 'shield', readOnly: true },
+  { key: 'project_context', label: 'Project Context & Environment', empty: 'No project context file found for this workspace.', iconKey: 'file-text', readOnly: true },
 ];
 
 function _memorySectionMeta(key) {
@@ -5308,6 +5309,8 @@ function _memorySectionEmpty(meta) {
 
 function _memorySectionContent(key) {
   if (!_memoryData) return '';
+  if (key === 'gemini_rules') return _memoryData.gemini_rules || '';
+  if (key === 'container_rules') return _memoryData.container_rules || '';
   if (key === 'user') return _memoryData.user || '';
   if (key === 'soul') return _memoryData.soul || '';
   if (key === 'project_context') return _memoryData.project_context || '';
@@ -5316,6 +5319,8 @@ function _memorySectionContent(key) {
 
 function _memorySectionMtime(key) {
   if (!_memoryData) return 0;
+  if (key === 'gemini_rules') return _memoryData.gemini_rules_mtime || 0;
+  if (key === 'container_rules') return _memoryData.container_rules_mtime || 0;
   if (key === 'user') return _memoryData.user_mtime || 0;
   if (key === 'soul') return _memoryData.soul_mtime || 0;
   if (key === 'project_context') return _memoryData.project_context_mtime || 0;
@@ -5324,6 +5329,8 @@ function _memorySectionMtime(key) {
 
 function _memorySectionPath(key) {
   if (!_memoryData) return '';
+  if (key === 'gemini_rules') return _memoryData.gemini_rules_path || '';
+  if (key === 'container_rules') return _memoryData.container_rules_path || '';
   if (key === 'user') return _memoryData.user_path || '';
   if (key === 'soul') return _memoryData.soul_path || '';
   if (key === 'project_context') return _memoryData.project_context_path || '';
