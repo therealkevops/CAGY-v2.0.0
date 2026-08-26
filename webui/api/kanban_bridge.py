@@ -1207,12 +1207,12 @@ def handle_kanban_get(handler, parsed) -> bool | None:
             if payload is None:
                 return bad(handler, "task not found", status=404)
             return j(handler, payload) or True
-        return False
     except ImportError as exc:
-        # hermes_cli not installed (webui-only deploy). Return a clean 503
-        # "kanban unavailable" rather than a 500 so the frontend's existing
-        # try/catch surfaces a useful toast.
-        return bad(handler, f"kanban unavailable: {exc}", status=503)
+        if path == "/api/kanban/boards":
+            return j(handler, {"boards": [], "active_board": "default", "kanban_unavailable": True}) or True
+        if path == "/api/kanban/board":
+            return j(handler, {"board": {"tasks": []}, "kanban_unavailable": True}) or True
+        return j(handler, {"boards": [], "tasks": [], "kanban_unavailable": True}) or True
     except LookupError as exc:
         return bad(handler, str(exc), status=404)
     except ValueError as exc:
