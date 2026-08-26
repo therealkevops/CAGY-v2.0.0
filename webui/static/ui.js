@@ -7625,8 +7625,7 @@ function renderMd(raw){
     const firstCodeLine=codeLines.find(line=>line.trim())||'';
     const firstMermaidLine=codeLines.map(line=>line.trim()).find(line=>line&&!line.startsWith('%%'))||'';
     const looksLikeLineNumberedToolOutput=/^\s*\d+\|/.test(firstCodeLine);
-    const looksLikeMermaidStart=firstMermaidLine==='---'||/^(graph|flowchart|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|c4Context|c4Container|c4Component|c4Dynamic|sankey-beta|block-beta|packet-beta|xychart-beta|kanban|architecture-beta)\b/.test(firstMermaidLine);
-    if(lang==='mermaid'&&!looksLikeLineNumberedToolOutput&&looksLikeMermaidStart){
+    if((lang==='mermaid'||(!lang&&looksLikeMermaidStart))&&!looksLikeLineNumberedToolOutput){
       const id='mermaid-'+Math.random().toString(36).slice(2,10);
       _preBlock_stash.push(`<div class="mermaid-block" data-mermaid-id="${id}">${esc(code.trim())}</div>`);
     } else {
@@ -20009,8 +20008,14 @@ function renderMermaidBlocks(container){
   }
   blocks.forEach(async(block)=>{
     block.dataset.rendered='true';
-    const code=block.textContent;
+    let code=(block.textContent || '').trim();
     const id=block.dataset.mermaidId||('m-'+Math.random().toString(36).slice(2));
+
+    // Convert legacy graph TD/LR/BT to modern flowchart syntax which supports complex subgraphs
+    if (/^graph\s+(TD|TB|BT|RL|LR)\b/i.test(code)) {
+      code = code.replace(/^graph\s+/i, 'flowchart ');
+    }
+
     try{
       const {svg}=await mermaid.render(id,code);
       const tmp=document.getElementById('d'+id);
@@ -20020,10 +20025,25 @@ function renderMermaidBlocks(container){
       if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
       block.classList.add('mermaid-rendered');
     }catch(e){
+      // Fallback: clean connections pointing directly to container subgraphs
+      try {
+        let fallbackCode = code
+          .replace(/-->\|([^|]+)\|\s+([A-Za-z0-9_]+_Account|[A-Za-z0-9_]+_Cluster|[A-Za-z0-9_]+_Plane)\b/g, '-->|$1| $2_Node')
+          .replace(/([A-Za-z0-9_]+_Cluster)\s+<-->\|([^|]+)\|\s+([A-Za-z0-9_]+)/g, 'DSF <-->|$2| $3');
+        const fbId = id + '-fb';
+        const {svg}=await mermaid.render(fbId, fallbackCode);
+        const tmp=document.getElementById('d'+fbId);
+        if(tmp) tmp.remove();
+        block.innerHTML=svg;
+        const renderedSvg = block.querySelector('svg');
+        if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
+        block.classList.add('mermaid-rendered');
+        return;
+      } catch(e2){}
+
       const tmp=document.getElementById('d'+id);
       if(tmp) tmp.remove();
-      // Fall back to showing as a code block. Remove the mermaid marker so a
-      // later render pass cannot retry this already-failed block.
+      // Fall back to showing as a clean formatted code block.
       block.classList.remove('mermaid-block');
       block.classList.add('prewrap');
       block.innerHTML=`<div class="pre-header">mermaid</div><pre><code>${esc(code)}</code></pre>`;
