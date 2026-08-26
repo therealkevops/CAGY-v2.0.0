@@ -28258,6 +28258,24 @@ def _handle_memory_write(handler, body):
         return bad(handler, "Cannot write to a symlinked memory file")
     try:
         target.write_text(body["content"], encoding="utf-8")
+        # Auto-sync to Antigravity rules (.gemini/rules/) so CAGY natively adopts persona & preferences
+        ws_root = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+        if not ws_root.exists():
+            ws_root = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+        rules_dir = ws_root / ".gemini" / "rules"
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        if section == "soul":
+            (rules_dir / "agent_soul.md").write_text(
+                f"# Agent Persona & Identity (Soul)\n\n{body['content']}\n", encoding="utf-8"
+            )
+        elif section == "user":
+            (rules_dir / "user_profile.md").write_text(
+                f"# User Profile & Preferences\n\n{body['content']}\n", encoding="utf-8"
+            )
+        elif section == "memory":
+            (rules_dir / "memory.md").write_text(
+                f"# Persistent Memory & Project Context\n\n{body['content']}\n", encoding="utf-8"
+            )
     except OSError as exc:
         if not isinstance(exc, PermissionError) and getattr(exc, "errno", None) != errno.EROFS:
             raise

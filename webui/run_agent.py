@@ -136,6 +136,37 @@ class AIAgent:
             env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
         return env
 
+    def _sync_hermes_memory(self):
+        try:
+            rules_dir = self.workspace / ".gemini" / "rules"
+            rules_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Sync Soul
+            for sp in [Path.home() / ".hermes" / "SOUL.md", self.workspace / "SOUL.md"]:
+                if sp.exists():
+                    c = sp.read_text(encoding="utf-8").strip()
+                    if c:
+                        (rules_dir / "agent_soul.md").write_text(f"# Agent Persona & Identity (Soul)\n\n{c}\n", encoding="utf-8")
+                        break
+
+            # Sync User Profile
+            for up in [Path.home() / ".hermes" / "memories" / "USER.md", self.workspace / "USER.md"]:
+                if up.exists():
+                    c = up.read_text(encoding="utf-8").strip()
+                    if c:
+                        (rules_dir / "user_profile.md").write_text(f"# User Profile & Preferences\n\n{c}\n", encoding="utf-8")
+                        break
+
+            # Sync Memory / Project Context
+            for mp in [self.workspace / "MEMORY.md", Path.home() / ".hermes" / "memories" / "MEMORY.md"]:
+                if mp.exists():
+                    c = mp.read_text(encoding="utf-8").strip()
+                    if c:
+                        (rules_dir / "memory.md").write_text(f"# Persistent Memory & Project Context\n\n{c}\n", encoding="utf-8")
+                        break
+        except Exception:
+            pass
+
     def run_conversation(
         self,
         user_message: Union[str, Dict[str, Any], List[Any], None] = None,
@@ -143,6 +174,7 @@ class AIAgent:
         **kwargs
     ) -> Dict[str, Any]:
         """Execute a turn by invoking agy CLI with stream-json format."""
+        self._sync_hermes_memory()
         if not self.session_id and kwargs.get("session_id"):
             self.session_id = kwargs.get("session_id")
             if not self.conversation_id:
