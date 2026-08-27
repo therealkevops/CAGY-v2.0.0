@@ -163,6 +163,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces / Files" data-i18n-title="tab_workspaces" aria-label="Spaces"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="mcp" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Hub" data-i18n-title="tab_mcp" aria-label="MCP Hub"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="subagents" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarms" data-i18n-title="tab_subagents" aria-label="Subagents"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="artifacts" onclick="switchPanel('artifacts',{fromRailClick:true})" data-tooltip="Artifacts Canvas" data-i18n-title="tab_artifacts" aria-label="Artifacts"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="memory" onclick="switchPanel('memory',{fromRailClick:true})" data-tooltip="Memory" data-i18n-title="tab_memory" aria-label="Memory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills" data-i18n-title="tab_skills" aria-label="Skills"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
     <div class="rail-spacer"></div>
@@ -176,6 +177,7 @@
       <button class="nav-tab active has-tooltip has-tooltip--bottom" data-panel="chat" data-label="Chat" onclick="switchPanel('chat',{fromRailClick:true})" data-tooltip="Chat" data-i18n-title="tab_chat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="mcp" data-label="MCP" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Server Hub" data-i18n-title="tab_mcp"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="subagents" data-label="Swarm" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarm" data-i18n-title="tab_subagents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="artifacts" data-label="Artifacts" onclick="switchPanel('artifacts',{fromRailClick:true})" data-tooltip="Artifacts Canvas" data-i18n-title="tab_artifacts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="tasks" data-label="Tasks" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Tasks" data-i18n-title="tab_tasks"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="kanban" data-label="Kanban" onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="skills" data-label="Skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills" data-i18n-title="tab_skills"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
@@ -240,6 +242,28 @@
           <div class="swarm-metric-item"><span class="swarm-metric-val" id="swarmMetricTools">0</span><span class="swarm-metric-label">Tools</span></div>
         </div>
         <div class="subagents-list" id="subagentList"><div style="padding:12px;color:var(--muted);font-size:12px">Loading subagents...</div></div>
+      </div>
+    </div>
+    <!-- Artifacts Canvas panel -->
+    <div class="panel-view" id="panelArtifacts">
+      <div class="panel-head">
+        <span>Artifacts & Media</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="artifactsRefreshBtn" onclick="loadArtifacts(true)" data-tooltip="Refresh artifacts" aria-label="Refresh artifacts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        </div>
+      </div>
+      <div class="subagents-sidebar-content">
+        <div class="mcp-search-box" style="margin: 10px 12px 6px 12px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="artifactSearchInput" placeholder="Filter artifacts..." oninput="renderArtifactsSidebar()" autocomplete="off">
+        </div>
+        <div style="display:flex; gap:4px; padding: 0 12px 6px 12px; overflow-x:auto;">
+          <button type="button" class="artifact-cat-btn active" data-kind="all" onclick="setArtifactFilter('all')">All (<span id="artifactTotalCount">0</span>)</button>
+          <button type="button" class="artifact-cat-btn" data-kind="markdown" onclick="setArtifactFilter('markdown')">Docs</button>
+          <button type="button" class="artifact-cat-btn" data-kind="code" onclick="setArtifactFilter('code')">Code</button>
+          <button type="button" class="artifact-cat-btn" data-kind="image" onclick="setArtifactFilter('image')">Media</button>
+        </div>
+        <div class="subagents-list" id="artifactList"><div style="padding:12px;color:var(--muted);font-size:12px">Loading artifacts...</div></div>
       </div>
     </div>
     <!-- Tasks (cron) panel -->
@@ -859,6 +883,30 @@
             <div class="inspector-timeline-wrap">
               <div class="inspector-label">Execution Trace & Transcript (<span id="inspectorStepCount">0</span> steps):</div>
               <div class="inspector-timeline" id="inspectorTimeline"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="mainArtifacts" class="main-view">
+      <div class="main-view-header">
+        <div class="main-view-title" id="artifactDetailTitle">Artifact Visual Canvas</div>
+        <div class="main-view-actions">
+          <span id="artifactDetailBadge" class="swarm-node-pill pill-gold">MARKDOWN</span>
+          <button type="button" class="btn-mcp-action" id="btnCopyArtifact" onclick="copyArtifactContent()">Copy</button>
+          <button type="button" class="btn-mcp-action" id="btnDownloadArtifact" onclick="downloadArtifact()">Download</button>
+        </div>
+      </div>
+      <div class="main-view-body" id="artifactDetailBody">
+        <div class="artifact-canvas-container">
+          <div class="artifact-meta-bar">
+            <span id="artifactDetailPath" style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">/workspace</span>
+            <span id="artifactDetailSize" style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-left:auto;">0 KB</span>
+          </div>
+          <div id="artifactCanvasBody" class="artifact-canvas-viewport">
+            <div class="swarm-inspector-empty" id="artifactDetailEmpty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <div>Select an artifact from the sidebar to inspect its rendered document, code, or visual media.</div>
             </div>
           </div>
         </div>
@@ -1828,6 +1876,8 @@
 <script src="static/subagents.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/mcp_hub.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/skills_wizard.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/artifacts.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/slash_palette.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>
@@ -1872,6 +1922,24 @@
     <div class="mcp-modal-actions">
       <button type="button" class="btn-mcp-action" onclick="closeAddMcpServerModal()">Cancel</button>
       <button type="button" class="btn-mcp-action primary" onclick="submitMcpServerForm()">Save Server</button>
+    </div>
+  </div>
+</div>
+
+<!-- Slash Command Palette Modal -->
+<div id="slashPaletteModal" class="slash-palette-modal-overlay" onclick="if(event.target===this)closeSlashPalette()">
+  <div class="slash-palette-modal-card">
+    <div class="slash-palette-input-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="slashPaletteInput" class="slash-palette-input" placeholder="Type a slash command or search workflows (e.g. /goal, /plan, /schedule)..." oninput="_filterPalette(this.value)" onkeydown="handlePaletteKeydown(event)" autocomplete="off">
+      <button type="button" class="panel-head-btn" onclick="closeSlashPalette()" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="slash-palette-list" id="slashPaletteList"></div>
+    <div class="slash-palette-footer">
+      <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd> Navigate</span>
+      <span><kbd>&crarr;</kbd> Select</span>
+      <span><kbd>ESC</kbd> Close</span>
+      <span style="margin-left:auto;"><kbd>Cmd+K</kbd> Quick Palette</span>
     </div>
   </div>
 </div>

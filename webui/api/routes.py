@@ -14827,6 +14827,12 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/subagents/detail":
         return _handle_subagent_transcript(handler, parsed)
 
+    # ── Artifacts & Visual Canvas (GET) ──
+    if parsed.path in ("/api/artifacts", "/api/artifacts/list"):
+        return _handle_artifacts_list(handler, parsed)
+    if parsed.path == "/api/artifacts/content":
+        return _handle_artifact_content(handler, parsed)
+
     if parsed.path == "/api/notes/sources":
         return _handle_notes_sources_list(handler)
     if parsed.path == "/api/notes/search":
@@ -29662,4 +29668,32 @@ def _handle_subagent_transcript(handler, parsed):
     except Exception as e:
         logger.exception("Failed to get subagent transcript")
         return bad(handler, str(e), status=500)
+
+
+def _handle_artifacts_list(handler, parsed):
+    """List artifacts for session or workspace."""
+    from api.artifacts import list_artifacts
+    qs = parse_qs(parsed.query or "")
+    session_id = qs.get("session_id", [""])[0]
+    conv_id = qs.get("conv_id", [""])[0]
+    try:
+        return j(handler, list_artifacts(session_id=session_id, conv_id=conv_id))
+    except Exception as e:
+        logger.exception("Failed to list artifacts")
+        return bad(handler, str(e), status=500)
+
+
+def _handle_artifact_content(handler, parsed):
+    """Retrieve artifact content or binary data."""
+    from api.artifacts import get_artifact_content
+    qs = parse_qs(parsed.query or "")
+    path = qs.get("path", [""])[0]
+    if not path:
+        return bad(handler, "path query parameter is required", status=400)
+    try:
+        return j(handler, get_artifact_content(path))
+    except Exception as e:
+        logger.exception("Failed to get artifact content")
+        return bad(handler, str(e), status=500)
+
 
