@@ -5700,6 +5700,12 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       try{if(existingLive.source.readyState!==2)existingLive.source.close();}catch(_){ }
     }
     LIVE_STREAMS[activeSid]={streamId,source};
+    let _turnStreamStart = Date.now();
+    let _turnFirstTokenTime = null;
+    let _turnTokenChars = 0;
+    if (typeof updateVelocityHud === 'function') {
+      updateVelocityHud('🧠 Thinking...');
+    }
 
     // Note on #631 Bug B: the original PR description stated the server
     // "replays buffered token events" on reconnect, and proposed resetting
@@ -5720,6 +5726,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(_terminalStateReached||_streamFinalized) return;
       const d=JSON.parse(e.data);
       assistantText+=d.text;
+      if (!_turnFirstTokenTime) _turnFirstTokenTime = Date.now();
+      _turnTokenChars += (d.text || '').length;
+      const _elapsedSec = Math.max(0.1, (Date.now() - _turnFirstTokenTime) / 1000);
+      const _tps = ((_turnTokenChars / 4.0) / _elapsedSec).toFixed(1);
+      if (typeof updateVelocityHud === 'function') {
+        updateVelocityHud(`${_tps} tps`);
+      }
       syncInflightAssistantMessage();
       if(!S.session||S.session.session_id!==activeSid) return;
       _completeAutomaticCompressionOnLiveProgress(activeSid);
@@ -6112,6 +6125,17 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       _cancelThrottledSnapshotTimer();
       const _doneData=JSON.parse(e.data);
       const _doneEvent=e;
+      if (typeof updateVelocityHud === 'function') {
+        const _totalDur = Math.max(0.1, (Date.now() - _turnStreamStart) / 1000);
+        const _streamDur = Math.max(0.1, _turnFirstTokenTime ? ((Date.now() - _turnFirstTokenTime) / 1000) : _totalDur);
+        const _finalTps = ((_turnTokenChars / 4.0) / _streamDur).toFixed(1);
+        const _approxTokens = Math.round(_turnTokenChars / 4.0) || (_doneData && _doneData.usage && _doneData.usage.output_tokens) || 0;
+        updateVelocityHud(null, true, {
+          tps: _finalTps,
+          output_tokens: _approxTokens,
+          duration_sec: _totalDur.toFixed(1)
+        });
+      }
       const _finishDone=()=>{
         // Bug A fix: cancel any pending rAF and mark stream finalized before
         // the DOM is settled by renderMessages, so no trailing token/reasoning rAF

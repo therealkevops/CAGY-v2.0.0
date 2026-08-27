@@ -426,15 +426,10 @@ const ARTIFACT_MUTATION_TOOLS = new Set(['write_file','patch','edit_file','creat
 function _normalizeArtifactPath(path){
   if(!path) return '';
   path = String(path).trim().replace(/[\`"'<>),.;:]+$/g,'').replace(/^[\`"'(<]+/g,'');
-  if(!path || path.length > 240 || path.includes('://')) return '';
-  // Canonicalize workspace-relative prefixes so a file-tree open ("foo.md") and a
-  // tool arg recorded as "./foo.md" or "~/foo.md" compare equal for mutation
-  // tracking; otherwise an agent edit via a ./-prefixed path leaves the open
-  // preview stale (#3262 / pre-release regression-gate finding).
-  path = path.replace(/^~\//,'').replace(/^(?:\.\/)+/,'');
+  if(typeof path !== 'string') return '';
+  path = path.trim().replace(/^[`'"]+|[`'"]+$/g,'');
   if(!path) return '';
-  if(ARTIFACT_IGNORE_RE.test(path)) return '';
-  if(!/[./]/.test(path)) return '';
+  if(/^(?:https?|file):\/\//i.test(path)) return '';
   return path;
 }
 
@@ -447,9 +442,6 @@ function _artifactCandidatesFromText(text){
     if(!path || seen.has(path)) return;
     seen.add(path); out.push({path, kind:'diff'});
   };
-  // Fallback text mining is intentionally narrow: only diff/patch fences imply
-  // the session changed a file. Prose mentions such as "edited package.json" are
-  // too noisy for an Artifacts list that should track write/edit outputs.
   const fenced = /```(?:diff|patch)\s*\n[\s\S]*?```/gi;
   let m;
   while((m = fenced.exec(text))){
@@ -471,7 +463,9 @@ function _artifactCandidatesFromToolCall(tc){
     if(path) out.push({path, kind:source});
   };
   if(ARTIFACT_MUTATION_TOOLS.has(name) && args && typeof args === 'object'){
-    for(const key of ['path','file_path','source','destination']) add(args[key]);
+    for(const key of ['TargetFile','AbsolutePath','path','file_path','source','destination','ImageName','target_file']) {
+      if(args[key]) add(args[key]);
+    }
     if(Array.isArray(args.paths)) args.paths.forEach(p=>add(p));
     if(Array.isArray(args.edits)) args.edits.forEach(e=>add(e&&e.path));
   }
@@ -565,18 +559,40 @@ function collectSessionArtifacts(){
   return items.slice(0, 50);
 }
 
-function renderSessionArtifacts(){
+async function renderSessionArtifacts(){
   const root = $('workspaceArtifacts');
   const count = $('workspaceArtifactsCount');
   if(!root) return;
   const items = collectSessionArtifacts();
+
+  // Query AGY brain artifacts & workspace documents
+  try {
+    const sessionId = (S && S.session && S.session.session_id) || '';
+    const res = await fetch(`/api/artifacts?session_id=${encodeURIComponent(sessionId)}`);
+    if(res.ok){
+      const data = await res.json();
+      if(Array.isArray(data.artifacts)){
+        const seen = new Set(items.map(i => i.path));
+        for(const art of data.artifacts){
+          const path = art.absolute_path || art.relative_path;
+          if(path && !seen.has(path)){
+            seen.add(path);
+            items.push({
+              path: path,
+              source: art.kind === 'image' ? 'generated media' : (art.is_scratch ? 'scratch' : 'artifact'),
+              absolute_path: art.absolute_path,
+              name: art.name,
+              kind: art.kind
+            });
+          }
+        }
+      }
+    }
+  } catch(_) {}
+
   if(count) count.textContent = String(items.length);
-  if(!S.session){
-    root.innerHTML = '<div class="workspace-artifact-empty">Open a conversation to see files changed in this session.</div>';
-    return;
-  }
   if(!items.length){
-    root.innerHTML = '<div class="workspace-artifact-empty">No artifacts detected yet. Files created or edited during this session will appear here.</div>';
+    root.innerHTML = '<div class="workspace-artifact-empty">No artifacts detected yet. Files created, brain artifacts, or reports will appear here.</div>';
     return;
   }
   // Strip workspace prefix for display so long absolute paths don't clutter the list.
@@ -604,8 +620,7 @@ function renderSessionArtifacts(){
       ? `<div class="workspace-artifact-directory"><span class="workspace-artifact-directory-head">${esc(parts.head)}</span><span class="workspace-artifact-directory-tail">${esc(parts.tail)}</span></div>`
       : '';
     const source = item.source ? esc(item.source) : esc(t('workspace_artifact_source_session') || 'session');
-    const sourceAttrs = item.source ? '' : ' data-i18n="workspace_artifact_source_session"';
-    return `<button type="button" class="workspace-artifact-item" title="${esc(path)}" data-artifact-path="${esc(item.path)}" onclick="openArtifactPath(this.dataset.artifactPath)"><div class="workspace-artifact-filename">${esc(parts.name)}</div>${directory}<div class="workspace-artifact-meta"${sourceAttrs}>${source}</div></button>`;
+    return `<button type="button" class="workspace-artifact-item" title="${esc(path)}" data-artifact-path="${esc(item.path)}" onclick="openArtifactPath(this.dataset.artifactPath)"><div class="workspace-artifact-filename">${esc(parts.name)}</div>${directory}<div class="workspace-artifact-meta">${source}</div></button>`;
   }).join('');
 }
 
@@ -629,12 +644,35 @@ async function _workspacePathExists(path){
 async function openArtifactPath(path){
   if(!path) return;
   switchWorkspacePanelTab('files');
-  // Normalize backslash separators to '/' first — Windows absolute paths
-  // (e.g. "D:\workspace\dir\file") otherwise break prefix-strip and the
-  // /api/list existence check (which splits on '/').
-  let rel = String(path).replace(/\\/g,'/').replace(/^~\//,'').replace(/^(?:\.\/)+/,'');
-  // Strip workspace prefix so /api/list receives a workspace-relative path.
+
+  // Check if it is an external AGY brain artifact or outside workspace
   const ws = (S.session && S.session.workspace || '').replace(/\\/g,'/');
+  if(path.startsWith('/') && (!ws || !path.startsWith(ws))){
+    try {
+      const res = await fetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
+      if(res.ok){
+        const data = await res.json();
+        if(data.is_binary && data.data_url){
+          showPreview('img');
+          const img = $('previewImg');
+          if(img) img.src = data.data_url;
+        } else if(path.endsWith('.md') || path.endsWith('.markdown')){
+          showPreview('md');
+          renderMarkdownPreviewContent({ content: data.content || '' });
+        } else {
+          renderCodePreviewContent(path, data.content || '');
+        }
+        _previewCurrentPath = path;
+        const textEl = $('previewPathText');
+        if(textEl) textEl.textContent = path.split('/').pop() || path;
+        const badgeEl = $('previewBadge');
+        if(badgeEl) badgeEl.textContent = (data.size_bytes ? Math.round(data.size_bytes / 1024) + ' KB' : 'Artifact');
+        return;
+      }
+    } catch(_) {}
+  }
+
+  let rel = String(path).replace(/\\/g,'/').replace(/^~\//,'').replace(/^(?:\.\/)+/,'');
   if(ws){
     const normWs = ws.replace(/\/+$/,'') + '/';
     if(rel.startsWith(normWs)) rel = rel.slice(normWs.length);
@@ -643,6 +681,20 @@ async function openArtifactPath(path){
   if(!rel) rel = '.';
   try{
     if(!(await _workspacePathExists(rel))){
+      const res = await fetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
+      if(res.ok){
+        const data = await res.json();
+        if(path.endsWith('.md')){
+          showPreview('md');
+          renderMarkdownPreviewContent({ content: data.content || '' });
+        } else {
+          renderCodePreviewContent(path, data.content || '');
+        }
+        _previewCurrentPath = path;
+        const textEl = $('previewPathText');
+        if(textEl) textEl.textContent = path.split('/').pop() || path;
+        return;
+      }
       setStatus(t('file_open_failed'));
       return;
     }

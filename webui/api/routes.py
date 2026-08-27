@@ -14664,7 +14664,14 @@ def handle_get(handler, parsed) -> bool:
         qs = parse_qs(parsed.query)
         category = qs.get("category", [None])[0]
         data = _skills_list_from_dir(_active_skills_dir(), category=category)
-        return j(handler, {"skills": data.get("skills", [])})
+        skills = list(data.get("skills", []))
+        try:
+            from api.skills_wizard import list_workspace_rules
+            rules = list_workspace_rules()
+            skills.extend(rules)
+        except Exception:
+            pass
+        return j(handler, {"skills": skills})
 
     if parsed.path == "/api/skills/usage":
         from api.skill_usage import read_skill_usage
@@ -14707,6 +14714,13 @@ def handle_get(handler, parsed) -> bool:
         name = qs.get("name", [""])[0]
         if not name:
             return j(handler, {"error": "name required"}, status=400)
+        # Check if this is a rule
+        if name.startswith("Rule: ") or "GEMINI.md" in name:
+            from api.skills_wizard import list_workspace_rules
+            for r in list_workspace_rules():
+                if r["name"] == name and Path(r["path"]).exists():
+                    c = Path(r["path"]).read_text(encoding="utf-8")
+                    return j(handler, {"name": name, "content": c, "linked_files": {}})
         file_path = qs.get("file", [""])[0]
         if file_path:
             # Serve a linked file from the skill directory
@@ -14797,9 +14811,27 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/mcp/servers":
         return _handle_mcp_servers_list(handler)
 
+    if parsed.path in ("/api/mcp/hub", "/api/mcp/hub/data"):
+        from api.mcp_hub import list_mcp_hub_data
+        return j(handler, list_mcp_hub_data())
+
     # ── MCP Tools (GET) ──
     if parsed.path == "/api/mcp/tools":
         return _handle_mcp_tools_list(handler)
+
+    # ── Subagent Swarm Visualizer (GET) ──
+    if parsed.path in ("/api/subagents", "/api/subagents/list"):
+        return _handle_subagents_list(handler, parsed)
+    if parsed.path.startswith("/api/subagents/") and "transcript" in parsed.path:
+        return _handle_subagent_transcript(handler, parsed)
+    if parsed.path == "/api/subagents/detail":
+        return _handle_subagent_transcript(handler, parsed)
+
+    # ── Artifacts & Visual Canvas (GET) ──
+    if parsed.path in ("/api/artifacts", "/api/artifacts/list"):
+        return _handle_artifacts_list(handler, parsed)
+    if parsed.path == "/api/artifacts/content":
+        return _handle_artifact_content(handler, parsed)
 
     if parsed.path == "/api/notes/sources":
         return _handle_notes_sources_list(handler)
@@ -15083,6 +15115,32 @@ def handle_post(handler, parsed) -> bool:
         if diag:
             diag.finish()
         return proxy_result
+
+    if parsed.path == "/api/mcp/hub/add":
+        from api.mcp_hub import add_or_update_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return bad(handler, "Server name is required", status=400)
+        return j(handler, add_or_update_mcp_server(name, body))
+
+    if parsed.path == "/api/mcp/hub/toggle":
+        from api.mcp_hub import toggle_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        enabled = bool(body.get("enabled", True))
+        return j(handler, toggle_mcp_server(name, enabled))
+
+    if parsed.path == "/api/mcp/hub/delete":
+        from api.mcp_hub import delete_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        return j(handler, delete_mcp_server(name))
+
+    if parsed.path == "/api/skills/scaffold":
+        from api.skills_wizard import scaffold_skill_or_rule
+        body = _read_json_body(handler) or {}
+        return j(handler, scaffold_skill_or_rule(body))
 
     if parsed.path == "/api/shutdown":
         return _handle_shutdown(handler)
@@ -29581,3 +29639,61 @@ def _handle_mcp_server_update(handler, name, body):
     _save_yaml_config_file(_get_config_path(), cfg)
     reload_config()
     return j(handler, {"ok": True, "server": _server_summary(name, server_cfg)})
+
+
+def _handle_subagents_list(handler, parsed):
+    """List subagents and hierarchy for current session or conversation."""
+    from api.subagents import list_subagents
+    qs = parse_qs(parsed.query or "")
+    session_id = qs.get("session_id", [""])[0]
+    conv_id = qs.get("conv_id", [""])[0]
+    try:
+        return j(handler, list_subagents(session_id=session_id, conv_id=conv_id))
+    except Exception as e:
+        logger.exception("Failed to list subagents")
+        return bad(handler, str(e), status=500)
+
+
+def _handle_subagent_transcript(handler, parsed):
+    """Retrieve full transcript and steps for a specific subagent."""
+    from api.subagents import get_subagent_transcript
+    qs = parse_qs(parsed.query or "")
+    subagent_id = qs.get("id", [""])[0]
+    if not subagent_id and parsed.path.startswith("/api/subagents/"):
+        subagent_id = parsed.path.split("/api/subagents/", 1)[1].split("/")[0]
+    if not subagent_id:
+        return bad(handler, "Subagent ID is required", status=400)
+    try:
+        return j(handler, get_subagent_transcript(subagent_id))
+    except Exception as e:
+        logger.exception("Failed to get subagent transcript")
+        return bad(handler, str(e), status=500)
+
+
+def _handle_artifacts_list(handler, parsed):
+    """List artifacts for session or workspace."""
+    from api.artifacts import list_artifacts
+    qs = parse_qs(parsed.query or "")
+    session_id = qs.get("session_id", [""])[0]
+    conv_id = qs.get("conv_id", [""])[0]
+    try:
+        return j(handler, list_artifacts(session_id=session_id, conv_id=conv_id))
+    except Exception as e:
+        logger.exception("Failed to list artifacts")
+        return bad(handler, str(e), status=500)
+
+
+def _handle_artifact_content(handler, parsed):
+    """Retrieve artifact content or binary data."""
+    from api.artifacts import get_artifact_content
+    qs = parse_qs(parsed.query or "")
+    path = qs.get("path", [""])[0]
+    if not path:
+        return bad(handler, "path query parameter is required", status=400)
+    try:
+        return j(handler, get_artifact_content(path))
+    except Exception as e:
+        logger.exception("Failed to get artifact content")
+        return bad(handler, str(e), status=500)
+
+

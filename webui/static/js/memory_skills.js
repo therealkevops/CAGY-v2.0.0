@@ -85,7 +85,7 @@ const MemorySkillsManager = {
         const card = document.createElement("div");
         card.className = "skill-card";
         card.innerHTML = `
-          <div class="skill-title">⚡ ${skill.name}</div>
+          <div class="skill-title">${skill.name}</div>
           <div class="skill-desc">${skill.description}</div>
         `;
         card.addEventListener("click", () => this.showSkillDetail(skill));
