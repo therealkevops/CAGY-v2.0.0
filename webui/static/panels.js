@@ -448,6 +448,7 @@ async function switchPanel(name, opts = {}) {
     MAIN_VIEW_PANELS.forEach(p => {
       mainEl.classList.toggle('showing-' + p, nextPanel === p);
     });
+  }
   // Lazy-load panel data
   if (nextPanel === 'skills') await loadSkills();
   if (nextPanel === 'mcp') await loadMcpHub();
