@@ -241,9 +241,9 @@ function _beginSettingsPanelSession() {
     _searchResults.innerHTML = '';
   }
   _settingsDirty = false;
-  _settingsThemeOnOpen = localStorage.getItem('hermes-theme') || 'dark';
-  _settingsSkinOnOpen = localStorage.getItem('hermes-skin') || 'default';
-  _settingsFontSizeOnOpen = localStorage.getItem('hermes-font-size') || 'default';
+  _settingsThemeOnOpen = localStorage.getItem('agy-theme') || 'dark';
+  _settingsSkinOnOpen = localStorage.getItem('agy-skin') || 'default';
+  _settingsFontSizeOnOpen = localStorage.getItem('agy-font-size') || 'default';
   _pendingSettingsTargetPanel = null;
   if (_settingsAppearanceAutosaveTimer) {
     clearTimeout(_settingsAppearanceAutosaveTimer);
@@ -1768,7 +1768,7 @@ async function switchToWorkspace(path,name){
 let _profilesCache = null;
 let _profileDropdownFetchPromise = null;
 let _profileDropdownCacheLoadedFromStorage = false;
-const PROFILE_DROPDOWN_CACHE_KEY = 'hermes-webui-profile-dropdown-cache-v1';
+const PROFILE_DROPDOWN_CACHE_KEY = 'agy-webui-profile-dropdown-cache-v1';
 const PROFILE_DROPDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
 let _profileSwitchGeneration = 0;
 let _profileDropdownTrigger = null;  // tracks which element triggered the dropdown
@@ -2384,7 +2384,7 @@ async function switchToProfile(name) {
     // Refreshing the full model/workspace catalogs is useful, but it should not
     // hold the visible switch animation open.
     if(typeof _clearPersistedModelState==='function') _clearPersistedModelState();
-    else localStorage.removeItem('hermes-webui-model');
+    else localStorage.removeItem('agy-webui-model');
     _skillsData = null;
     _workspaceList = null;
     if (data.default_model) window._defaultModel = data.default_model;
@@ -2787,9 +2787,9 @@ let _settingsPreferencesAutosaveRetryPayload = null;
 
 // ── Sidebar tab visibility/order ────────────────────────────────────────────
 const _ALWAYS_VISIBLE_TABS = new Set(['chat','settings']);
-const _HIDDEN_TABS_LS_KEY = 'hermes-webui-hidden-tabs';
-const _TAB_ORDER_LS_KEY = 'hermes-webui-tab-order';
-const _COMPOSER_CONTROL_ORDER_LS_KEY = 'hermes-webui-composer-control-order';
+const _HIDDEN_TABS_LS_KEY = 'agy-webui-hidden-tabs';
+const _TAB_ORDER_LS_KEY = 'agy-webui-tab-order';
+const _COMPOSER_CONTROL_ORDER_LS_KEY = 'agy-webui-composer-control-order';
 let _tabVisibilityDragSuppressUntil = 0;
 let _composerControlDragSuppressUntil = 0;
 let _composerControlDraggingKey = '';
@@ -3717,9 +3717,9 @@ function _appearancePayloadFromUi(){
   const chatActivityModeSel=$('settingsChatActivityDisplayMode');
   const transparentEventTimestamps=$('settingsTransparentEventTimestamps');
   return {
-    theme: ($('settingsTheme')||{}).value || localStorage.getItem('hermes-theme') || 'dark',
-    skin: ($('settingsSkin')||{}).value || localStorage.getItem('hermes-skin') || 'default',
-    font_size: ($('settingsFontSize')||{}).value || localStorage.getItem('hermes-font-size') || 'default',
+    theme: ($('settingsTheme')||{}).value || localStorage.getItem('agy-theme') || 'dark',
+    skin: ($('settingsSkin')||{}).value || localStorage.getItem('agy-skin') || 'default',
+    font_size: ($('settingsFontSize')||{}).value || localStorage.getItem('agy-font-size') || 'default',
     chat_activity_display_mode: chatActivityModeSel&&(chatActivityModeSel.value==='transparent_stream'||chatActivityModeSel.value==='hide_all_activity')
       ? chatActivityModeSel.value
       : 'compact_worklog',
@@ -3804,9 +3804,9 @@ function _setAppearanceAutosaveStatus(state){
 
 function _rememberAppearanceSaved(payload){
   if(!payload) return;
-  _settingsThemeOnOpen=payload.theme||localStorage.getItem('hermes-theme')||'dark';
-  _settingsSkinOnOpen=payload.skin||localStorage.getItem('hermes-skin')||'default';
-  _settingsFontSizeOnOpen=payload.font_size||localStorage.getItem('hermes-font-size')||'default';
+  _settingsThemeOnOpen=payload.theme||localStorage.getItem('agy-theme')||'dark';
+  _settingsSkinOnOpen=payload.skin||localStorage.getItem('agy-skin')||'default';
+  _settingsFontSizeOnOpen=payload.font_size||localStorage.getItem('agy-font-size')||'default';
 }
 
 function _scheduleAppearanceAutosave(){
@@ -3826,7 +3826,7 @@ async function _autosaveAppearanceSettings(payload){
     _settingsAppearanceAutosaveRetryPayload=null;
     _rememberAppearanceSaved(payload);
     if(saved&&saved.font_size){
-      localStorage.setItem('hermes-font-size',saved.font_size);
+      localStorage.setItem('agy-font-size',saved.font_size);
     }
     if(saved){
       window._sessionJumpButtonsEnabled=!!saved.session_jump_buttons;
@@ -3900,16 +3900,16 @@ function _retryAppearanceAutosave(){
 // ── Phase 2: Preferences autosave (Issue #1003) ───────────────────────
 
 const _SETTINGS_SPEECH_STORAGE_KEYS={
-  tts_enabled:'hermes-tts-enabled',
-  tts_auto_read:'hermes-tts-auto-read',
-  tts_engine:'hermes-tts-engine',
-  tts_voice:'hermes-tts-voice',
-  tts_rate:'hermes-tts-rate',
-  tts_pitch:'hermes-tts-pitch',
-  voice_mode_button:'hermes-voice-mode-button',
-  voice_continuous:'hermes-voice-continuous',
-  voice_silence_ms:'hermes-voice-silence-ms',
-  raw_audio_mode:'hermes-raw-audio-mode',
+  tts_enabled:'agy-tts-enabled',
+  tts_auto_read:'agy-tts-auto-read',
+  tts_engine:'agy-tts-engine',
+  tts_voice:'agy-tts-voice',
+  tts_rate:'agy-tts-rate',
+  tts_pitch:'agy-tts-pitch',
+  voice_mode_button:'agy-voice-mode-button',
+  voice_continuous:'agy-voice-continuous',
+  voice_silence_ms:'agy-voice-silence-ms',
+  raw_audio_mode:'agy-raw-audio-mode',
 };
 let _settingsSpeechPersistedKeys=new Set();
 let _settingsSpeechLocalStorageKeys=new Set();
@@ -4044,9 +4044,9 @@ function _speechPreferencesPayloadFromUi(){
   const voiceModeCb=$('settingsVoiceModeEnabled');
   if(voiceModeCb) _setOwnedSpeechPayload(payload,'voice_mode_button',voiceModeCb.checked);
   const rawAudioCb=$('settingsRawAudio');
-  _setOwnedSpeechPayload(payload,'raw_audio_mode',rawAudioCb?rawAudioCb.checked:localStorage.getItem('hermes-raw-audio-mode')==='true');
-  _setOwnedSpeechPayload(payload,'voice_continuous',localStorage.getItem('hermes-voice-continuous')==='true');
-  const voiceSilence=parseInt(localStorage.getItem('hermes-voice-silence-ms'),10);
+  _setOwnedSpeechPayload(payload,'raw_audio_mode',rawAudioCb?rawAudioCb.checked:localStorage.getItem('agy-raw-audio-mode')==='true');
+  _setOwnedSpeechPayload(payload,'voice_continuous',localStorage.getItem('agy-voice-continuous')==='true');
+  const voiceSilence=parseInt(localStorage.getItem('agy-voice-silence-ms'),10);
   _setOwnedSpeechPayload(payload,'voice_silence_ms',(Number.isFinite(voiceSilence)&&voiceSilence>=200)?voiceSilence:1800);
   return payload;
 }
@@ -4104,8 +4104,8 @@ function _setPreferencesAutosaveStatus(state,owner){
 
 function _rememberPreferencesSaved(payload){
   if(!payload) return;
-  if(payload.send_key!==undefined) localStorage.setItem('hermes-pref-send_key',payload.send_key);
-  if(payload.language!==undefined) localStorage.setItem('hermes-pref-language',payload.language);
+  if(payload.send_key!==undefined) localStorage.setItem('agy-pref-send_key',payload.send_key);
+  if(payload.language!==undefined) localStorage.setItem('agy-pref-language',payload.language);
 }
 
 function _schedulePreferencesAutosave(){
@@ -4301,12 +4301,12 @@ async function loadSettingsPanel(){
     const themeVal=settings.theme||'dark';
     if(themeSel) themeSel.value=themeVal;
     if(typeof _syncThemePicker==='function') _syncThemePicker(themeVal);
-    const skinVal=(localStorage.getItem('hermes-skin')||settings.skin||'default').toLowerCase();
+    const skinVal=(localStorage.getItem('agy-skin')||settings.skin||'default').toLowerCase();
     const skinSel=$('settingsSkin');
     if(skinSel) skinSel.value=skinVal;
     if(typeof _buildSkinPicker==='function') _buildSkinPicker(skinVal);
-    const fontSizeVal=settings.font_size||localStorage.getItem('hermes-font-size')||'default';
-    localStorage.setItem('hermes-font-size',fontSizeVal);
+    const fontSizeVal=settings.font_size||localStorage.getItem('agy-font-size')||'default';
+    localStorage.setItem('agy-font-size',fontSizeVal);
     if(typeof _applyFontSize==='function') _applyFontSize(fontSizeVal);
     const fontSizeSel=$('settingsFontSize');
     if(fontSizeSel) fontSizeSel.value=fontSizeVal;
@@ -4323,16 +4323,16 @@ async function loadSettingsPanel(){
     }
     if(typeof _applySessionNavigationPrefs==='function') _applySessionNavigationPrefs();
     // Workspace panel default-open toggle (localStorage-backed)
-    // Uses a separate key (hermes-webui-workspace-panel-pref) so that
+    // Uses a separate key (agy-webui-workspace-panel-pref) so that
     // closing the panel via toolbar X does not clear the user's preference.
     const wsPanelCb=$('settingsWorkspacePanelOpen');
     if(wsPanelCb){
-      wsPanelCb.checked=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open';
+      wsPanelCb.checked=localStorage.getItem('agy-webui-workspace-panel-pref')==='open';
       wsPanelCb.onchange=function(){
         const open=this.checked;
-        localStorage.setItem('hermes-webui-workspace-panel-pref',open?'open':'closed');
+        localStorage.setItem('agy-webui-workspace-panel-pref',open?'open':'closed');
         // Also sync the runtime key so the current session reflects the change
-        localStorage.setItem('hermes-webui-workspace-panel',open?'open':'closed');
+        localStorage.setItem('agy-webui-workspace-panel',open?'open':'closed');
         document.documentElement.dataset.workspacePanel=open?'open':'closed';
         if(open&&_workspacePanelMode==='closed') openWorkspacePanel('browse');
         else if(!open&&_workspacePanelMode!=='closed') toggleWorkspacePanel(false);
@@ -4489,8 +4489,8 @@ async function loadSettingsPanel(){
     _applyTabVisibility(hiddenTabs);
     _renderTabVisibilityChips();
     const resolvedLanguage=(typeof resolvePreferredLocale==='function')
-      ? resolvePreferredLocale(settings.language, localStorage.getItem('hermes-lang'))
-      : (settings.language || localStorage.getItem('hermes-lang') || 'en');
+      ? resolvePreferredLocale(settings.language, localStorage.getItem('agy-lang'))
+      : (settings.language || localStorage.getItem('agy-lang') || 'en');
     // Keep settings modal and current page strings in sync with the resolved locale.
     if(typeof setLocale==='function'){
       setLocale(resolvedLanguage);
@@ -4734,13 +4734,13 @@ async function loadSettingsPanel(){
     // Right-to-left chat layout (#1721 salvage) — Settings-only, no composer button.
     const rtlCb=$('settingsRtl');
     if(rtlCb){
-      const saved=!!settings.rtl || localStorage.getItem('hermes-rtl')==='true';
+      const saved=!!settings.rtl || localStorage.getItem('agy-rtl')==='true';
       rtlCb.checked=saved;
-      try{localStorage.setItem('hermes-rtl',saved?'true':'false');}catch(_){}
+      try{localStorage.setItem('agy-rtl',saved?'true':'false');}catch(_){}
       document.documentElement.classList.toggle('chat-content-rtl',saved);
       rtlCb.addEventListener('change',()=>{
         const on=rtlCb.checked;
-        try{localStorage.setItem('hermes-rtl',on?'true':'false');}catch(_){}
+        try{localStorage.setItem('agy-rtl',on?'true':'false');}catch(_){}
         document.documentElement.classList.toggle('chat-content-rtl',on);
         _schedulePreferencesAutosave();
       },{once:false});
@@ -4763,23 +4763,23 @@ async function loadSettingsPanel(){
     };
     const rawAudioCb=$('settingsRawAudio');
     if(rawAudioCb){
-      rawAudioCb.checked=_speechBool('raw_audio_mode','hermes-raw-audio-mode',false);
+      rawAudioCb.checked=_speechBool('raw_audio_mode','agy-raw-audio-mode',false);
       rawAudioCb.onchange=function(){
         _markSpeechPreferenceChanged('raw_audio_mode');
         if(typeof window._applyRawAudioModePreference==='function') window._applyRawAudioModePreference(this.checked);
-        else localStorage.setItem('hermes-raw-audio-mode',this.checked?'true':'false');
+        else localStorage.setItem('agy-raw-audio-mode',this.checked?'true':'false');
         _schedulePreferencesAutosave();
       };
     }
-    const voiceContinuous=_speechBool('voice_continuous','hermes-voice-continuous',false);
+    const voiceContinuous=_speechBool('voice_continuous','agy-voice-continuous',false);
     _syncSpeechPreferenceCache('voice_continuous',voiceContinuous?'true':'false');
-    const voiceSilence=parseInt(_speechSetting('voice_silence_ms','hermes-voice-silence-ms',1800),10);
+    const voiceSilence=parseInt(_speechSetting('voice_silence_ms','agy-voice-silence-ms',1800),10);
     _syncSpeechPreferenceCache('voice_silence_ms',Number.isFinite(voiceSilence)&&voiceSilence>=200?String(voiceSilence):'1800');
     // TTS settings use /api/settings as the durable source and localStorage as the runtime cache.
     const ttsEnabledCb=$('settingsTtsEnabled');
-    if(ttsEnabledCb){ttsEnabledCb.checked=_speechBool('tts_enabled','hermes-tts-enabled',false);ttsEnabledCb.onchange=function(){_markSpeechPreferenceChanged('tts_enabled');localStorage.setItem('hermes-tts-enabled',this.checked?'true':'false');_applyTtsEnabled(this.checked);_schedulePreferencesAutosave();};}
+    if(ttsEnabledCb){ttsEnabledCb.checked=_speechBool('tts_enabled','agy-tts-enabled',false);ttsEnabledCb.onchange=function(){_markSpeechPreferenceChanged('tts_enabled');localStorage.setItem('agy-tts-enabled',this.checked?'true':'false');_applyTtsEnabled(this.checked);_schedulePreferencesAutosave();};}
     const ttsAutoReadCb=$('settingsTtsAutoRead');
-    if(ttsAutoReadCb){ttsAutoReadCb.checked=_speechBool('tts_auto_read','hermes-tts-auto-read',false);ttsAutoReadCb.onchange=function(){_markSpeechPreferenceChanged('tts_auto_read');localStorage.setItem('hermes-tts-auto-read',this.checked?'true':'false');_schedulePreferencesAutosave();};}
+    if(ttsAutoReadCb){ttsAutoReadCb.checked=_speechBool('tts_auto_read','agy-tts-auto-read',false);ttsAutoReadCb.onchange=function(){_markSpeechPreferenceChanged('tts_auto_read');localStorage.setItem('agy-tts-auto-read',this.checked?'true':'false');_schedulePreferencesAutosave();};}
     // Voice-mode button visibility (#1488).
     // Toggling re-applies immediately via the boot.js helper so the user sees
     // the audio-waveform button appear/disappear without a reload.
@@ -4788,10 +4788,10 @@ async function loadSettingsPanel(){
     // stays in sync when #btnVoiceMode appears or disappears here.
     const voiceModeCb=$('settingsVoiceModeEnabled');
     if(voiceModeCb){
-      voiceModeCb.checked=_speechBool('voice_mode_button','hermes-voice-mode-button',false);
+      voiceModeCb.checked=_speechBool('voice_mode_button','agy-voice-mode-button',false);
       voiceModeCb.onchange=function(){
         _markSpeechPreferenceChanged('voice_mode_button');
-        localStorage.setItem('hermes-voice-mode-button',this.checked?'true':'false');
+        localStorage.setItem('agy-voice-mode-button',this.checked?'true':'false');
         if(typeof window._applyVoiceModePref==='function') window._applyVoiceModePref();
         if(typeof window._applyComposerFooterVisibilitySettings==='function') window._applyComposerFooterVisibilitySettings();
         _schedulePreferencesAutosave();
@@ -4812,7 +4812,7 @@ async function loadSettingsPanel(){
           }
         });
       }
-      const saved=String(_speechSetting('tts_engine','hermes-tts-engine','browser')||'browser');
+      const saved=String(_speechSetting('tts_engine','agy-tts-engine','browser')||'browser');
       if(!ttsEngineSel.querySelector('option[value="'+saved+'"]')){
         var savedOpt=document.createElement('option');
         savedOpt.value=saved; savedOpt.textContent=saved;
@@ -4822,7 +4822,7 @@ async function loadSettingsPanel(){
       _syncSpeechPreferenceCache('tts_engine',saved);
       ttsEngineSel.onchange=function(){
         _markSpeechPreferenceChanged('tts_engine');
-        localStorage.setItem('hermes-tts-engine',this.value);
+        localStorage.setItem('agy-tts-engine',this.value);
         window._populateTtsVoices();
         _schedulePreferencesAutosave();
       };
@@ -4831,8 +4831,8 @@ async function loadSettingsPanel(){
     const ttsVoiceSel=$('settingsTtsVoice');
     window._populateTtsVoices=function(){
       if(!ttsVoiceSel) return;
-      const engine=localStorage.getItem('hermes-tts-engine')||'browser';
-      const current=String(_speechSetting('tts_voice','hermes-tts-voice','')||'');
+      const engine=localStorage.getItem('agy-tts-engine')||'browser';
+      const current=String(_speechSetting('tts_voice','agy-tts-voice','')||'');
       _syncSpeechPreferenceCache('tts_voice',current);
       if(engine==='elevenlabs'){
         ttsVoiceSel.innerHTML='<option value="">Hermy — ElevenLabs (server-configured)</option>';
@@ -4874,29 +4874,29 @@ async function loadSettingsPanel(){
     if(ttsVoiceSel&&'speechSynthesis' in window){
       window._populateTtsVoices();
       speechSynthesis.addEventListener('voiceschanged',function(){
-        const engine=localStorage.getItem('hermes-tts-engine')||'browser';
+        const engine=localStorage.getItem('agy-tts-engine')||'browser';
         if(engine==='browser') window._populateTtsVoices();
       },{once:false});
-      ttsVoiceSel.onchange=function(){_markSpeechPreferenceChanged('tts_voice');localStorage.setItem('hermes-tts-voice',this.value);_schedulePreferencesAutosave();};
+      ttsVoiceSel.onchange=function(){_markSpeechPreferenceChanged('tts_voice');localStorage.setItem('agy-tts-voice',this.value);_schedulePreferencesAutosave();};
     }
     // TTS rate/pitch sliders
     const ttsRateSlider=$('settingsTtsRate');
     const ttsRateValue=$('settingsTtsRateValue');
     if(ttsRateSlider){
-      const savedRate=_speechSetting('tts_rate','hermes-tts-rate',1);
+      const savedRate=_speechSetting('tts_rate','agy-tts-rate',1);
       ttsRateSlider.value=(savedRate===null||savedRate===undefined)?'1':String(savedRate);
       if(ttsRateValue) ttsRateValue.textContent=parseFloat(ttsRateSlider.value).toFixed(1)+'x';
       _syncSpeechPreferenceCache('tts_rate',ttsRateSlider.value);
-      ttsRateSlider.oninput=function(){_markSpeechPreferenceChanged('tts_rate');if(ttsRateValue)ttsRateValue.textContent=parseFloat(this.value).toFixed(1)+'x';localStorage.setItem('hermes-tts-rate',this.value);_schedulePreferencesAutosave();};
+      ttsRateSlider.oninput=function(){_markSpeechPreferenceChanged('tts_rate');if(ttsRateValue)ttsRateValue.textContent=parseFloat(this.value).toFixed(1)+'x';localStorage.setItem('agy-tts-rate',this.value);_schedulePreferencesAutosave();};
     }
     const ttsPitchSlider=$('settingsTtsPitch');
     const ttsPitchValue=$('settingsTtsPitchValue');
     if(ttsPitchSlider){
-      const savedPitch=_speechSetting('tts_pitch','hermes-tts-pitch',1);
+      const savedPitch=_speechSetting('tts_pitch','agy-tts-pitch',1);
       ttsPitchSlider.value=(savedPitch===null||savedPitch===undefined)?'1':String(savedPitch);
       if(ttsPitchValue) ttsPitchValue.textContent=parseFloat(ttsPitchSlider.value).toFixed(1);
       _syncSpeechPreferenceCache('tts_pitch',ttsPitchSlider.value);
-      ttsPitchSlider.oninput=function(){_markSpeechPreferenceChanged('tts_pitch');if(ttsPitchValue)ttsPitchValue.textContent=parseFloat(this.value).toFixed(1);localStorage.setItem('hermes-tts-pitch',this.value);_schedulePreferencesAutosave();};
+      ttsPitchSlider.oninput=function(){_markSpeechPreferenceChanged('tts_pitch');if(ttsPitchValue)ttsPitchValue.textContent=parseFloat(this.value).toFixed(1);localStorage.setItem('agy-tts-pitch',this.value);_schedulePreferencesAutosave();};
     }
     const notifCb=$('settingsNotificationsEnabled');
     if(notifCb){notifCb.checked=!!settings.notifications_enabled;notifCb.addEventListener('change',_schedulePreferencesAutosave,{once:false});}
@@ -5669,7 +5669,7 @@ function _extensionRegistrySourceUrl(entryPath){
   const parts=raw.split('/').filter(Boolean);
   if(parts.length===0||parts.some(part=>part==='.'||part==='..')) return '';
   const folder=parts.length>1?parts.slice(0,-1):parts;
-  return 'https://github.com/hermes-webui/hermes-webui-extensions/tree/main/'+folder.map(encodeURIComponent).join('/');
+  return 'https://github.com/hermes-webui/agy-webui-extensions/tree/main/'+folder.map(encodeURIComponent).join('/');
 }
 
 function _extensionSourceUrl(entry){
@@ -6342,7 +6342,7 @@ function _providerQuotaUnavailableReason(credential){
 
 function _providerQuotaPoolShouldDefaultOpen(pool){
   try{
-    const saved=localStorage.getItem('hermes-provider-quota-pool-open');
+    const saved=localStorage.getItem('agy-provider-quota-pool-open');
     if(saved==='1') return true;
     if(saved==='0') return false;
   }catch(e){}
@@ -6463,7 +6463,7 @@ function _buildProviderQuotaCard(status){
   const poolDetails=card.querySelector('.provider-quota-pool');
   if(poolDetails){
     poolDetails.addEventListener('toggle',()=>{
-      try{localStorage.setItem('hermes-provider-quota-pool-open',poolDetails.open?'1':'0');}catch(e){}
+      try{localStorage.setItem('agy-provider-quota-pool-open',poolDetails.open?'1':'0');}catch(e){}
     });
   }
   return card;
@@ -7372,7 +7372,7 @@ function _applySavedSettingsUi(saved, body, opts){
   _settingsDirty=false;
   _settingsThemeOnOpen=theme;
   _settingsSkinOnOpen=skin||'default';
-  _settingsFontSizeOnOpen=fontSize||localStorage.getItem('hermes-font-size')||'default';
+  _settingsFontSizeOnOpen=fontSize||localStorage.getItem('agy-font-size')||'default';
   const bar=$('settingsUnsavedBar');
   if(bar) bar.style.display='none';
   _settingsHermesDefaultModelOnOpen=body.default_model||_settingsHermesDefaultModelOnOpen||'';
@@ -7953,7 +7953,7 @@ async function saveSettings(andClose){
   const pw=($('settingsPassword')||{}).value;
   const theme=($('settingsTheme')||{}).value||'dark';
   const skin=($('settingsSkin')||{}).value||'default';
-  const fontSize=($('settingsFontSize')||{}).value||localStorage.getItem('hermes-font-size')||'default';
+  const fontSize=($('settingsFontSize')||{}).value||localStorage.getItem('agy-font-size')||'default';
   const language=($('settingsLanguage')||{}).value||'en';
   const sidebarDensity=($('settingsSidebarDensity')||{}).value==='detailed'?'detailed':'compact';
   const defaultMessageMode=($('settingsDefaultMessageMode')||{}).value||'steer';

@@ -208,7 +208,7 @@ function _getSessionQueue(sid, create=false){
   return SESSION_QUEUES[sid]||[];
 }
 function _queueStorageKey(sid){
-  return 'hermes-queue-'+sid;
+  return 'agy-queue-'+sid;
 }
 function _clearPersistedSessionQueue(sid){
   if(!sid) return;
@@ -318,7 +318,7 @@ function _renderUserFencedBlocks(text){
   const stashContext=(label,quote)=>{contextStash.push(sentContextHtml(label,quote));return '\x00UC'+(contextStash.length-1)+'\x00';};
   const stashSelectedContextBlocks=(value)=>{
     const lines=String(value||'').split('\n');
-    const marker='<!-- hermes-selected-context -->';
+    const marker='<!-- agy-selected-context -->';
     const out=[];
     for(let i=0;i<lines.length;i++){
       const labelMatch=lines[i].match(/^\*\*([^\n]{1,200}):\*\*\s*$/);
@@ -488,7 +488,7 @@ async function startCompressionRecovery(btn){
     const data=await api('/api/session/compression-recovery/start',{method:'POST',body:JSON.stringify({session_id:sourceSid})});
     const sid=data&&data.session&&data.session.session_id;
     if(!sid) throw new Error('Compression recovery did not return a session.');
-    try{localStorage.setItem('hermes-webui-session',sid);}catch(_){}
+    try{localStorage.setItem('agy-webui-session',sid);}catch(_){}
     if(typeof loadSession==='function') await loadSession(sid,{preserveActiveInput:false});
     else if(data.session){S.session=data.session;if(typeof _adoptRegenerationRevision==='function')_adoptRegenerationRevision(data.session);S.messages=data.session.messages||[];syncTopbar();renderMessages();}
     if(typeof renderSessionList==='function') await renderSessionList();
@@ -2601,7 +2601,7 @@ const _CSV_EXTS=/\.csv$/i;
 const _EXCALIDRAW_EXTS=/\.excalidraw$/i;
 // ── Media playback speed controls ─────────────────────────────────────────
 const MEDIA_PLAYBACK_RATES=[0.5,0.75,1,1.25,1.5,2];
-const MEDIA_PLAYBACK_STORAGE_KEY='hermes-media-playback-rate';
+const MEDIA_PLAYBACK_STORAGE_KEY='agy-media-playback-rate';
 function _getStoredMediaPlaybackRate(){
   try{
     const raw=localStorage.getItem(MEDIA_PLAYBACK_STORAGE_KEY);
@@ -2961,8 +2961,8 @@ window.addEventListener('visibilitychange',()=>{
 // Dynamic model labels -- populated by populateModelDropdown(), fallback to static map
 let _dynamicModelLabels={};
 window._configuredModelBadges=window._configuredModelBadges||{};
-const MODEL_STATE_KEY='hermes-webui-model-state';
-const PENDING_SESSION_MODEL_PREFIX='hermes-webui-pending-session-model:';
+const MODEL_STATE_KEY='agy-webui-model-state';
+const PENDING_SESSION_MODEL_PREFIX='agy-webui-pending-session-model:';
 const PENDING_SESSION_MODEL_MAX_AGE_MS=10*60*1000;
 
 // ── Smart model resolver ────────────────────────────────────────────────────
@@ -3164,7 +3164,7 @@ function _readPersistedModelState(){
       }
     }
   }catch(_){}
-  const legacy=localStorage.getItem('hermes-webui-model');
+  const legacy=localStorage.getItem('agy-webui-model');
   if(!legacy) return null;
   return {model:legacy,model_provider:_providerFromModelValue(legacy)||null};
 }
@@ -3172,17 +3172,17 @@ function _writePersistedModelState(model, modelProvider){
   const value=String(model||'').trim();
   const provider=modelProvider?String(modelProvider).trim():(_providerFromModelValue(value)||null);
   if(!value){
-    localStorage.removeItem('hermes-webui-model');
+    localStorage.removeItem('agy-webui-model');
     localStorage.removeItem(MODEL_STATE_KEY);
     return;
   }
-  localStorage.setItem('hermes-webui-model', value);
+  localStorage.setItem('agy-webui-model', value);
   try{
     localStorage.setItem(MODEL_STATE_KEY, JSON.stringify({model:value,model_provider:provider||null}));
   }catch(_){}
 }
 function _clearPersistedModelState(){
-  localStorage.removeItem('hermes-webui-model');
+  localStorage.removeItem('agy-webui-model');
   localStorage.removeItem(MODEL_STATE_KEY);
 }
 function _pendingSessionModelKey(sessionId){
@@ -8996,15 +8996,15 @@ let _playingEdgeAudio=null;
 
 function _buildBrowserUtterance(text, btn){
   const utter=new SpeechSynthesisUtterance(text);
-  const savedVoice=localStorage.getItem('hermes-tts-voice');
+  const savedVoice=localStorage.getItem('agy-tts-voice');
   const voices=speechSynthesis.getVoices();
   if(savedVoice&&voices.length){
     const match=voices.find(v=>v.name===savedVoice);
     if(match) utter.voice=match;
   }
-  const savedRate=parseFloat(localStorage.getItem('hermes-tts-rate'));
+  const savedRate=parseFloat(localStorage.getItem('agy-tts-rate'));
   if(!isNaN(savedRate)) utter.rate=Math.min(2,Math.max(0.5,savedRate));
-  const savedPitch=parseFloat(localStorage.getItem('hermes-tts-pitch'));
+  const savedPitch=parseFloat(localStorage.getItem('agy-tts-pitch'));
   if(!isNaN(savedPitch)) utter.pitch=Math.min(2,Math.max(0,savedPitch));
   utter.onend=()=>{
     _ttsChunkIndex++;
@@ -9039,9 +9039,9 @@ function _playEdgeTtsChunked(text, btn){
       return;
     }
     const chunk=chunks[idx];
-    const voice=localStorage.getItem('hermes-tts-voice')||'zh-CN-XiaoxiaoNeural';
-    const savedRate=parseFloat(localStorage.getItem('hermes-tts-rate'));
-    const savedPitch=parseFloat(localStorage.getItem('hermes-tts-pitch'));
+    const voice=localStorage.getItem('agy-tts-voice')||'zh-CN-XiaoxiaoNeural';
+    const savedRate=parseFloat(localStorage.getItem('agy-tts-rate'));
+    const savedPitch=parseFloat(localStorage.getItem('agy-tts-pitch'));
     let rate='', pitch='';
     if(!isNaN(savedRate)){const pct=Math.round((savedRate-1)*100);const sign=pct>=0?'+':'';rate=sign+pct+'%';}
     if(!isNaN(savedPitch)){const hz=Math.round((savedPitch-1)*50);const sign=hz>=0?'+':'';pitch=sign+hz+'Hz';}
@@ -9105,7 +9105,7 @@ function speakMessage(btn){
   const clean=_stripForTTS(text);
   if(!clean) return;
 
-  const engine=localStorage.getItem('hermes-tts-engine')||'browser';
+  const engine=localStorage.getItem('agy-tts-engine')||'browser';
   if(engine==='openai'){
     _playOpenaiTts(clean, btn);
     return;
@@ -9129,9 +9129,9 @@ function speakMessage(btn){
       if(msg&&typeof showToast==='function') showToast(msg,4000,'error');
     };
     const _opts={
-      voice: localStorage.getItem('hermes-tts-voice')||'',
-      rate: parseFloat(localStorage.getItem('hermes-tts-rate')),
-      pitch: parseFloat(localStorage.getItem('hermes-tts-pitch')),
+      voice: localStorage.getItem('agy-tts-voice')||'',
+      rate: parseFloat(localStorage.getItem('agy-tts-rate')),
+      pitch: parseFloat(localStorage.getItem('agy-tts-pitch')),
     };
     Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
       .then(function(buf){ return _playAudioBuf(buf, btn, 'TTS'); })
@@ -9276,9 +9276,9 @@ function stopTTS(){
 }
 
 function autoReadLastAssistant(){
-  const engine=localStorage.getItem('hermes-tts-engine')||'browser';
+  const engine=localStorage.getItem('agy-tts-engine')||'browser';
   if(engine==='browser'&&!('speechSynthesis' in window)) return;
-  const pref=localStorage.getItem('hermes-tts-auto-read');
+  const pref=localStorage.getItem('agy-tts-auto-read');
   if(pref!=='true') return;
   // Find the last assistant message segment in the DOM
   const rows=document.querySelectorAll('.msg-row[data-role="assistant"], .assistant-segment[data-raw-text]');
@@ -9306,9 +9306,9 @@ function autoReadLastAssistant(){
   if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
     _ttsSpeaking=true;
     const _opts={
-      voice: localStorage.getItem('hermes-tts-voice')||'',
-      rate: parseFloat(localStorage.getItem('hermes-tts-rate')),
-      pitch: parseFloat(localStorage.getItem('hermes-tts-pitch')),
+      voice: localStorage.getItem('agy-tts-voice')||'',
+      rate: parseFloat(localStorage.getItem('agy-tts-rate')),
+      pitch: parseFloat(localStorage.getItem('agy-tts-pitch')),
     };
     Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
       .then(function(buf){ return _playAudioBuf(buf, null, 'TTS'); })
@@ -9328,8 +9328,8 @@ function autoReadLastAssistant(){
 }
 
 // ── Reconnect banner (B4/B5: reload resilience) ──
-const INFLIGHT_KEY = 'hermes-webui-inflight'; // localStorage key for in-flight session tracking
-const INFLIGHT_STATE_KEY = 'hermes-webui-inflight-state'; // localStorage snapshots for mid-stream reload recovery
+const INFLIGHT_KEY = 'agy-webui-inflight'; // localStorage key for in-flight session tracking
+const INFLIGHT_STATE_KEY = 'agy-webui-inflight-state'; // localStorage snapshots for mid-stream reload recovery
 const INFLIGHT_STATE_DEFAULT_LIMITS = {
   maxSessions:8,
   messages:24,
@@ -10043,7 +10043,7 @@ function _formatUpdateTargetStatus(label,info){
 }
 function _formatManualUpdateInstruction(info){
   if(!(info&&info.no_git&&info.manual_update&&info.behind>0)) return null;
-  return t('settings_update_manual_docker','docker pull ghcr.io/nesquena/hermes-webui:latest');
+  return t('settings_update_manual_docker','docker compose pull && docker compose up -d');
 }
 function _formatUpdateCheckError(label,info){
   if(!info||!info.error) return null;
@@ -10124,7 +10124,7 @@ function toggleUpdateSummaryExpanded(){
   panel.classList.toggle('update-summary-expanded',expanded);
   _syncUpdateSummaryExpandButton(expanded);
 }
-const WHATS_NEW_SUMMARY_STORAGE_KEY='hermes-whats-new-generated-summaries';
+const WHATS_NEW_SUMMARY_STORAGE_KEY='agy-whats-new-generated-summaries';
 const WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES=256*1024;
 function _summaryStorageByteLength(value){
   const text=typeof value==='string'?value:JSON.stringify(value);
@@ -10391,7 +10391,7 @@ function _i18nUpdateText(key, fallback){
 }
 function dismissUpdate(){
   const b=$('updateBanner');if(b)b.classList.remove('visible');
-  sessionStorage.setItem('hermes-update-dismissed','1');
+  sessionStorage.setItem('agy-update-dismissed','1');
 }
 function _isUpdateApplyNetworkError(error){
   if(error && error.status) return false;
@@ -10460,8 +10460,8 @@ async function applyUpdates(){
     }
     const stashConflictMessage=stashConflictMessages.join('\n\n');
     showToast(stashConflictMessage||'Update applied — restarting…',stashConflictMessages.length?10000:undefined,stashConflictMessages.length?'warning':undefined);
-    sessionStorage.removeItem('hermes-update-checked');
-    sessionStorage.removeItem('hermes-update-dismissed');
+    sessionStorage.removeItem('agy-update-checked');
+    sessionStorage.removeItem('agy-update-dismissed');
     _waitForServerThenReload({baselineServerIdentity});
   }catch(e){
     const msg=_formatUpdateApplyExceptionMessage(e);
@@ -10509,8 +10509,8 @@ async function applyClearUpdateLock(btn){
   try{
     const res=await api('/api/updates/clear_lock',{method:'POST',body:JSON.stringify({target}),timeoutMs:60000});
     if(res.ok){
-      sessionStorage.removeItem('hermes-update-checked');
-      sessionStorage.removeItem('hermes-update-dismissed');
+      sessionStorage.removeItem('agy-update-checked');
+      sessionStorage.removeItem('agy-update-dismissed');
       showToast('Update applied — restarting…');
       _waitForServerThenReload({});
     } else if(res.lock_held){
@@ -10656,8 +10656,8 @@ async function forceUpdate(btn){
       return;
     }
     showToast('Force update applied — restarting…');
-    sessionStorage.removeItem('hermes-update-checked');
-    sessionStorage.removeItem('hermes-update-dismissed');
+    sessionStorage.removeItem('agy-update-checked');
+    sessionStorage.removeItem('agy-update-dismissed');
     _waitForServerThenReload({baselineServerIdentity});
   }catch(e){
     if(errEl){errEl.textContent='Force update failed: '+e.message;errEl.style.display='block';}
@@ -12546,7 +12546,7 @@ function _renderTransparentTurnFooter(turn, opts){
 // finalized into a settled assistant turn (the live attribute is removed in
 // _convertLiveActivityGroupToSettled / when liveAssistantTurn loses its id).
 let _liveActivityUserExpanded;
-const _activityDisclosureStoragePrefix='hermes-activity-disclosure:';
+const _activityDisclosureStoragePrefix='agy-activity-disclosure:';
 function _activityDisclosureStorageKey(activityKey){
   if(!activityKey||!S.session||!S.session.session_id) return null;
   return _activityDisclosureStoragePrefix+S.session.session_id+':'+activityKey;
@@ -20548,15 +20548,15 @@ function _syncWorkspaceHiddenToggle(){
 }
 function toggleWorkspaceHiddenFiles(value){
   S.showHiddenWorkspaceFiles=!!value;
-  try{localStorage.setItem('hermes-workspace-show-hidden-files',S.showHiddenWorkspaceFiles?'1':'0');}catch(_){}
+  try{localStorage.setItem('agy-workspace-show-hidden-files',S.showHiddenWorkspaceFiles?'1':'0');}catch(_){}
   _syncWorkspaceHiddenToggle();
   renderFileTree();
 }
-try{S.showHiddenWorkspaceFiles=localStorage.getItem('hermes-workspace-show-hidden-files')==='1';}catch(_){}
-try{S.workspaceSortKey=_normalizeWorkspaceSortKey(localStorage.getItem('hermes-workspace-sort-key'));}catch(_){S.workspaceSortKey=WORKSPACE_SORT_DEFAULT;}
+try{S.showHiddenWorkspaceFiles=localStorage.getItem('agy-workspace-show-hidden-files')==='1';}catch(_){}
+try{S.workspaceSortKey=_normalizeWorkspaceSortKey(localStorage.getItem('agy-workspace-sort-key'));}catch(_){S.workspaceSortKey=WORKSPACE_SORT_DEFAULT;}
 function setWorkspaceSortKey(value){
   S.workspaceSortKey=_normalizeWorkspaceSortKey(value);
-  try{localStorage.setItem('hermes-workspace-sort-key',S.workspaceSortKey);}catch(_){ }
+  try{localStorage.setItem('agy-workspace-sort-key',S.workspaceSortKey);}catch(_){ }
   _syncWorkspacePrefsIndicators();
   _syncWorkspaceSortMenuState();
   renderFileTree();

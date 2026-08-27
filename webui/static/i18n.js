@@ -26335,7 +26335,7 @@ function t(key, ...args) {
 function setLocale(lang) {
   const resolved = resolveLocale(lang) || 'en';
   _locale = LOCALES[resolved];
-  try { localStorage.setItem('hermes-lang', resolved); } catch (_) {}
+  try { localStorage.setItem('agy-lang', resolved); } catch (_) {}
   document.documentElement.lang = _locale._speech || resolved;
 }
 
@@ -26345,7 +26345,7 @@ function setLocale(lang) {
  */
 function loadLocale() {
   let stored = null;
-  try { stored = localStorage.getItem('hermes-lang'); } catch (_) {}
+  try { stored = localStorage.getItem('agy-lang'); } catch (_) {}
   setLocale(resolvePreferredLocale(null, stored));
 }
 

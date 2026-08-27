@@ -37,7 +37,7 @@ let _pendingCarryForwardSnapshot = null;
 // Debounced save — prevents hammering the server on every keystroke.
 let _draftSaveTimer = null;
 const _DRAFT_SAVE_DELAY_MS = 400;
-const NEW_CHAT_DRAFT_SESSION_KEY = 'hermes-new-chat-draft-session';
+const NEW_CHAT_DRAFT_SESSION_KEY = 'agy-new-chat-draft-session';
 const _composerDraftKnownPayloadSessions = new Set();
 const _composerDraftRestoreSuppressedUntilBySid = new Map();
 const _COMPOSER_DRAFT_RESTORE_SUPPRESS_MS = 30000;
@@ -345,9 +345,9 @@ function _clearComposerDraft(sid, text, files) {
   }).catch(() => {});
 }
 
-const SESSION_VIEWED_COUNTS_KEY = 'hermes-session-viewed-counts';
-const SESSION_COMPLETION_UNREAD_KEY = 'hermes-session-completion-unread';
-const SESSION_OBSERVED_STREAMING_KEY = 'hermes-session-observed-streaming';
+const SESSION_VIEWED_COUNTS_KEY = 'agy-session-viewed-counts';
+const SESSION_COMPLETION_UNREAD_KEY = 'agy-session-completion-unread';
+const SESSION_OBSERVED_STREAMING_KEY = 'agy-session-observed-streaming';
 // Per-profile session-count cache (issue #4717 / #4662 Phase 1.5). Records how
 // many sessions each profile rendered last time, keyed by profile name, so a
 // profile switch can pick an honest loading skeleton BEFORE the new /api/sessions
@@ -355,7 +355,7 @@ const SESSION_OBSERVED_STREAMING_KEY = 'hermes-session-observed-streaming';
 // placeholder instead of a content skeleton that implies data which never arrives.
 // A profile we've never recorded falls back to the normal content skeleton (safe
 // default — never hide a skeleton for a profile that may well have conversations).
-const SESSION_PROFILE_COUNTS_KEY = 'hermes-session-profile-counts';
+const SESSION_PROFILE_COUNTS_KEY = 'agy-session-profile-counts';
 let _sessionProfileCounts = null;
 let _sessionViewedCounts = null;
 let _sessionCompletionUnread = null;
@@ -1386,7 +1386,7 @@ async function newSession(flash, options={}){
     S.lastUsage={...(data.session.last_usage||{})};
     if(!(options&&options.worktree)) _rememberNewChatDraftSession(S.session);
     if(flash)S.session._flash=true;
-    try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
+    try{localStorage.setItem('agy-webui-session',S.session.session_id);}catch(_){}
     _setActiveSessionUrl(S.session.session_id);
     if(typeof startSessionStream==='function') startSessionStream(S.session.session_id);
     _setSessionViewedCount(S.session.session_id, S.session.message_count || 0);
@@ -1485,7 +1485,7 @@ async function newSession(flash, options={}){
  */
 function _clearStuckSessionOnBoot(sid, currentSid){
   if(!currentSid){
-    try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
+    try{ localStorage.removeItem('agy-webui-session'); }catch(_){ }
     try{ history.replaceState(null,'',_appRootPath()); }catch(_){ }
   }
 }
@@ -1535,7 +1535,7 @@ async function _switchProfileForSessionLoad(profile){
       _resetCronUnreadForProfileSwitch();
     }
     if(typeof _clearPersistedModelState==='function') _clearPersistedModelState();
-    else localStorage.removeItem('hermes-webui-model');
+    else localStorage.removeItem('agy-webui-model');
     if(data.default_model) window._defaultModel=data.default_model;
     if(data.default_model_provider) window._activeProvider=data.default_model_provider;
     if(typeof refreshProfileTransitionReasoningChip==='function'){
@@ -1779,7 +1779,7 @@ async function loadSession(sid){
         // Only the rethrow stays gated on !currentSid: boot rethrows to fall
         // through to empty-state; mid-session there is no boot path to reach.
         if(!currentSid || currentSid===sid){
-          try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
+          try{ localStorage.removeItem('agy-webui-session'); }catch(_){ }
           try{ history.replaceState(null,'',_appRootPath()); }catch(_){ }
           if (_isCurrentLoad()) _loadingSessionId = null;
           if(!currentSid){
@@ -1936,7 +1936,7 @@ async function loadSession(sid){
     Number(data.session.message_count || 0),
     Number(data.session.last_message_at || data.session.updated_at || 0)
   );
-  try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
+  try{localStorage.setItem('agy-webui-session',S.session.session_id);}catch(_){}
   _setActiveSessionUrl(S.session.session_id);
   if(typeof startSessionStream==='function') startSessionStream(S.session.session_id);
 
@@ -2493,14 +2493,14 @@ function _setSessionSourceFilter(filter) {
   _activeProject = null;
   _selectedSessions.clear();
   _sessionSelectMode = false;
-  try { localStorage.setItem('hermes-session-source-filter', next); } catch (_e) {}
+  try { localStorage.setItem('agy-session-source-filter', next); } catch (_e) {}
   renderSessionListFromCache();
   void renderSessionList({deferWhileInteracting:false});
 }
 
 function _restoreSessionSourceFilter() {
   try {
-    const raw = localStorage.getItem('hermes-session-source-filter');
+    const raw = localStorage.getItem('agy-session-source-filter');
     if (raw === 'cli' || raw === 'webui') _sessionSourceFilter = raw;
   } catch (_e) {}
 }
@@ -3834,7 +3834,7 @@ let _allProjects = [];  // cached project list
 // double-underscore prefixes provide.
 const NO_PROJECT_FILTER = '__none__';
 let _activeProject = null;  // project_id filter (null = show all, NO_PROJECT_FILTER = unassigned only)
-const SHOW_ALL_PROFILES_STORAGE_KEY = 'hermes-show-all-profiles';
+const SHOW_ALL_PROFILES_STORAGE_KEY = 'agy-show-all-profiles';
 let _showAllProfiles = false;  // false = filter to active profile only
 let _profileSwitchOpeningExistingSession = false;  // true while cross-profile sidebar click switches profile before loadSession()
 let _otherProfileCount = 0;       // count of sessions from other profiles (server-reported)
@@ -4236,7 +4236,7 @@ function _renderBatchActionBar(){
       const cleanupFailedCount=results.filter(result=>result.response&&result.response.state_db_cleanup_failed).length;
       ids.forEach(_clearHandoffStorageForSession);
       if(S.session&&ids.includes(S.session.session_id)){
-        S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('hermes-webui-session');
+        S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('agy-webui-session');
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
         const remaining=await api('/api/sessions'+_sessionListQueryString());
         if(remaining.sessions&&remaining.sessions.length){await loadSession(remaining.sessions[0].session_id);}
@@ -4741,7 +4741,7 @@ async function _archiveSession(session, archived=true, beforeListRender=null){
     const cached=(_allSessions||[]).find(s=>s&&s.session_id===session.session_id);
     if(cached) cached.archived=archived;
     if(S.session&&S.session.session_id===session.session_id) S.session.archived=archived;
-    try{ if(archived&&session.session_id&&localStorage.getItem('hermes-webui-session')===session.session_id) localStorage.removeItem('hermes-webui-session'); }catch(_){ }
+    try{ if(archived&&session.session_id&&localStorage.getItem('agy-webui-session')===session.session_id) localStorage.removeItem('agy-webui-session'); }catch(_){ }
     showToast(session.archived?_sessionArchiveToast(response,session):t('session_restored'));
     if(renderHold) await renderHold;
     if(_showArchived&&!_sessionPrefersReducedMotion()) _sessionSwipeReturnOffsets.set(session.session_id,'0px');
@@ -7143,7 +7143,7 @@ function _sessionDisplayTitle(s){
 
 function _sessionTitleIsDefaultWebUI(rawTitle){
   const title=String(rawTitle||'').replace(/\s+/g,' ').trim();
-  return title==='Hermes WebUI'||/^Hermes WebUI #\d+$/.test(title);
+  return title==='Antigravity WebUI'||title==='AGY WebUI'||title==='Hermes WebUI'||/^(Antigravity|AGY|Hermes) WebUI #\d+$/.test(title);
 }
 
 function _sessionTitleTags(rawTitle){
@@ -7807,8 +7807,8 @@ function renderSessionListFromCache(){
   const now=_serverNowMs();
   // Collapse state persisted in localStorage
   let _groupCollapsed={};
-  try{_groupCollapsed=JSON.parse(localStorage.getItem('hermes-date-groups-collapsed')||'{}');}catch(e){}
-  const _saveCollapsed=()=>{try{localStorage.setItem('hermes-date-groups-collapsed',JSON.stringify(_groupCollapsed));}catch(e){}};
+  try{_groupCollapsed=JSON.parse(localStorage.getItem('agy-date-groups-collapsed')||'{}');}catch(e){}
+  const _saveCollapsed=()=>{try{localStorage.setItem('agy-date-groups-collapsed',JSON.stringify(_groupCollapsed));}catch(e){}};
   // Group sessions by date
   const groups=[];
   let curLabel=null,curItems=[];
@@ -8892,7 +8892,7 @@ function renderSessionListFromCache(){
 }
 
 async function _handleActiveSessionStorageEvent(e){
-  if(!e || e.key !== 'hermes-webui-session') return;
+  if(!e || e.key !== 'agy-webui-session') return;
   // Do not treat localStorage as a global active-session bus. Each tab owns its
   // active conversation via its URL (/session/<id>), so another tab switching
   // sessions must not force this tab to navigate away from an in-flight turn.
@@ -9046,7 +9046,7 @@ async function deleteSession(sid, beforeDelete=null){
   if(S.session&&S.session.session_id===sid){
     S.session=null;S.messages=[];S.entries=[];
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
-    localStorage.removeItem('hermes-webui-session');
+    localStorage.removeItem('agy-webui-session');
     // load the most recent remaining session, or show blank if none left
     const remaining=await api('/api/sessions'+_sessionListQueryString());
     if(remaining.sessions&&remaining.sessions.length){

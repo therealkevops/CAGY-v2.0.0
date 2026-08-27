@@ -37,7 +37,7 @@ function parseCommand(text){
 const DESKTOP_COMPANION_EXTENSION_ID='desktop-companion';
 const DESKTOP_COMPANION_NAME='Desktop Companion';
 const DESKTOP_COMPANION_INSTALL_PATH='Settings -> Extensions -> Gallery -> Desktop Companion';
-const DESKTOP_COMPANION_SETUP_GUIDE_URL='https://github.com/franksong2702/hermes-webui-desktop-companion#after-gallery-install';
+const DESKTOP_COMPANION_SETUP_GUIDE_URL='https://github.com/franksong2702/agy-webui-desktop-companion#after-gallery-install';
 const DESKTOP_COMPANION_LOCAL_APP_LABEL='Desktop Companion app';
 
 function _getDesktopCompanionStatusGlobal(){
@@ -953,7 +953,7 @@ async function _applyManualCompressionResult(data, focusTopic, visibleCount, com
       S.messages=data.session.messages||[];
       S.toolCalls=data.session.tool_calls||[];
       clearLiveToolCards();
-      try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
+      try{localStorage.setItem('agy-webui-session',S.session.session_id);}catch(_){}
       if(typeof _setActiveSessionUrl==='function') _setActiveSessionUrl(S.session.session_id);
       syncTopbar();
       renderMessages();
@@ -1147,10 +1147,10 @@ async function cmdTheme(args){
   if(themes.includes(val)||legacyThemes.includes(val)){
     const appearance=_normalizeAppearance(
       val,
-      legacyThemes.includes(val)?null:localStorage.getItem('hermes-skin')
+      legacyThemes.includes(val)?null:localStorage.getItem('agy-skin')
     );
-    localStorage.setItem('hermes-theme',appearance.theme);
-    localStorage.setItem('hermes-skin',appearance.skin);
+    localStorage.setItem('agy-theme',appearance.theme);
+    localStorage.setItem('agy-skin',appearance.skin);
     _applyTheme(appearance.theme);
     _applySkin(appearance.skin);
     try{await api('/api/settings',{method:'POST',body:JSON.stringify({theme:appearance.theme,skin:appearance.skin})});}catch(e){}
@@ -1165,9 +1165,9 @@ async function cmdTheme(args){
   }
   // Check if it's a skin
   if(skins.includes(val)){
-    const appearance=_normalizeAppearance(localStorage.getItem('hermes-theme'),val);
-    localStorage.setItem('hermes-theme',appearance.theme);
-    localStorage.setItem('hermes-skin',appearance.skin);
+    const appearance=_normalizeAppearance(localStorage.getItem('agy-theme'),val);
+    localStorage.setItem('agy-theme',appearance.theme);
+    localStorage.setItem('agy-skin',appearance.skin);
     _applyTheme(appearance.theme);
     _applySkin(appearance.skin);
     try{await api('/api/settings',{method:'POST',body:JSON.stringify({theme:appearance.theme,skin:appearance.skin})});}catch(e){}

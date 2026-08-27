@@ -3,10 +3,10 @@
 // and cross-tab shutdown broadcasts as early as possible.
 (function(){
   // Clear stale stop-server flag on successful page load (server is reachable)
-  try{localStorage.removeItem('hermes-webui-server-stopped');}catch(_){}
+  try{localStorage.removeItem('agy-webui-server-stopped');}catch(_){}
   // Listen for shutdown broadcast from other tabs
   try {
-    var _stopChan = new BroadcastChannel('hermes-webui-shutdown');
+    var _stopChan = new BroadcastChannel('agy-webui-shutdown');
     _stopChan.onmessage = function() { _showServerStopped(); };
   } catch(_) {}
 })();
@@ -221,7 +221,7 @@ function _syncWorkspacePanelInlineWidth(){
     return;
   }
 
-  const saved = localStorage.getItem('hermes-panel-w');
+  const saved = localStorage.getItem('agy-panel-w');
   if(!saved) return;
   const parsed = parseInt(saved, 10);
   if(Number.isNaN(parsed) || parsed <= 0) return;
@@ -252,7 +252,7 @@ function _setWorkspacePanelMode(mode){
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
-  try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
+  try{localStorage.setItem('agy-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
   layout.classList.toggle('workspace-panel-collapsed',!open);
   if(_isCompactWorkspaceViewport()){
     panel.classList.toggle('mobile-open',open);
@@ -516,7 +516,7 @@ _installPwaSidebarSwipeGesture();
 // Mobile is unaffected: the sidebar is an overlay there, and every collapse
 // code path is gated on `_isDesktopWidth()` (min-width:641px).
 // State is persisted via localStorage and survives reloads + bfcache.
-const _SIDEBAR_COLLAPSED_KEY='hermes-webui-sidebar-collapsed';
+const _SIDEBAR_COLLAPSED_KEY='agy-webui-sidebar-collapsed';
 
 function _isDesktopWidth(){
   try{return window.matchMedia('(min-width:641px)').matches;}catch(_){return true;}
@@ -692,11 +692,11 @@ function _micToastKeyForRecognitionError(error){
   let _forceMediaRecorder=!SpeechRecognition||(_micForceMediaRecorderStored===null?(_serverSttAvailable&&_canRecordAudio):_micForceMediaRecorderStored==='1');
 
   // Raw audio mode preference: send audio file instead of transcribing
-  let _rawAudioMode = localStorage.getItem('hermes-raw-audio-mode') === 'true';
+  let _rawAudioMode = localStorage.getItem('agy-raw-audio-mode') === 'true';
   // Append-on-commit preference: when ON (default), dictated text is appended
   // to any text already in the composer. When OFF, dictated text replaces the
   // composer content (the pre-existing behavior).
-  let _dictationAppend = localStorage.getItem('hermes-dictation-append') !== 'false';
+  let _dictationAppend = localStorage.getItem('agy-dictation-append') !== 'false';
   // Capture backend pinned at recording start ('speech' | 'media' | null) so
   // _stopMic / onstop act on the backend that actually started, even if the
   // raw-audio toggle changes mid-recording (#3169 Codex review).
@@ -762,7 +762,7 @@ function _micToastKeyForRecognitionError(error){
 
   function _applyRawAudioModePreference(enabled){
     _rawAudioMode=!!enabled;
-    try{localStorage.setItem('hermes-raw-audio-mode',_rawAudioMode?'true':'false');}catch(_){}
+    try{localStorage.setItem('agy-raw-audio-mode',_rawAudioMode?'true':'false');}catch(_){}
     const rawAudioCheckbox=document.getElementById('settingsRawAudio');
     if(rawAudioCheckbox) rawAudioCheckbox.checked=_rawAudioMode;
     _updateMicTooltip();
@@ -771,7 +771,7 @@ function _micToastKeyForRecognitionError(error){
 
   function _applyDictationAppendPreference(enabled){
     _dictationAppend=!!enabled;
-    try{localStorage.setItem('hermes-dictation-append',_dictationAppend?'true':'false');}catch(_){}
+    try{localStorage.setItem('agy-dictation-append',_dictationAppend?'true':'false');}catch(_){}
     const cb=document.getElementById('settingsDictationAppend');
     if(cb) cb.checked=_dictationAppend;
   }
@@ -890,13 +890,13 @@ function _micToastKeyForRecognitionError(error){
   }
 
   // Gate continuous dictation to MOBILE so desktop stays one-shot (single
-  // utterance). An explicit hermes-mic-continuous flag wins in both directions,
-  // mirroring the hermes-voice-continuous pattern: 'true' opts a desktop in,
+  // utterance). An explicit agy-mic-continuous flag wins in both directions,
+  // mirroring the agy-voice-continuous pattern: 'true' opts a desktop in,
   // 'false' opts a mobile out. Absent a flag, coarse-pointer (touch) devices get
   // continuity and everything else stays single-utterance.
   function _micDictationContinuous(){
     try{
-      const flag=localStorage.getItem('hermes-mic-continuous');
+      const flag=localStorage.getItem('agy-mic-continuous');
       if(flag==='true') return true;
       if(flag==='false') return false;
     }catch(_){}
@@ -1335,13 +1335,13 @@ window._micPendingSend=window._micPendingSend||false;
 // fetch. Without an eager value, every send during that boot window silently
 // falls back, ignoring a saved 'queue'/'interrupt' preference (worse on
 // slow/contended environments like WSL2, see #5132). Mirror the resolved value
-// into localStorage — the same synchronous-source pattern used by hermes-lang /
-// hermes-theme — so the very first send after a reload honors the saved choice.
+// into localStorage — the same synchronous-source pattern used by agy-lang /
+// agy-theme — so the very first send after a reload honors the saved choice.
 const _DEFAULT_MESSAGE_MODES=['queue','interrupt','steer'];
 // Legacy localStorage key (pre-#5145 rename); read it as a fallback so an
 // existing user's persisted busy-input-mode preference survives the rename.
-const _LEGACY_DEFAULT_MESSAGE_MODE_KEY='hermes-busy-input-mode';
-const _DEFAULT_MESSAGE_MODE_KEY='hermes-default-message-mode';
+const _LEGACY_DEFAULT_MESSAGE_MODE_KEY='agy-busy-input-mode';
+const _DEFAULT_MESSAGE_MODE_KEY='agy-default-message-mode';
 // ── Auto-follow eager mirror (#6819) ────────────────────────────────────────
 // PERSISTENCE CONTRACT (client-side mirror of the Auto-follow new content
 // setting, `auto_scroll_follow`):
@@ -1368,7 +1368,7 @@ const _DEFAULT_MESSAGE_MODE_KEY='hermes-default-message-mode';
 // * Upgrade: there is no legacy key; the mirror is created on first settings
 //   resolve, so older sessions simply default to ON until the next settings
 //   round-trip writes it.
-const _AUTO_SCROLL_FOLLOW_KEY='hermes-auto-scroll-follow';
+const _AUTO_SCROLL_FOLLOW_KEY='agy-auto-scroll-follow';
 function _persistAutoScrollFollow(enabled){
   try{localStorage.setItem(_AUTO_SCROLL_FOLLOW_KEY,enabled?'1':'0');}catch(_){}
   return enabled;
@@ -1556,7 +1556,7 @@ window.renderTranscript=function(container, messages, opts){
   // a power-user surface; explicit opt-in avoids the visual confusion
   // of two near-identical mic icons.
   function _voiceModePrefEnabled(){
-    try{ return localStorage.getItem('hermes-voice-mode-button')==='true'; }
+    try{ return localStorage.getItem('agy-voice-mode-button')==='true'; }
     catch(_){ return false; }
   }
   let _voiceModeActive=false;
@@ -1581,10 +1581,10 @@ window.renderTranscript=function(container, messages, opts){
   let _browserTtsWatchdog=null;
   let _browserTtsSuppressNextErrorRearm=false;
   // Configurable via localStorage keys (set from dev console or a future settings panel).
-  //   hermes-voice-silence-ms, pause duration before auto-send (ms, default 1800)
-  //   hermes-voice-continuous, keep mic open across natural pauses ("true"/"false", default false)
+  //   agy-voice-silence-ms, pause duration before auto-send (ms, default 1800)
+  //   agy-voice-continuous, keep mic open across natural pauses ("true"/"false", default false)
   function _voiceSilenceMs(){
-    const _silenceMsRaw=parseInt(localStorage.getItem('hermes-voice-silence-ms'),10);
+    const _silenceMsRaw=parseInt(localStorage.getItem('agy-voice-silence-ms'),10);
     return (Number.isFinite(_silenceMsRaw)&&_silenceMsRaw>0)?Math.max(200,_silenceMsRaw):1800;
   }
 
@@ -1646,7 +1646,7 @@ window.renderTranscript=function(container, messages, opts){
     _setState('listening');
 
     _recognition=new SpeechRecognition();
-    _recognition.continuous=localStorage.getItem('hermes-voice-continuous')==='true';
+    _recognition.continuous=localStorage.getItem('agy-voice-continuous')==='true';
     _recognition.interimResults=true;
     _recognition.lang=(typeof _locale!=='undefined'&&_locale._speech)||'en-US';
 
@@ -1769,15 +1769,15 @@ window.renderTranscript=function(container, messages, opts){
         .trim();
     }
     if(!clean){ _startListening(); return; }
-    const engine=localStorage.getItem("hermes-tts-engine")||"browser";
+    const engine=localStorage.getItem("agy-tts-engine")||"browser";
     // Extension-registered TTS engine (window.registerHermesTtsEngine): synth
     // via the extension, then play through the same Audio lifecycle as edge.
     if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
       _ttsSpeaking=true;
       const _opts={
-        voice: localStorage.getItem("hermes-tts-voice")||'',
-        rate: parseFloat(localStorage.getItem("hermes-tts-rate")),
-        pitch: parseFloat(localStorage.getItem("hermes-tts-pitch")),
+        voice: localStorage.getItem("agy-tts-voice")||'',
+        rate: parseFloat(localStorage.getItem("agy-tts-rate")),
+        pitch: parseFloat(localStorage.getItem("agy-tts-pitch")),
       };
       Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
         .then(function(buf){
@@ -1891,9 +1891,9 @@ window.renderTranscript=function(container, messages, opts){
       return;
     }
     if(engine==="edge"){
-      const voice=localStorage.getItem("hermes-tts-voice")||"zh-CN-XiaoxiaoNeural";
-      const savedRate=parseFloat(localStorage.getItem("hermes-tts-rate"));
-      const savedPitch=parseFloat(localStorage.getItem("hermes-tts-pitch"));
+      const voice=localStorage.getItem("agy-tts-voice")||"zh-CN-XiaoxiaoNeural";
+      const savedRate=parseFloat(localStorage.getItem("agy-tts-rate"));
+      const savedPitch=parseFloat(localStorage.getItem("agy-tts-pitch"));
       let rate='', pitch='';
       if(!isNaN(savedRate)){const pct=Math.round((savedRate-1)*100);const sign=pct>=0?'+':'';rate=sign+pct+'%';}
       if(!isNaN(savedPitch)){const hz=Math.round((savedPitch-1)*50);const sign=hz>=0?'+':'';pitch=sign+hz+'Hz';}
@@ -1942,15 +1942,15 @@ window.renderTranscript=function(container, messages, opts){
     const utter=new SpeechSynthesisUtterance(clean);
 
     // Apply saved voice preferences
-    const savedVoice=localStorage.getItem('hermes-tts-voice');
+    const savedVoice=localStorage.getItem('agy-tts-voice');
     const voices=speechSynthesis.getVoices();
     if(savedVoice&&voices.length){
       const match=voices.find(v=>v.name===savedVoice);
       if(match) utter.voice=match;
     }
-    const savedRate=parseFloat(localStorage.getItem('hermes-tts-rate'));
+    const savedRate=parseFloat(localStorage.getItem('agy-tts-rate'));
     if(!isNaN(savedRate)) utter.rate=Math.min(2,Math.max(0.5,savedRate));
-    const savedPitch=parseFloat(localStorage.getItem('hermes-tts-pitch'));
+    const savedPitch=parseFloat(localStorage.getItem('agy-tts-pitch'));
     if(!isNaN(savedPitch)) utter.pitch=Math.min(2,Math.max(0,savedPitch));
 
     utter.onend=()=>{
@@ -2102,7 +2102,7 @@ $('btnDownload').onclick=()=>{
   if(!S.session)return;
   const blob=new Blob([transcript()],{type:'text/markdown'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`hermes-${S.session.session_id}.md`;a.click();URL.revokeObjectURL(a.href);
+  a.download=`agy-${S.session.session_id}.md`;a.click();URL.revokeObjectURL(a.href);
 };
 function _buildSessionExportUrl(sessionId,params){
   const url=new URL('api/session/export',document.baseURI||location.href);
@@ -2116,7 +2116,7 @@ $('btnExportJSON').onclick=()=>{
   if(!S.session)return;
   const url=_buildSessionExportUrl(S.session.session_id);
   const a=document.createElement('a');a.href=url;
-  a.download=`hermes-${S.session.session_id}.json`;a.click();
+  a.download=`agy-${S.session.session_id}.json`;a.click();
 };
 $('btnShareSession').onclick=async()=>{
   if(!S.session) return;
@@ -2193,7 +2193,7 @@ function exportSessionHTML(session){
   const paletteB64=btoa(unescape(encodeURIComponent(JSON.stringify(clean))));
   const url=_buildSessionExportUrl(sid,{format:'html',theme,palette:paletteB64});
   const a=document.createElement('a');a.href=url;
-  a.download=`hermes-${sid}.html`;a.click();
+  a.download=`agy-${sid}.html`;a.click();
 }
 $('btnExportHTML').onclick=()=>exportSessionHTML();
 $('btnImportJSON').onclick=()=>$('importFileInput').click();
@@ -2265,7 +2265,7 @@ $('modelSelect').onchange=async()=>{
   if(typeof clearProfileTransitionReasoningContext==='function') clearProfileTransitionReasoningContext();
   if(typeof closeModelDropdown==='function') closeModelDropdown();
   if(typeof _writePersistedModelState==='function') _writePersistedModelState(modelState.model,modelState.model_provider);
-  else try{localStorage.setItem('hermes-webui-model',modelState.model)}catch{}
+  else try{localStorage.setItem('agy-webui-model',modelState.model)}catch{}
   if(!S.session){
     if(typeof _rememberEmptyComposerModelOverride==='function') _rememberEmptyComposerModelOverride(modelState.model,modelState.model_provider);
     if(typeof syncModelChip==='function') syncModelChip();
@@ -2642,7 +2642,7 @@ if(window.visualViewport){
     if(!handle || !targetEl) return;
 
     // Restore saved width
-    if(storageKey === 'hermes-panel-w'){
+    if(storageKey === 'agy-panel-w'){
       _syncWorkspacePanelInlineWidth();
     }else{
       const saved = localStorage.getItem(storageKey);
@@ -2679,8 +2679,8 @@ if(window.visualViewport){
   window._initResizePanels = function(){
     const sidebar    = document.querySelector('.sidebar');
     const rightpanel = document.querySelector('.rightpanel');
-    initResize('sidebarResize',    sidebar,    'right', SIDEBAR_MIN, SIDEBAR_MAX, 'hermes-sidebar-w');
-    initResize('rightpanelResize', rightpanel, 'left',  PANEL_MIN,   PANEL_MAX,   'hermes-panel-w');
+    initResize('sidebarResize',    sidebar,    'right', SIDEBAR_MIN, SIDEBAR_MAX, 'agy-sidebar-w');
+    initResize('rightpanelResize', rightpanel, 'left',  PANEL_MIN,   PANEL_MAX,   'agy-panel-w');
   };
 })();
 
@@ -2750,7 +2750,7 @@ function _syncThemeColorMeta(){
   try{
     const bg=getComputedStyle(document.documentElement).getPropertyValue('--sidebar').trim();
     if(!bg) return;
-    const known=document.getElementById('hermes-theme-color');
+    const known=document.getElementById('agy-theme-color');
     if(known){
       known.setAttribute('content',bg);
       known.removeAttribute('media');
@@ -2826,10 +2826,10 @@ function _applySkin(name){
 }
 
 function _pickTheme(name){
-  const currentSkin=localStorage.getItem('hermes-skin');
+  const currentSkin=localStorage.getItem('agy-skin');
   const appearance=_normalizeAppearance(name,currentSkin);
-  localStorage.setItem('hermes-theme',appearance.theme);
-  localStorage.setItem('hermes-skin',appearance.skin);
+  localStorage.setItem('agy-theme',appearance.theme);
+  localStorage.setItem('agy-skin',appearance.skin);
   _applyTheme(appearance.theme);
   _applySkin(appearance.skin);
   _syncThemePicker(appearance.theme);
@@ -2842,9 +2842,9 @@ function _pickTheme(name){
 }
 
 function _pickSkin(name){
-  const appearance=_normalizeAppearance(localStorage.getItem('hermes-theme'),name);
-  localStorage.setItem('hermes-theme',appearance.theme);
-  localStorage.setItem('hermes-skin',appearance.skin);
+  const appearance=_normalizeAppearance(localStorage.getItem('agy-theme'),name);
+  localStorage.setItem('agy-theme',appearance.theme);
+  localStorage.setItem('agy-skin',appearance.skin);
   _applyTheme(appearance.theme);
   _applySkin(appearance.skin);
   _syncThemePicker(appearance.theme);
@@ -2881,7 +2881,7 @@ function _applyFontSize(size){
 }
 
 function _pickFontSize(size){
-  localStorage.setItem('hermes-font-size',size);
+  localStorage.setItem('agy-font-size',size);
   _applyFontSize(size);
   _syncFontSizePicker(size);
   const hidden=$('settingsFontSize');
@@ -3030,16 +3030,16 @@ function registerHermesSkin(descriptor){
     _renderExtensionSkinStyles();
     // Refresh the picker if it's already built.
     if(document.getElementById('skinPickerGrid')){
-      _buildSkinPicker((localStorage.getItem('hermes-skin')||'default').toLowerCase());
+      _buildSkinPicker((localStorage.getItem('agy-skin')||'default').toLowerCase());
     }
     // If the user had previously selected this (now-available) skin, apply it.
-    if((localStorage.getItem('hermes-skin')||'').toLowerCase()===key){
+    if((localStorage.getItem('agy-skin')||'').toLowerCase()===key){
       _applySkin(key);
     }
     return true;
   }catch(_){ return false; }
 }
-if(typeof window!=='undefined') window.registerHermesSkin=registerHermesSkin;
+if(typeof window!=='undefined'){ window.registerAgySkin=registerHermesSkin; window.registerHermesSkin=registerHermesSkin; }
 
 function applyBotName(){
   // The saved assistant name applies to the default profile only.
@@ -3241,10 +3241,10 @@ function _mirrorSpeechSettingsFromServer(s){
     return server;
   };
   const boolKeys=[
-    ['tts_enabled','hermes-tts-enabled'],
-    ['tts_auto_read','hermes-tts-auto-read'],
-    ['voice_mode_button','hermes-voice-mode-button'],
-    ['voice_continuous','hermes-voice-continuous'],
+    ['tts_enabled','agy-tts-enabled'],
+    ['tts_auto_read','agy-tts-auto-read'],
+    ['voice_mode_button','agy-voice-mode-button'],
+    ['voice_continuous','agy-voice-continuous'],
   ];
   boolKeys.forEach(([settingKey,storageKey])=>{
     if(hasServerValue(settingKey)){
@@ -3252,22 +3252,22 @@ function _mirrorSpeechSettingsFromServer(s){
     }
   });
   [
-    ['tts_engine','hermes-tts-engine'],
-    ['tts_voice','hermes-tts-voice'],
-    ['tts_rate','hermes-tts-rate'],
-    ['tts_pitch','hermes-tts-pitch'],
-    ['voice_silence_ms','hermes-voice-silence-ms'],
+    ['tts_engine','agy-tts-engine'],
+    ['tts_voice','agy-tts-voice'],
+    ['tts_rate','agy-tts-rate'],
+    ['tts_pitch','agy-tts-pitch'],
+    ['voice_silence_ms','agy-voice-silence-ms'],
   ].forEach(([settingKey,storageKey])=>{
     if(hasServerValue(settingKey)){
       try{localStorage.setItem(storageKey,String(resolveScalar(settingKey,storageKey)));}catch(_){}
     }
   });
   if(hasServerValue('raw_audio_mode')){
-    const rawAudioMode=resolveBool('raw_audio_mode','hermes-raw-audio-mode');
+    const rawAudioMode=resolveBool('raw_audio_mode','agy-raw-audio-mode');
     if(typeof window._applyRawAudioModePreference==='function'){
       window._applyRawAudioModePreference(rawAudioMode);
     }else{
-      try{localStorage.setItem('hermes-raw-audio-mode',rawAudioMode?'true':'false');}catch(_){}
+      try{localStorage.setItem('agy-raw-audio-mode',rawAudioMode?'true':'false');}catch(_){}
     }
   }
 }
@@ -3398,8 +3398,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     // server in charge for empty first-visit state while preserving explicit
     // light/dark/system choices after a failed autosave.
     const srvAppearance=_normalizeAppearance(s.theme,s.skin);
-    const lsTheme=(localStorage.getItem('hermes-theme')||'').trim().toLowerCase();
-    const lsSkin=(localStorage.getItem('hermes-skin')||'').trim().toLowerCase();
+    const lsTheme=(localStorage.getItem('agy-theme')||'').trim().toLowerCase();
+    const lsSkin=(localStorage.getItem('agy-skin')||'').trim().toLowerCase();
     const lsAppearance=_normalizeAppearance(lsTheme||null,lsSkin||null);
     // An unknown non-default persisted skin is most likely an extension-provided
     // skin (registerHermesSkin) whose extension script hasn't registered it yet
@@ -3412,9 +3412,9 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     const lsHasExplicitTheme=lsTheme&&['system','light','dark'].includes(lsTheme);
     const theme=lsHasExplicitTheme?lsAppearance.theme:srvAppearance.theme;
     const skin=lsHasExplicitSkin?(lsSkinIsPendingExt?lsSkin:lsAppearance.skin):srvAppearance.skin;
-    localStorage.setItem('hermes-theme',theme);
+    localStorage.setItem('agy-theme',theme);
     _applyTheme(theme);
-    localStorage.setItem('hermes-skin',skin);
+    localStorage.setItem('agy-skin',skin);
     _applySkin(skin);
     // Reconcile: if localStorage and server disagree, push localStorage
     // values to the server so the next refresh won't revert. Skip the push for a
@@ -3425,13 +3425,13 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
         api('/api/settings',{method:'POST',body:JSON.stringify({theme,skin})});
       }catch(_){}
     }
-    const fontSize=(s.font_size||localStorage.getItem('hermes-font-size')||'default');
-    localStorage.setItem('hermes-font-size',fontSize);
+    const fontSize=(s.font_size||localStorage.getItem('agy-font-size')||'default');
+    localStorage.setItem('agy-font-size',fontSize);
     _applyFontSize(fontSize);
     if(typeof setLocale==='function'){
       const _lang=typeof resolvePreferredLocale==='function'
-        ? resolvePreferredLocale(s.language, localStorage.getItem('hermes-lang'))
-        : (s.language || localStorage.getItem('hermes-lang') || 'en');
+        ? resolvePreferredLocale(s.language, localStorage.getItem('agy-lang'))
+        : (s.language || localStorage.getItem('agy-lang') || 'en');
       setLocale(_lang);
       if(typeof applyLocaleToDOM==='function')applyLocaleToDOM();
     }
@@ -3445,7 +3445,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     if(typeof window._applyVoiceModePref==='function') window._applyVoiceModePref();
     _applyComposerFooterVisibilitySettings();
     // TTS: apply enabled state on boot so buttons show/hide correctly (#499)
-    if(typeof _applyTtsEnabled==='function') _applyTtsEnabled(localStorage.getItem('hermes-tts-enabled')==='true');
+    if(typeof _applyTtsEnabled==='function') _applyTtsEnabled(localStorage.getItem('agy-tts-enabled')==='true');
   }catch(e){
     window._sendKey='enter';
     window._showTokenUsage=false;
@@ -3498,8 +3498,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     _bootSettings={check_for_updates:false};
     if(typeof setLocale==='function'){
       const _lang=typeof resolvePreferredLocale==='function'
-        ? resolvePreferredLocale(null, localStorage.getItem('hermes-lang'))
-        : (localStorage.getItem('hermes-lang') || 'en');
+        ? resolvePreferredLocale(null, localStorage.getItem('agy-lang'))
+        : (localStorage.getItem('agy-lang') || 'en');
       setLocale(_lang);
       if(typeof applyLocaleToDOM==='function')applyLocaleToDOM();
     }
@@ -3512,17 +3512,17 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     // closure-local to the voice-mode IIFE and not visible here.
     if(typeof window._applyVoiceModePref==='function') window._applyVoiceModePref();
     _applyComposerFooterVisibilitySettings();
-    if(typeof _applyTtsEnabled==='function') _applyTtsEnabled(localStorage.getItem('hermes-tts-enabled')==='true');
+    if(typeof _applyTtsEnabled==='function') _applyTtsEnabled(localStorage.getItem('agy-tts-enabled')==='true');
   }
   // Non-blocking update check (fire-and-forget, once per tab session)
   // ?test_updates=1 in URL forces banner display for testing (bypasses sessionStorage guards)
   const _testUpdates=new URLSearchParams(location.search).get('test_updates')==='1';
-  if(_testUpdates||(_bootSettings.check_for_updates!==false&&!sessionStorage.getItem('hermes-update-checked')&&!sessionStorage.getItem('hermes-update-dismissed'))){
+  if(_testUpdates||(_bootSettings.check_for_updates!==false&&!sessionStorage.getItem('agy-update-checked')&&!sessionStorage.getItem('agy-update-dismissed'))){
     const _checkUrl='api/updates/check'+(_testUpdates?'?simulate=1':'');
-    api(_checkUrl,{method:_testUpdates?'GET':'POST',body:_testUpdates?undefined:JSON.stringify({force:false}),timeoutMs:300000}).then(d=>{if(!_testUpdates)sessionStorage.setItem('hermes-update-checked','1');if((d.webui&&d.webui.behind>0)||(d.agent&&d.agent.behind>0))_showUpdateBanner(d);}).catch(()=>{});
+    api(_checkUrl,{method:_testUpdates?'GET':'POST',body:_testUpdates?undefined:JSON.stringify({force:false}),timeoutMs:300000}).then(d=>{if(!_testUpdates)sessionStorage.setItem('agy-update-checked','1');if((d.webui&&d.webui.behind>0)||(d.agent&&d.agent.behind>0))_showUpdateBanner(d);}).catch(()=>{});
   }
   const _bootActiveProfileUnauthRedirectBudget=(()=>{
-    const markerKey='hermes-webui-active-profile-bootstrap-401';
+    const markerKey='agy-webui-active-profile-bootstrap-401';
     let consumed=false;
     const readAttempted=(storage=sessionStorage)=>{
       try{
@@ -3619,7 +3619,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   const titleLabel=$('titlebarProfileLabel');
   if(titleLabel) titleLabel.textContent=S.activeProfile||'default';
   const profileIntent=(typeof _profileQueryIntentFromLocation==='function')?_profileQueryIntentFromLocation():null;
-  const _savedLocalBeforeProfileSwitch=localStorage.getItem('hermes-webui-session');
+  const _savedLocalBeforeProfileSwitch=localStorage.getItem('agy-webui-session');
   const _profileSwitchProfileBefore=S.activeProfile||'default';
   const _profileSwitchIsDefaultBefore=!!S.activeProfileIsDefault;
   let _profileSwitchCompleted=false;
@@ -3664,7 +3664,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
       : null;
     const savedState=(typeof _readPersistedModelState==='function')
       ? _readPersistedModelState()
-      : (localStorage.getItem('hermes-webui-model')?{model:localStorage.getItem('hermes-webui-model'),model_provider:null}:null);
+      : (localStorage.getItem('agy-webui-model')?{model:localStorage.getItem('agy-webui-model'),model_provider:null}:null);
     // Active sessions are authoritative. On fresh boot without a restored
     // session, keep the profile/server default ahead of stale browser model
     // state when a default exists.
@@ -3685,8 +3685,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
       else if(!applied&&!sessionModelState&&$('modelSelect').value!==stateToApply.model){
         if(typeof _clearPersistedModelState==='function') _clearPersistedModelState();
         else {
-          localStorage.removeItem('hermes-webui-model');
-          localStorage.removeItem('hermes-webui-model-state');
+          localStorage.removeItem('agy-webui-model');
+          localStorage.removeItem('agy-webui-model-state');
         }
       }
       else if(typeof syncModelChip==='function') syncModelChip();
@@ -3759,10 +3759,10 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   const _profileQueryBlocksSavedLocal=_profileQueryBlocksSavedLocalRestore(profileIntent, urlSession);
   if(_profileQueryBlocksSavedLocal&&_profileSwitchCompleted&&_profileSwitchChangedProfile){
     try{
-      if(localStorage.getItem('hermes-webui-session')===_savedLocalBeforeProfileSwitch) localStorage.removeItem('hermes-webui-session');
+      if(localStorage.getItem('agy-webui-session')===_savedLocalBeforeProfileSwitch) localStorage.removeItem('agy-webui-session');
     }catch(_){}
   }
-  const savedLocal=localStorage.getItem('hermes-webui-session');
+  const savedLocal=localStorage.getItem('agy-webui-session');
   const saved=urlSession||savedLocal;
   if(saved){
     try{
@@ -3771,7 +3771,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
         : null;
       if(savedSidebarOnlyState&&savedSidebarOnlyState.sidebarOnly){
         if(savedSidebarOnlyState.archived){
-          try{localStorage.removeItem('hermes-webui-session');}catch(_){}
+          try{localStorage.removeItem('agy-webui-session');}catch(_){}
         }
         S.session=null; S.messages=[]; S.activeStreamId=null; S.busy=false;
         S._bootReady=true;
@@ -3783,8 +3783,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
       if(_rootPrefillNeedsFreshComposer(urlSession, savedLocal, prefillIntent)){
         S.session=null; S.messages=[]; S.activeStreamId=null; S.busy=false;
         S._bootReady=true;
-        const _ephPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-          || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+        const _ephPanelPref=localStorage.getItem('agy-webui-workspace-panel-pref')==='open'
+          || localStorage.getItem('agy-webui-workspace-panel')==='open';
         if(_ephPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
         await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
         syncTopbar();syncWorkspacePanelState();
@@ -3821,8 +3821,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
         S._bootReady=true;
         // Restore panel pref before syncing so the workspace panel stays visible
         // even though there is no active session (#workspace-persist).
-        const _ephPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-          || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+        const _ephPanelPref=localStorage.getItem('agy-webui-workspace-panel-pref')==='open'
+          || localStorage.getItem('agy-webui-workspace-panel')==='open';
         if(_ephPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
         await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
         syncTopbar();syncWorkspacePanelState();
@@ -3833,22 +3833,22 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
       // Restore the panel from localStorage when the session has a workspace.
       // Preference key takes priority over runtime state so that closing
       // the panel via toolbar X doesn't suppress the "keep open" setting.
-      const panelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-        || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+      const panelPref=localStorage.getItem('agy-webui-workspace-panel-pref')==='open'
+        || localStorage.getItem('agy-webui-workspace-panel')==='open';
       if(S.session&&S.session.workspace&&panelPref&&!_isCompactWorkspaceViewport()){
         _workspacePanelMode='browse';
       }
       S._bootReady=true;
       syncTopbar();syncWorkspacePanelState();await renderSessionList();if(typeof startGatewaySSE==='function')startGatewaySSE();await checkInflightOnBoot(saved);await _finalizeComposerPrefillOnBoot(prefillIntent);return;}
-    catch(e){localStorage.removeItem('hermes-webui-session');}
+    catch(e){localStorage.removeItem('agy-webui-session');}
   }
   // no saved session - show empty state, wait for user to hit +
   S._bootReady=true;
   syncTopbar();
   // Restore panel pref so the workspace panel stays visible on a fresh load if the
   // user had it open during their last session (#workspace-persist).
-  const _freshPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-    || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+  const _freshPanelPref=localStorage.getItem('agy-webui-workspace-panel-pref')==='open'
+    || localStorage.getItem('agy-webui-workspace-panel')==='open';
   if(_freshPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
   await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
   syncWorkspacePanelState();
@@ -3909,7 +3909,7 @@ window.addEventListener('pageshow', async (event) => {
   // frozen DOM but another tab may have toggled the sidebar in the meantime.
   if (typeof _isSidebarCollapsed === 'function' && typeof toggleSidebar === 'function') {
     try {
-      const _want = localStorage.getItem('hermes-webui-sidebar-collapsed') === '1';
+      const _want = localStorage.getItem('agy-webui-sidebar-collapsed') === '1';
       const _have = _isSidebarCollapsed();
       if (_want !== _have) toggleSidebar(_want);
       if (typeof _syncSidebarAria === 'function') _syncSidebarAria();
@@ -3925,8 +3925,8 @@ async function shutdownServer() {
     danger: true,
   });
   if (!ok) return;
-  localStorage.setItem('hermes-webui-server-stopped', '1');
-  try { var bc = new BroadcastChannel('hermes-webui-shutdown'); bc.postMessage('stop'); bc.close(); } catch(_) {}
+  localStorage.setItem('agy-webui-server-stopped', '1');
+  try { var bc = new BroadcastChannel('agy-webui-shutdown'); bc.postMessage('stop'); bc.close(); } catch(_) {}
   _showServerStopped();
   try { await api('/api/shutdown', { method: 'POST' }); } catch (_) {}
 }

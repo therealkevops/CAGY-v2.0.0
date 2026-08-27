@@ -24,7 +24,7 @@ async function loadSubagents(force = false) {
     } else if (typeof _currentSessionId !== 'undefined' && _currentSessionId) {
       sessionId = _currentSessionId;
     } else if (typeof localStorage !== 'undefined') {
-      sessionId = localStorage.getItem('hermes-webui-session') || '';
+      sessionId = localStorage.getItem('agy-webui-session') || '';
     }
 
     const res = await fetch(`/api/subagents?session_id=${encodeURIComponent(sessionId)}`);
