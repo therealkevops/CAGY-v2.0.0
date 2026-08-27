@@ -167,8 +167,14 @@ To reset the container while preserving your sessions and login tokens:
 
 ---
 
+## Acknowledgments & Credits
+
+CAGY was originally adapted and forked from the open-source **[Hermes WebUI](https://github.com/NousResearch/hermes-webui)** project by Nous Research and its contributors. We express our gratitude to the original Hermes authors and community for providing an excellent web interface foundation.
+
+---
+
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE), preserving the original MIT licensing terms and upstream copyright notices.
 
 
