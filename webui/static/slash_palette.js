@@ -100,11 +100,14 @@ const AGY_SLASH_COMMANDS = [
   },
   {
     cmd: '/artifacts',
-    title: 'Artifacts & Visual Canvas',
+    title: 'Artifacts & File Explorer',
     category: 'Navigation',
-    desc: 'Open the generated reports, diagrams, and visual media canvas.',
+    desc: 'Open the right-hand workspace and session artifact explorer.',
     icon: 'file-text',
-    action: () => switchPanel('artifacts', { fromRailClick: true })
+    action: () => {
+      if (typeof openWorkspacePanel === 'function') openWorkspacePanel('browse');
+      if (typeof switchWorkspacePanelTab === 'function') switchWorkspacePanelTab('artifacts');
+    }
   }
 ];
 
