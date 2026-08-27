@@ -1403,10 +1403,10 @@
         <button id="btnEditFile" class="panel-icon-btn" style="font-size:12px;width:auto;padding:2px 8px;display:none;align-items:center;gap:4px" onclick="toggleEditMode()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Edit</button>
       </div>
       <pre class="preview-code" id="previewCode"></pre>
-      <div class="preview-img-wrap" id="previewImgWrap" style="display:none"><img class="preview-img" id="previewImg" src="" alt=""></div>
+      <div class="preview-img-wrap" id="previewImgWrap" style="display:none"><img class="preview-img" id="previewImg" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>
       <div class="preview-media-wrap" id="previewMediaWrap" style="display:none"></div>
       <div class="preview-pdf-wrap" id="previewPdfWrap" style="display:none">
-        <iframe class="preview-pdf-frame" id="previewPdfFrame" src="" title="PDF preview"></iframe>
+        <iframe class="preview-pdf-frame" id="previewPdfFrame" src="about:blank" title="PDF preview"></iframe>
       </div>
       <div class="preview-md" id="previewMd" style="display:none"></div>
       <div class="preview-html-wrap" id="previewHtmlWrap" style="display:none;flex:1;border-radius:8px;overflow:hidden;border:1px solid var(--border2)">
@@ -1415,6 +1415,7 @@
       <textarea id="previewEditArea" style="display:none;flex:1;width:100%;background:var(--code-bg);color:var(--pre-text);border:1px solid var(--border2);border-radius:8px;padding:12px;font-family:var(--font-mono);font-size:12px;line-height:1.6;resize:none;outline:none" oninput="_previewDirty=true;updateEditBtn()"></textarea>
     </div>
   </aside>
+</div>
 <div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 <div class="pwa-sidebar-edge-guard" id="pwaSidebarEdgeGuard" aria-hidden="true"></div>
 <div class="app-dialog-overlay" id="appDialogOverlay" style="display:none" aria-hidden="true">
@@ -1488,7 +1489,7 @@
     </div>
     <div class="mcp-form-group">
       <label for="mcpFormEnv">Environment Variables (JSON format, optional)</label>
-      <textarea id="mcpFormEnv" rows="2" placeholder='{"API_KEY": "secret", "DEBUG": "true"}'></textarea>
+      <textarea id="mcpFormEnv" rows="2" placeholder="{&quot;API_KEY&quot;: &quot;secret&quot;, &quot;DEBUG&quot;: &quot;true&quot;}"></textarea>
     </div>
     <div class="mcp-modal-actions">
       <button type="button" class="btn-mcp-action" onclick="closeAddMcpServerModal()">Cancel</button>
