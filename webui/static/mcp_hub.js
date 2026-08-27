@@ -303,7 +303,7 @@ function applyMcpPreset(preset) {
   } else if (preset === 'remote') {
     if (nameInp) nameInp.value = 'cloud-mcp';
     if (transportSel) { transportSel.value = 'http'; onMcpTransportChange(); }
-    if (urlInp) urlInp.value = 'https://mcp.internal.nutanix.com/sse';
+    if (urlInp) urlInp.value = 'https://mcp.example.com/sse';
   }
 }
 

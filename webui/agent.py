@@ -24,7 +24,6 @@ class AgyAgentBridge:
     def _find_agy_bin(self) -> str:
         """Find the agy binary on host or in PATH."""
         candidates = [
-            "/Users/kev.gorman/.local/bin/agy",
             str(Path.home() / ".local" / "bin" / "agy"),
             shutil.which("agy"),
             "/usr/local/bin/agy",

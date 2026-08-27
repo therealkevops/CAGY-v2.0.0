@@ -112,7 +112,6 @@ class AIAgent:
             "/usr/local/bin/agy",
             "/usr/bin/agy",
             shutil.which("agy"),
-            "/Users/kev.gorman/.local/bin/agy",
             str(Path.home() / ".local" / "bin" / "agy"),
         ]
         for cand in candidates:
