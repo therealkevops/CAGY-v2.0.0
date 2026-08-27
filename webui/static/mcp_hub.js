@@ -114,11 +114,81 @@ function renderMcpToolCatalog(data) {
   }
 
   if (filtered.length === 0) {
-    container.innerHTML = `
-      <div class="mcp-no-tools">
-        <div>No tools match the filter "${escapeHtml(_mcpToolFilterQuery)}".</div>
-      </div>
-    `;
+    if (_mcpToolCategoryFilter === 'mcp' && !_mcpToolFilterQuery) {
+      container.innerHTML = `
+        <div class="mcp-empty-toolkit-canvas">
+          <div class="mcp-empty-toolkit-header">
+            <div class="mcp-empty-icon-wrap">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/>
+              </svg>
+            </div>
+            <h3>No External MCP Servers Connected Yet</h3>
+            <p>Model Context Protocol (MCP) servers extend Antigravity with external databases, APIs, browser automation, and developer tools. Choose a quick-connect preset below or add a custom server to populate this catalog.</p>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button type="button" class="btn-mcp-action primary" onclick="openAddMcpServerModal()">+ Add MCP Server</button>
+              <button type="button" class="btn-mcp-action" onclick="setMcpCategoryFilter('all')">View All Tools</button>
+            </div>
+          </div>
+
+          <div class="mcp-presets-grid">
+            <div class="mcp-preset-card">
+              <div class="mcp-preset-top">
+                <span class="mcp-preset-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+                <div>
+                  <h4>PostgreSQL Database</h4>
+                  <span class="mcp-preset-badge">stdio (npx)</span>
+                </div>
+              </div>
+              <p>Inspect database schemas, table structures, and run SQL queries safely.</p>
+              <button type="button" class="btn-mcp-preset-use" onclick="openAddMcpServerModal(); applyMcpPreset('postgres');">Quick Setup</button>
+            </div>
+
+            <div class="mcp-preset-card">
+              <div class="mcp-preset-top">
+                <span class="mcp-preset-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+                <div>
+                  <h4>SQLite Database</h4>
+                  <span class="mcp-preset-badge">stdio (uvx)</span>
+                </div>
+              </div>
+              <p>Connect local SQLite database files located in <code>/workspace</code> or project paths.</p>
+              <button type="button" class="btn-mcp-preset-use" onclick="openAddMcpServerModal(); applyMcpPreset('sqlite');">Quick Setup</button>
+            </div>
+
+            <div class="mcp-preset-card">
+              <div class="mcp-preset-top">
+                <span class="mcp-preset-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
+                <div>
+                  <h4>Puppeteer Web Browser</h4>
+                  <span class="mcp-preset-badge">stdio (npx)</span>
+                </div>
+              </div>
+              <p>Headless browser navigation, screenshot capture, clicking, and console inspection.</p>
+              <button type="button" class="btn-mcp-preset-use" onclick="openAddMcpServerModal(); applyMcpPreset('puppeteer');">Quick Setup</button>
+            </div>
+
+            <div class="mcp-preset-card">
+              <div class="mcp-preset-top">
+                <span class="mcp-preset-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
+                <div>
+                  <h4>Git Version Control</h4>
+                  <span class="mcp-preset-badge">stdio (uvx)</span>
+                </div>
+              </div>
+              <p>Inspect git history, commit diffs, branches, and working tree modifications.</p>
+              <button type="button" class="btn-mcp-preset-use" onclick="openAddMcpServerModal(); applyMcpPreset('git');">Quick Setup</button>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div class="mcp-no-tools">
+          <div>No tools match the filter "${escapeHtml(_mcpToolFilterQuery || _mcpToolCategoryFilter)}".</div>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -226,6 +296,10 @@ function applyMcpPreset(preset) {
     if (nameInp) nameInp.value = 'git';
     if (transportSel) { transportSel.value = 'stdio'; onMcpTransportChange(); }
     if (cmdInp) cmdInp.value = 'uvx mcp-server-git --repository /workspace';
+  } else if (preset === 'puppeteer') {
+    if (nameInp) nameInp.value = 'puppeteer';
+    if (transportSel) { transportSel.value = 'stdio'; onMcpTransportChange(); }
+    if (cmdInp) cmdInp.value = 'npx -y @modelcontextprotocol/server-puppeteer';
   } else if (preset === 'remote') {
     if (nameInp) nameInp.value = 'cloud-mcp';
     if (transportSel) { transportSel.value = 'http'; onMcpTransportChange(); }
