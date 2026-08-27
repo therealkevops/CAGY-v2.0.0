@@ -31,10 +31,16 @@ function _syncSubagentsPolling() {
     clearTimeout(_subagentPollTimer);
     _subagentPollTimer = null;
   }
-  if (_currentPanel === 'subagents' && _subagentsData && _subagentsData.active_count > 0) {
+  if (_currentPanel === 'subagents') {
+    const isAnyActive = _subagentsData && _subagentsData.active_count > 0;
+    const pollInterval = isAnyActive ? 2000 : 5000;
     _subagentPollTimer = setTimeout(() => {
       loadSubagents();
-    }, 3000);
+      // Auto-refresh timeline if an active subagent is selected
+      if (_selectedSubagent && _selectedSubagent.status === 'running') {
+        inspectSubagent(_selectedSubagent);
+      }
+    }, pollInterval);
   }
 }
 
