@@ -7395,11 +7395,13 @@ main.main.showing-subagents #mainSubagents { display: flex; flex-direction: colu
 .timeline-step-source { color: var(--text); font-weight: 600; }
 .timeline-step-type { background: var(--surface); padding: 1px 6px; border-radius: 3px; }
 .timeline-step-time { margin-left: auto; color: var(--muted); }
-.timeline-step-content { font-size: 12.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; }
-.timeline-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.timeline-tool-pill { background: var(--code-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px 8px; font-size: 11.5px; display: flex; align-items: center; gap: 8px; }
-.timeline-tool-pill code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
-.timeline-tool-args { font-family: var(--font-mono); color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-step-type.prompt { background: var(--surface); color: var(--text); }
+.timeline-step-type.tool { background: var(--accent-bg); color: var(--accent-text, var(--accent)); font-weight: 600; border: 1px solid var(--border); }
+.timeline-step-type.response { background: rgba(2, 136, 168, 0.12); color: var(--blue); }
+.timeline-tool-block { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.timeline-args-pre, .timeline-output-pre { font-family: var(--font-mono); font-size: 11px; background: var(--code-bg); color: var(--text); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 6px 8px; margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
+.timeline-tool-result { display: flex; flex-direction: column; gap: 4px; border-left: 2px solid var(--border); padding-left: 8px; margin-top: 4px; }
+.timeline-tool-result-header { font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; }
 
 /* ── MCP Server Hub (Model Context Protocol) ── */
 .mcp-sidebar-content { display: flex; flex-direction: column; height: calc(100% - 48px); min-height: 0; }

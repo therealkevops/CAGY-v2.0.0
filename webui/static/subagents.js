@@ -235,36 +235,99 @@ function renderSubagentTimeline(steps) {
     return;
   }
 
-  timelineEl.innerHTML = steps.map((st, i) => {
-    let toolHtml = '';
-    if (Array.isArray(st.tool_calls) && st.tool_calls.length > 0) {
-      toolHtml = `
-        <div class="timeline-tools">
-          ${st.tool_calls.map(tc => `
-            <div class="timeline-tool-pill">
-              <code>${escapeHtml(tc.name || 'tool')}</code>
-              <span class="timeline-tool-args">${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 80))}</span>
-            </div>
-          `).join('')}
+  // Unify steps: pair tool invocation with its corresponding result output
+  const unified = [];
+  let i = 0;
+  while (i < steps.length) {
+    const st = steps[i];
+    const stType = st.type || '';
+    const toolCalls = Array.isArray(st.tool_calls) ? st.tool_calls : [];
+
+    if (stType === 'USER_INPUT') {
+      unified.push({
+        kind: 'prompt',
+        title: 'Delegated Task Prompt',
+        stepIndex: st.step_index ?? i,
+        time: st.created_at || '',
+        content: st.content || ''
+      });
+      i++;
+    } else if (toolCalls.length > 0) {
+      let outputContent = null;
+      if (i + 1 < steps.length && steps[i + 1].type === 'GENERIC') {
+        outputContent = steps[i + 1].content || '';
+        i += 2;
+      } else {
+        i++;
+      }
+      toolCalls.forEach(tc => {
+        unified.push({
+          kind: 'tool',
+          title: `Tool: ${tc.name || 'tool'}`,
+          toolName: tc.name || 'tool',
+          args: tc.args || {},
+          output: outputContent,
+          stepIndex: st.step_index ?? i,
+          time: st.created_at || ''
+        });
+      });
+    } else if (st.content && String(st.content).trim()) {
+      unified.push({
+        kind: 'response',
+        title: 'Subagent Response',
+        stepIndex: st.step_index ?? i,
+        time: st.created_at || '',
+        content: st.content
+      });
+      i++;
+    } else {
+      i++;
+    }
+  }
+
+  timelineEl.innerHTML = unified.map((entry, idx) => {
+    let bodyHtml = '';
+    if (entry.kind === 'tool') {
+      let argsFormatted = '';
+      if (typeof entry.args === 'string') {
+        try {
+          argsFormatted = JSON.stringify(JSON.parse(entry.args), null, 2);
+        } catch(_) {
+          argsFormatted = entry.args;
+        }
+      } else {
+        argsFormatted = JSON.stringify(entry.args, null, 2);
+      }
+
+      let outHtml = '';
+      if (entry.output) {
+        outHtml = `
+          <div class="timeline-tool-result">
+            <div class="timeline-tool-result-header">Execution Result</div>
+            <pre class="timeline-output-pre"><code>${escapeHtml(entry.output.slice(0, 1200) + (entry.output.length > 1200 ? '...' : ''))}</code></pre>
+          </div>
+        `;
+      }
+      bodyHtml = `
+        <div class="timeline-tool-block">
+          <div class="timeline-tool-call">
+            <pre class="timeline-args-pre"><code>${escapeHtml(argsFormatted)}</code></pre>
+          </div>
+          ${outHtml}
         </div>
       `;
-    }
-
-    let contentHtml = '';
-    if (st.content) {
-      contentHtml = `<div class="timeline-step-content">${escapeHtml(st.content)}</div>`;
+    } else if (entry.content) {
+      bodyHtml = `<div class="timeline-step-content">${escapeHtml(entry.content)}</div>`;
     }
 
     return `
       <div class="timeline-step">
         <div class="timeline-step-head">
-          <span class="timeline-step-idx">#${st.step_index || (i + 1)}</span>
-          <span class="timeline-step-source">${escapeHtml(st.source || 'AGENT')}</span>
-          <span class="timeline-step-type">${escapeHtml(st.type || 'STEP')}</span>
-          <span class="timeline-step-time">${escapeHtml(st.created_at ? st.created_at.slice(11, 19) : '')}</span>
+          <span class="timeline-step-idx">#${idx + 1}</span>
+          <span class="timeline-step-type ${entry.kind}">${escapeHtml(entry.title)}</span>
+          <span class="timeline-step-time">${escapeHtml(entry.time ? entry.time.slice(11, 19) : '')}</span>
         </div>
-        ${contentHtml}
-        ${toolHtml}
+        ${bodyHtml}
       </div>
     `;
   }).join('');

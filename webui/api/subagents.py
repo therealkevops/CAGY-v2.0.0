@@ -162,8 +162,15 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
                         scanned_convs.add(cdir.name)
                         subs = _parse_transcript_for_subagents(cdir)
                         all_subagents.extend(subs)
-            except Exception:
-                continue
+    # Deduplicate subagents
+    seen_keys = set()
+    deduped = []
+    for s in all_subagents:
+        key = s.get("conversation_id") or (s.get("parent_id"), s.get("role"), s.get("created_at"))
+        if key not in seen_keys:
+            seen_keys.add(key)
+            deduped.append(s)
+    all_subagents = deduped
 
     # Enrich subagents with data from their own conversation folders if they exist
     for sub in all_subagents:
