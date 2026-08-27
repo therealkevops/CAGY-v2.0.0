@@ -1,17 +1,20 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
-# Ensure Rancher Desktop bin directory is in PATH
-if [[ ":$PATH:" != *":$HOME/.rd/bin:"* ]]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Ensure common desktop / CLI bin paths are in PATH
+if [ -d "$HOME/.rd/bin" ] && [[ ":$PATH:" != *":$HOME/.rd/bin:"* ]]; then
     export PATH="$HOME/.rd/bin:$PATH"
+fi
+if [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 if [ -z "$DOCKER_HOST" ] && [ -S "$HOME/.rd/docker.sock" ]; then
     export DOCKER_HOST="unix://$HOME/.rd/docker.sock"
 fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-cd "$SCRIPT_DIR"
 
 mkdir -p ./container_data/docker_config
 export DOCKER_CONFIG="$SCRIPT_DIR/container_data/docker_config"
@@ -23,10 +26,26 @@ else
     COMPOSE_CMD="docker compose"
 fi
 
+# Ensure docker CLI & daemon are reachable
+if ! command -v docker &>/dev/null; then
+    echo "Error: 'docker' command not found. Please install Docker."
+    exit 1
+fi
+
 # Ensure container data & SSL cert bundle exist
-mkdir -p ./container_data ./container_data/gemini ./container_data/config ./workspace
+mkdir -p ./container_data ./container_data/gemini ./container_data/config ./container_data/webui ./workspace
 if [ ! -f ./container_data/system_certs.pem ]; then
-    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain /Library/Keychains/System.keychain > ./container_data/system_certs.pem 2>/dev/null || true
+    if [ -f "$HOME/.gemini/system_certs.pem" ]; then
+        cp "$HOME/.gemini/system_certs.pem" ./container_data/system_certs.pem
+    elif command -v security &>/dev/null; then
+        security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain /Library/Keychains/System.keychain > ./container_data/system_certs.pem 2>/dev/null || true
+    elif [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+        cp "/etc/ssl/certs/ca-certificates.crt" ./container_data/system_certs.pem
+    elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
+        cp "/etc/pki/tls/certs/ca-bundle.crt" ./container_data/system_certs.pem
+    else
+        touch ./container_data/system_certs.pem
+    fi
 fi
 if [ -d "$HOME/.gemini/antigravity-cli" ]; then
     mkdir -p ./container_data/gemini/antigravity-cli ./container_data/gemini/config
