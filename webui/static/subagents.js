@@ -9,19 +9,47 @@ let _subagentPollTimer = null;
 
 async function loadSubagents(force = false) {
   const listEl = document.getElementById('subagentList');
-  if (!listEl) return;
+  const btnSidebar = document.getElementById('subagentsRefreshBtn');
+  const btnHeader = document.getElementById('btnRefreshSubagents');
+
+  if (force) {
+    if (btnSidebar) btnSidebar.classList.add('spinning');
+    if (btnHeader) btnHeader.classList.add('spinning');
+  }
 
   try {
-    const sessionId = (typeof S !== 'undefined' && S && S.session && S.session.session_id) || '';
+    let sessionId = '';
+    if (typeof S !== 'undefined' && S && S.session && S.session.session_id) {
+      sessionId = S.session.session_id;
+    } else if (typeof _currentSessionId !== 'undefined' && _currentSessionId) {
+      sessionId = _currentSessionId;
+    } else if (typeof localStorage !== 'undefined') {
+      sessionId = localStorage.getItem('hermes-webui-session') || '';
+    }
+
     const res = await fetch(`/api/subagents?session_id=${encodeURIComponent(sessionId)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _subagentsData = data;
     renderSubagentsView(data);
+    
+    // If a subagent is selected, re-inspect to refresh its timeline & steps
+    if (_selectedSubagent) {
+      const updated = (data.subagents || []).find(s => s.conversation_id === _selectedSubagent.conversation_id && s.role === _selectedSubagent.role) || _selectedSubagent;
+      inspectSubagent(updated);
+    }
+    
     _syncSubagentsPolling();
   } catch (err) {
     if (listEl) {
       listEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px">Unable to load subagents (${escapeHtml(err.message)}).</div>`;
+    }
+  } finally {
+    if (force) {
+      setTimeout(() => {
+        if (btnSidebar) btnSidebar.classList.remove('spinning');
+        if (btnHeader) btnHeader.classList.remove('spinning');
+      }, 300);
     }
   }
 }
