@@ -15117,6 +15117,11 @@ def handle_post(handler, parsed) -> bool:
         name = str(body.get("name", "")).strip()
         return j(handler, delete_mcp_server(name))
 
+    if parsed.path == "/api/skills/scaffold":
+        from api.skills_wizard import scaffold_skill_or_rule
+        body = _read_json_body(handler) or {}
+        return j(handler, scaffold_skill_or_rule(body))
+
     if parsed.path == "/api/shutdown":
         return _handle_shutdown(handler)
 

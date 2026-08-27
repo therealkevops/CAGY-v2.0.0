@@ -275,6 +275,9 @@ class AIAgent:
         tool_calls = []
         input_tokens = 0
         output_tokens = 0
+        t_start = time.time()
+        t_first_token = None
+        streamed_chars = 0
 
         try:
             if self.status_callback:
@@ -321,6 +324,9 @@ class AIAgent:
 
                         if "text_delta" in update:
                             delta = update["text_delta"]
+                            if t_first_token is None:
+                                t_first_token = time.time()
+                            streamed_chars += len(delta)
                             has_streamed_deltas = True
                             assistant_text += delta
                             if self.stream_delta_callback:
@@ -463,8 +469,19 @@ class AIAgent:
             "tool_calls": []
         })
 
+        total_duration = max(0.1, time.time() - t_start)
+        thinking_sec = max(0.0, (t_first_token - t_start) if t_first_token else total_duration)
+        stream_sec = max(0.1, total_duration - thinking_sec)
+        tps = (output_tokens / stream_sec) if output_tokens > 0 else (streamed_chars / 4.0 / stream_sec)
+
         return {
             "messages": history,
-            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "tps": round(tps, 1),
+                "duration_sec": round(total_duration, 2),
+                "thinking_sec": round(thinking_sec, 2)
+            },
             "status": "completed"
         }

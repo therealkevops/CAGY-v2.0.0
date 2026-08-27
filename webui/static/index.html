@@ -138,6 +138,10 @@
       <span style="width: 7px; height: 7px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
       ⚡ AGY CLI Online
     </span>
+    <span class="hud-velocity-pill" id="hudVelocityPill" style="display:none">
+      <span class="hud-velocity-dot"></span>
+      <span id="hudVelocityText">Thinking...</span>
+    </span>
   </div>
   <div class="app-titlebar-spacer" aria-hidden="true"></div>
   <button class="app-titlebar-new-chat" id="btnTitlebarNewChat" onclick="$('btnNewChat') && $('btnNewChat').click()" type="button" aria-label="New conversation" data-i18n-title="new_conversation" data-i18n-aria-label="new_conversation" title="New conversation">
@@ -1823,6 +1827,7 @@
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/subagents.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/mcp_hub.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/skills_wizard.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>
