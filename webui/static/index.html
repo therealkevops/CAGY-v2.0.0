@@ -1213,7 +1213,7 @@
             <div class="settings-section-head">
               <div>
                 <div class="settings-section-title" data-i18n="settings_section_preferences_title">Preferences</div>
-                <div class="settings-section-meta" data-i18n="settings_section_preferences_meta">Defaults and UI behavior for Hermes Web UI.</div>
+                <div class="settings-section-meta" data-i18n="settings_section_preferences_meta">Defaults and UI behavior for Antigravity Web UI.</div>
               </div>
             </div>
             <div class="settings-field">
@@ -1301,7 +1301,7 @@
                 <input type="checkbox" id="settingsVoiceModeEnabled" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_voice_mode">Hands-free voice mode button</span>
               </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_voice_mode">Show the voice-mode button (audio waveform) next to the dictation mic. Lets you speak naturally — Hermes auto-sends after a pause and reads replies aloud. Requires a browser that supports both speech recognition and TTS.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_voice_mode">Show the voice-mode button (audio waveform) next to the dictation mic. Lets you speak naturally — CAGY auto-sends after a pause and reads replies aloud. Requires a browser that supports both speech recognition and TTS.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -1348,7 +1348,7 @@
                 <span id="notificationPermissionButtonWrap" style="display:inline-flex">
                   <button type="button" class="sm-btn" id="notificationPermissionButton" onclick="requestNotificationPermission()" style="padding:5px 10px;font-size:12px" data-i18n="notifications_enable_btn">Enable notifications</button>
                 </span>
-                <button type="button" class="sm-btn" onclick="sendBrowserNotification('Hermes test','Notifications are ready.',{force:true});" style="padding:5px 10px;font-size:12px" data-i18n="notifications_test_btn">Send test</button>
+                <button type="button" class="sm-btn" onclick="sendBrowserNotification('Antigravity test','Notifications are ready.',{force:true});" style="padding:5px 10px;font-size:12px" data-i18n="notifications_test_btn">Send test</button>
                 <span id="notificationPermissionStatus" style="font-size:11px;color:var(--muted)"></span>
               </div>
             </div>
@@ -1499,7 +1499,7 @@
                 <input type="checkbox" id="settingsSyncInsights" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_sync_insights">Sync usage to /insights</span>
               </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_sync_insights">Mirrors WebUI token usage to state.db so <code>hermes /insights</code> includes browser session data. Off by default.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_sync_insights">Mirrors WebUI token usage to state.db so <code>/insights</code> includes browser session data. Off by default.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -1545,6 +1545,9 @@
                 <div class="settings-section-meta" data-i18n="providers_section_meta">Manage API keys for AI providers. Changes take effect immediately.</div>
               </div>
             </div>
+            <div style="background:var(--surface-subtle);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:11.5px;line-height:1.45;color:var(--muted)">
+              <strong style="color:var(--text)">Antigravity Engine Auth:</strong> CAGY is authenticated via your active Google Gemini environment and local AGY CLI credentials. Provider keys configured here are optional and used for external tool integrations.
+            </div>
             <div id="providersList" style="display:flex;flex-direction:column;margin-top:4px">
               <!-- Populated dynamically by loadProvidersPanel() -->
             </div>
@@ -1555,15 +1558,16 @@
           <div class="settings-pane" id="settingsPanePlugins">
             <div class="settings-section-head">
               <div>
-                <div class="settings-section-title" data-i18n="settings_plugins_title">Plugins</div>
-                <div class="settings-section-meta" data-i18n="settings_plugins_meta">View installed Hermes plugins and the lifecycle hooks they register. This panel is read-only.</div>
+                <div class="settings-section-title">Skills & Rules</div>
+                <div class="settings-section-meta">View installed workspace skills (<code>skills/</code>) and domain rules (<code>.gemini/rules/</code>).</div>
               </div>
+              <button type="button" class="sm-btn" onclick="openSkillOrRuleWizard()" style="padding:5px 10px;font-size:12px">New Skill / Rule</button>
             </div>
             <div id="pluginsList" style="display:flex;flex-direction:column;margin-top:4px">
               <!-- Populated dynamically by loadPluginsPanel() -->
             </div>
-            <div id="pluginsEmpty" style="display:none;text-align:center;padding:32px 0;color:var(--muted);font-size:13px" data-i18n="settings_plugins_empty">
-              No Hermes plugins are currently visible. Install or enable plugins from the Hermes CLI/config to see them here.
+            <div id="pluginsEmpty" style="display:none;text-align:center;padding:32px 0;color:var(--muted);font-size:13px">
+              No custom plugins or hooks are loaded. Use the Wizard above to scaffold new skills or rules.
             </div>
           </div>
           <div class="settings-pane" id="settingsPaneExtensions">
@@ -1618,8 +1622,8 @@
                 <div class="settings-section-meta" data-i18n="settings_section_system_meta">Instance version and access controls.</div>
               </div>
               <div id="checkUpdatesBlock">
-                <span class="settings-version-badge" id="settings-webui-version-badge">WebUI: —</span>
-                <span class="settings-version-badge" id="settings-agent-version-badge">Agent: not detected</span>
+                <span class="settings-version-badge" id="settings-webui-version-badge">WebUI: 2.0</span>
+                <span class="settings-version-badge" id="settings-agent-version-badge" style="border-color:var(--accent);color:var(--accent)">Engine: Antigravity 2.0 (Online)</span>
                 <button class="btn-tiny" id="btnCheckUpdatesNow" onclick="checkUpdatesNow()" title="Check for updates now" data-i18n-title="settings_check_now"><svg id="checkUpdatesSpinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner-xs" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg><span id="checkUpdatesLabel" data-i18n="settings_check_now">Check now</span></button>
                 <span id="checkUpdatesStatus"></span>
               </div>
@@ -1628,13 +1632,6 @@
               <label for="settingsPassword" data-i18n="settings_label_password">Access Password</label>
               <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_password">Enter a new password to set or change it. Leave blank to keep current setting.</div>
               <div id="settingsAuthStatus" style="margin-bottom:8px;display:none"></div>
-              <!-- These password inputs need an explicit <form> owner. Without one they are
-                   "unowned" fields, so Chromium groups every field in the document into a
-                   single synthetic password form and picks the first text input in the DOM
-                   (the sidebar conversation filter) as the form's username field — which it
-                   then autofills with the saved account name. display:contents keeps the
-                   layout byte-identical; onsubmit is neutralised because the panel saves via
-                   JS, not a form submit. -->
               <form id="settingsPasswordForm" style="display:contents" autocomplete="off" onsubmit="return false">
               <input type="password" id="settingsPassword" autocomplete="new-password" placeholder="Enter new password…" data-i18n-placeholder="password_placeholder" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
               <div id="settingsCurrentPasswordBlock" style="display:none;margin-top:6px">
@@ -1642,7 +1639,7 @@
                 <input type="password" id="settingsCurrentPassword" autocomplete="current-password" placeholder="Enter current password…" data-i18n-placeholder="current_password_placeholder" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
               </div>
               </form>
-              <div id="settingsPasswordEnvLock" data-i18n="password_env_var_locked" style="display:none;margin-top:6px;padding:8px 10px;font-size:11px;color:var(--muted);background:var(--code-bg);border:1px solid var(--border2);border-radius:6px;line-height:1.45">The HERMES_WEBUI_PASSWORD environment variable is currently set and takes precedence. Unset it and restart the server to manage the password from here.</div>
+              <div id="settingsPasswordEnvLock" data-i18n="password_env_var_locked" style="display:none;margin-top:6px;padding:8px 10px;font-size:11px;color:var(--muted);background:var(--code-bg);border:1px solid var(--border2);border-radius:6px;line-height:1.45">The WEBUI_PASSWORD or AGY_WEBUI_PASSWORD environment variable is currently set and takes precedence. Unset it and restart the server to manage the password from here.</div>
             </div>
             <div id="settingsAuthDisabledWarning" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(220,80,80,.35);background:rgba(220,80,80,.08)">
               <div style="font-size:12px;font-weight:700;color:rgba(220,80,80,.95);margin-bottom:6px" data-i18n="auth_status_unauthenticated">Unauthenticated</div>
@@ -1654,8 +1651,15 @@
             </div>
             <button class="sm-btn" id="btnDisableAuth" onclick="disableAuth()" style="margin-top:6px;width:100%;padding:8px;font-weight:600;color:#e8a030;border-color:rgba(232,160,48,.3);display:none" data-i18n="disable_auth">Disable Auth</button>
             <button class="sm-btn" id="btnSignOut" onclick="signOut()" style="margin-top:6px;width:100%;padding:8px;font-weight:600;color:var(--accent);border-color:rgba(233,69,96,.3);display:none" data-i18n="sign_out">Sign Out</button>
+            
+            <div class="settings-field" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+              <label>Model Context Protocol (MCP) Hub</label>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Configure, manage, and toggle tools and MCP servers in <code>mcp.json</code> and <code>config.yaml</code>.</div>
+              <button class="sm-btn" type="button" onclick="switchPanel('mcp', {fromRailClick:true})" style="width:100%;padding:8px;font-weight:600">Open MCP Server Hub</button>
+            </div>
+
             <div class="settings-field" id="shutdownServerBlock" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label data-i18n="settings_label_shutdown">Stop the Hermes WebUI server</label>
+              <label data-i18n="settings_label_shutdown">Stop the WebUI server</label>
               <div style="font-size:11px;color:var(--muted);margin-bottom:8px"><span data-i18n="settings_desc_shutdown_before_cmd">Gracefully stops the local WebUI server. Useful if you launched via </span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_between_cmds"> and want to stop without switching to a terminal. You'll need to relaunch the server (</span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_after_cmd"> or the native app) before the WebUI is reachable again.</span></div>
               <button class="sm-btn" id="btnShutdownServer" onclick="shutdownServer()" style="width:100%;padding:8px;font-weight:600;color:#e74c3c;border-color:rgba(231,76,60,.3)" data-i18n="settings_btn_shutdown">Stop server</button>
             </div>
@@ -1666,42 +1670,7 @@
               <button class="sm-btn" id="btnGoPasswordless" onclick="goPasswordless()" style="display:none;margin-top:8px;width:100%;padding:8px;font-weight:600;color:#e8a030;border-color:rgba(232,160,48,.3)">Go passwordless</button>
               <div id="passkeyList" style="margin-top:8px;font-size:12px;color:var(--muted)">No passkeys registered.</div>
             </div>
-            <div class="settings-field" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label for="settingsDashboardMode" data-i18n="settings_label_dashboard_mode">Official Hermes Dashboard</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px" data-i18n="settings_desc_dashboard_mode">Show a nav-rail link when the official <code>hermes dashboard</code> is reachable. Public reverse-proxy URLs are stored as browser-only links and are never server-probed.</div>
-              <select id="settingsDashboardMode" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
-                <option value="auto" data-i18n="settings_dashboard_mode_auto">Auto-detect</option>
-                <option value="always" data-i18n="settings_dashboard_mode_always">Always show</option>
-                <option value="never" data-i18n="settings_dashboard_mode_never">Never show</option>
-              </select>
-              <input type="text" id="settingsDashboardUrl" placeholder="http://127.0.0.1:9119" style="margin-top:8px;width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
-              <button class="sm-btn" onclick="saveDashboardSettings()" data-i18n="settings_dashboard_save" style="margin-top:8px;width:100%;padding:7px;font-weight:600">Save dashboard link settings</button>
-              <div id="settingsDashboardStatus" class="settings-autosave-status" aria-live="polite"></div>
-            </div>
-            <!-- Gateway Status Section -->
-            <div class="settings-field" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label data-i18n="settings_label_gateway_status">Gateway Status</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px" data-i18n="settings_desc_gateway_status">Status of the Hermes gateway (Telegram, Discord, Slack, etc.)</div>
-              <div id="gatewayStatusCard"><span style="color:var(--muted);font-size:12px">Loading…</span></div>
-            </div>
-            <!-- MCP Servers Section -->
-            <div class="settings-field" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label data-i18n="mcp_servers_title">MCP Servers</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px" data-i18n="mcp_servers_desc">View Model Context Protocol servers configured in config.yaml.</div>
-              <div id="mcpServerList"></div>
-              <div class="mcp-restart-hint" data-i18n="mcp_restart_hint">Server changes are read-only here for now. Edit config.yaml and restart Hermes for changes to take effect.</div>
-            </div>
-            <!-- MCP Tools Section -->
-            <div class="settings-field" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label data-i18n="mcp_tools_title">MCP Tools</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px" data-i18n="mcp_tools_desc">Search known tools across active MCP servers.</div>
-              <input type="search" id="mcpToolSearch" class="mcp-tool-search" data-i18n-placeholder="mcp_tools_search_placeholder" placeholder="Search tools by name, server, or description…" oninput="filterMcpTools()" autocomplete="off">
-              <div class="mcp-tool-toolbar" id="mcpToolToolbar" aria-live="polite"></div>
-              <div id="mcpToolList" class="mcp-tool-list"></div>
-              <div id="mcpToolPager" class="mcp-tool-pager" aria-label="MCP tools pagination" data-i18n-aria-label="mcp_tools_pagination_label"></div>
-              <div class="mcp-restart-hint" data-i18n="mcp_tools_runtime_note">Tool inventory only uses already-known active MCP runtime data; the WebUI does not start or probe servers.</div>
-            </div>
-            <button class="sm-btn" onclick="saveSettings()" style="margin-top:12px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>
+            <button class="sm-btn" onclick="saveSettings()" style="margin-top:16px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>
           </div>
           <div class="settings-pane" id="settingsPaneHelp">
             <div class="settings-section-head">
