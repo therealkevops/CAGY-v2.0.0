@@ -157,6 +157,7 @@
   <nav class="rail" aria-label="Primary navigation">
     <button class="rail-btn nav-tab active has-tooltip" data-panel="chat" onclick="switchPanel('chat',{fromRailClick:true})" data-tooltip="Chat" data-i18n-title="tab_chat" aria-label="Chat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces / Files" data-i18n-title="tab_workspaces" aria-label="Spaces"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="mcp" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Hub" data-i18n-title="tab_mcp" aria-label="MCP Hub"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="subagents" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarms" data-i18n-title="tab_subagents" aria-label="Subagents"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="memory" onclick="switchPanel('memory',{fromRailClick:true})" data-tooltip="Memory" data-i18n-title="tab_memory" aria-label="Memory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills" data-i18n-title="tab_skills" aria-label="Skills"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
@@ -169,6 +170,7 @@
     </button>
     <div class="sidebar-nav">
       <button class="nav-tab active has-tooltip has-tooltip--bottom" data-panel="chat" data-label="Chat" onclick="switchPanel('chat',{fromRailClick:true})" data-tooltip="Chat" data-i18n-title="tab_chat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="mcp" data-label="MCP" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Server Hub" data-i18n-title="tab_mcp"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="subagents" data-label="Swarm" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarm" data-i18n-title="tab_subagents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="tasks" data-label="Tasks" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Tasks" data-i18n-title="tab_tasks"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="kanban" data-label="Kanban" onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
@@ -200,6 +202,24 @@
       </div>
       <div class="session-search sidebar-search"><div class="session-search-field"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="sessionSearch" type="search" placeholder="Filter conversations..." data-i18n-placeholder="filter_conversations" oninput="filterSessions()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"><button type="button" id="sessionSearchClear" class="session-search-clear has-tooltip has-tooltip--bottom-right" aria-label="Clear conversation filter" data-tooltip="Clear conversation filter" onclick="clearSessionSearch()" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
       <div class="session-list" id="sessionList"></div>
+    </div>
+    <!-- MCP Server Hub panel -->
+    <div class="panel-view" id="panelMcp">
+      <div class="panel-head">
+        <span>MCP Server Hub</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="mcpRefreshBtn" onclick="loadMcpHub(true)" data-tooltip="Refresh servers" aria-label="Refresh servers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openAddMcpServerModal()" data-tooltip="Add MCP Server" aria-label="Add MCP Server"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="mcp-sidebar-content">
+        <div class="mcp-metrics-card" id="mcpMetricsCard">
+          <div class="mcp-metric-item"><span class="mcp-metric-val" id="mcpMetricServers">0</span><span class="mcp-metric-label">Servers</span></div>
+          <div class="mcp-metric-item"><span class="mcp-metric-val" id="mcpMetricActive">0</span><span class="mcp-metric-label">Active</span></div>
+          <div class="mcp-metric-item"><span class="mcp-metric-val" id="mcpMetricTools">0</span><span class="mcp-metric-label">Tools</span></div>
+        </div>
+        <div class="mcp-server-list" id="mcpHubServerList"><div style="padding:12px;color:var(--muted);font-size:12px">Loading MCP servers...</div></div>
+      </div>
     </div>
     <!-- Subagent Swarm panel -->
     <div class="panel-view" id="panelSubagents">
@@ -765,6 +785,30 @@
         <svg class="main-view-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         <div class="main-view-empty-title" data-i18n="skills_empty_title">Select a skill</div>
         <div class="main-view-empty-sub" data-i18n="skills_empty_sub">Pick a skill from the sidebar to view its contents, or create a new one.</div>
+      </div>
+    </div>
+    <div id="mainMcp" class="main-view">
+      <div class="main-view-header">
+        <div class="main-view-title">Model Context Protocol (MCP) Tool Catalog</div>
+        <div class="main-view-actions">
+          <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openAddMcpServerModal()" data-tooltip="Add MCP Server" aria-label="Add MCP Server"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="main-view-body" id="mainMcpBody">
+        <div class="mcp-controls-bar">
+          <div class="mcp-search-box">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search MCP tools by name or description..." oninput="filterMcpTools(this.value)">
+          </div>
+          <div class="mcp-category-filters">
+            <button type="button" class="mcp-cat-btn active" data-cat="all" onclick="setMcpCategoryFilter('all')">All Tools</button>
+            <button type="button" class="mcp-cat-btn" data-cat="builtin" onclick="setMcpCategoryFilter('builtin')">Built-in AGY Tools</button>
+            <button type="button" class="mcp-cat-btn" data-cat="mcp" onclick="setMcpCategoryFilter('mcp')">External MCP Tools</button>
+          </div>
+        </div>
+        <div class="mcp-tools-grid" id="mcpToolsContainer">
+          <div style="padding:16px;color:var(--muted);font-size:12px">Loading tool catalog...</div>
+        </div>
       </div>
     </div>
     <div id="mainSubagents" class="main-view">
@@ -1778,9 +1822,54 @@
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/subagents.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/mcp_hub.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>
+
+<!-- MCP Server Configure / Add Modal -->
+<div class="mcp-modal-overlay" id="mcpServerModal" onclick="if(event.target===this)closeAddMcpServerModal()">
+  <div class="mcp-modal-card">
+    <div class="mcp-modal-header">
+      <span>Configure MCP Server</span>
+      <button type="button" class="btn-icon" onclick="closeAddMcpServerModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="mcp-presets-row">
+      <span style="font-size:11px;color:var(--muted)">Presets:</span>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('postgres')">PostgreSQL</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('sqlite')">SQLite</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('git')">Git</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('remote')">Remote SSE</button>
+    </div>
+    <div class="mcp-form-group">
+      <label for="mcpFormName">Server Name (identifier)</label>
+      <input type="text" id="mcpFormName" placeholder="e.g. postgres-db or nutanix-pc" required>
+    </div>
+    <div class="mcp-form-group">
+      <label for="mcpFormTransport">Transport Type</label>
+      <select id="mcpFormTransport" onchange="onMcpTransportChange()">
+        <option value="stdio">Local Process / STDIO (Binary / Command)</option>
+        <option value="http">Remote SSE / HTTP Server</option>
+      </select>
+    </div>
+    <div class="mcp-form-group" id="mcpStdioGroup">
+      <label for="mcpFormCommand">Command & Arguments</label>
+      <input type="text" id="mcpFormCommand" placeholder="npx -y @modelcontextprotocol/server-postgres postgresql://...">
+    </div>
+    <div class="mcp-form-group" id="mcpHttpGroup" style="display:none">
+      <label for="mcpFormUrl">Remote Endpoint URL</label>
+      <input type="url" id="mcpFormUrl" placeholder="https://mcp.internal.example.com/sse">
+    </div>
+    <div class="mcp-form-group">
+      <label for="mcpFormEnv">Environment Variables (JSON format, optional)</label>
+      <textarea id="mcpFormEnv" rows="2" placeholder='{"API_KEY": "secret", "DEBUG": "true"}'></textarea>
+    </div>
+    <div class="mcp-modal-actions">
+      <button type="button" class="btn-mcp-action" onclick="closeAddMcpServerModal()">Cancel</button>
+      <button type="button" class="btn-mcp-action primary" onclick="submitMcpServerForm()">Save Server</button>
+    </div>
+  </div>
+</div>
 
 <!-- Kanban: create/rename board modal — used for both flows. -->
 <div class="kanban-modal-overlay" id="kanbanBoardModal" hidden onclick="if(event.target===this)closeKanbanBoardModal()">

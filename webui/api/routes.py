@@ -14797,6 +14797,10 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/mcp/servers":
         return _handle_mcp_servers_list(handler)
 
+    if parsed.path in ("/api/mcp/hub", "/api/mcp/hub/data"):
+        from api.mcp_hub import list_mcp_hub_data
+        return j(handler, list_mcp_hub_data())
+
     # ── MCP Tools (GET) ──
     if parsed.path == "/api/mcp/tools":
         return _handle_mcp_tools_list(handler)
@@ -15091,6 +15095,27 @@ def handle_post(handler, parsed) -> bool:
         if diag:
             diag.finish()
         return proxy_result
+
+    if parsed.path == "/api/mcp/hub/add":
+        from api.mcp_hub import add_or_update_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return bad(handler, "Server name is required", status=400)
+        return j(handler, add_or_update_mcp_server(name, body))
+
+    if parsed.path == "/api/mcp/hub/toggle":
+        from api.mcp_hub import toggle_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        enabled = bool(body.get("enabled", True))
+        return j(handler, toggle_mcp_server(name, enabled))
+
+    if parsed.path == "/api/mcp/hub/delete":
+        from api.mcp_hub import delete_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        return j(handler, delete_mcp_server(name))
 
     if parsed.path == "/api/shutdown":
         return _handle_shutdown(handler)
