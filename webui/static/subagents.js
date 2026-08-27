@@ -180,7 +180,7 @@ async function inspectSubagent(sub) {
   if (statusBadge) {
     const isRunning = sub.status === 'running';
     statusBadge.className = `swarm-status-badge ${isRunning ? 'running' : 'done'}`;
-    statusBadge.textContent = isRunning ? '● Active Running' : '✓ Completed';
+    statusBadge.textContent = isRunning ? 'Active' : 'Completed';
   }
 
   if (timelineEl) {
