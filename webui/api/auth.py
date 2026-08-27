@@ -59,7 +59,8 @@ PUBLIC_PATHS = frozenset({
 })
 
 COOKIE_NAME = 'hermes_session'
-CSRF_HEADER_NAME = 'X-Hermes-CSRF-Token'
+CSRF_HEADER_NAME = 'X-Agy-CSRF-Token'
+LEGACY_CSRF_HEADER_NAME = 'X-Hermes-CSRF-Token'
 
 
 # RFC 6265 cookie-name token: a non-empty run of token chars
@@ -420,7 +421,7 @@ def get_password_hash() -> str | None:
         if _AUTH_HASH_COMPUTED:
             return _AUTH_HASH_CACHE
 
-        env_pw = os.getenv('HERMES_WEBUI_PASSWORD', '').strip()
+        env_pw = (os.getenv('AGY_WEBUI_PASSWORD') or os.getenv('HERMES_WEBUI_PASSWORD') or '').strip()
         if env_pw:
             result = _hash_password(env_pw)
         else:

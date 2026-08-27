@@ -28,10 +28,10 @@
 <script>(function(){try{if(localStorage.getItem('hermes-webui-sidebar-collapsed')==='1')document.documentElement.dataset.sidebarCollapsed='1';}catch(e){}})()</script>
 <link rel="preload" href="static/pwa-startup.js?v=__WEBUI_VERSION__" as="script">
 <script src="static/pwa-startup.js?v=__WEBUI_VERSION__"></script>
-<script>window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__};</script>
-<script>window.__HERMES_WEBUI_BUNDLE_VERSION__='__WEBUI_VERSION__';</script>
+<script>window.__AGY_CONFIG__=window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__};</script>
+<script>window.__AGY_WEBUI_BUNDLE_VERSION__=window.__HERMES_WEBUI_BUNDLE_VERSION__='__WEBUI_VERSION__';</script>
 <script>(function(){
-  var cfg=window.__HERMES_CONFIG__||{},token=cfg.csrfToken||'';
+  var cfg=window.__AGY_CONFIG__||window.__HERMES_CONFIG__||{},token=cfg.csrfToken||'';
   if(!token||!window.fetch)return;
   var originalFetch=window.fetch.bind(window);
   function sameOriginUnsafe(input,init){
@@ -48,6 +48,7 @@
     if(sameOriginUnsafe(input,init)){
       var opts=init?Object.assign({},init):{};
       var headers=new Headers(opts.headers!==undefined?opts.headers:((input&&input.headers)||{}));
+      if(!headers.has('X-Agy-CSRF-Token'))headers.set('X-Agy-CSRF-Token',token);
       if(!headers.has('X-Hermes-CSRF-Token'))headers.set('X-Hermes-CSRF-Token',token);
       opts.headers=headers;
       return originalFetch(input,opts);
@@ -59,7 +60,7 @@
     navigator.sendBeacon=function(url,data){
       try{
         if(sameOriginUnsafe(url,{method:'POST'})){
-          var headers={'X-Hermes-CSRF-Token':token};
+          var headers={'X-Agy-CSRF-Token':token,'X-Hermes-CSRF-Token':token};
           if(data&&data.type)headers['Content-Type']=data.type;
           originalFetch(url,{method:'POST',credentials:'include',headers:headers,body:data,keepalive:true});
           return true;

@@ -5682,12 +5682,18 @@ def _check_csrf(handler) -> bool:
     if not _is_browser_unsafe_request(handler):
         return True  # non-browser clients (curl, MCP, agent) have no Origin/Referer
 
-    from api.auth import CSRF_HEADER_NAME, is_auth_enabled, parse_cookie, verify_csrf_token
+    from api.auth import CSRF_HEADER_NAME, LEGACY_CSRF_HEADER_NAME, is_auth_enabled, parse_cookie, verify_csrf_token
 
     if not is_auth_enabled():
         return True
     cookie_val = parse_cookie(handler)
-    submitted = handler.headers.get(CSRF_HEADER_NAME) or handler.headers.get("X-CSRF-Token")
+    submitted = (
+        handler.headers.get("X-Agy-CSRF-Token")
+        or handler.headers.get(CSRF_HEADER_NAME)
+        or handler.headers.get(LEGACY_CSRF_HEADER_NAME)
+        or handler.headers.get("X-Hermes-CSRF-Token")
+        or handler.headers.get("X-CSRF-Token")
+    )
     if verify_csrf_token(cookie_val or "", submitted or ""):
         return True
     return _set_csrf_failure_reason(handler, "token_mismatch")
@@ -13459,7 +13465,8 @@ def handle_get(handler, parsed) -> bool:
         # precedence in api.auth.get_password_hash(), but until now the UI
         # had no way to know — see issue #1139 / #1560.
         settings["password_env_var"] = bool(
-            os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
+            os.getenv("AGY_WEBUI_PASSWORD", "").strip()
+            or os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
         )
         # Auth-state fields for frontend safety badge / confirmation flows
         from api.auth import get_password_hash, is_auth_enabled
@@ -16941,10 +16948,11 @@ def handle_post(handler, parsed) -> bool:
         # succeeding — the previous behaviour returned 200 + a green save toast
         # while every subsequent login still required the env-var password.
         if requested_password or requested_clear_password:
-            if os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
+            active_env_var = "AGY_WEBUI_PASSWORD" if os.getenv("AGY_WEBUI_PASSWORD", "").strip() else ("HERMES_WEBUI_PASSWORD" if os.getenv("HERMES_WEBUI_PASSWORD", "").strip() else None)
+            if active_env_var:
                 return bad(
                     handler,
-                    "HERMES_WEBUI_PASSWORD env var is set — it overrides the settings password. "
+                    f"{active_env_var} env var is set — it overrides the settings password. "
                     "Unset the env var and restart the server before changing the password here.",
                     409,
                 )

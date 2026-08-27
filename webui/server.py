@@ -1,4 +1,4 @@
-"""Hermes Web UI server entry point."""
+"""Antigravity Web UI server entry point."""
 import logging
 import os
 import re
@@ -319,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
     _ver_suffix = WEBUI_VERSION.removeprefix('v')
-    server_version = ('HermesWebUI/' + _ver_suffix) if _ver_suffix != 'unknown' else 'HermesWebUI'
+    server_version = ('AntigravityWebUI/' + _ver_suffix) if _ver_suffix != 'unknown' else 'AntigravityWebUI'
     _CSP_REPORT_TO = '{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}'
 
     @classmethod
@@ -598,13 +598,13 @@ def main() -> None:
     if HOST not in ('127.0.0.1', '::1', 'localhost') and not is_auth_enabled():
         print(f'[!!] WARNING: Binding to {HOST} with NO PASSWORD SET.', flush=True)
         print(f'     Anyone on the network can access your filesystem and agent.', flush=True)
-        print(f'     Set a password via Settings or HERMES_WEBUI_PASSWORD env var.', flush=True)
+        print(f'     Set a password via Settings or AGY_WEBUI_PASSWORD env var.', flush=True)
         print(f'     To suppress: bind to 127.0.0.1 or set a password.', flush=True)
         if within_container:
             print(f'     Note: You are running within a container, must bind to 0.0.0.0 (IPv4) or :: (IPv6) to publish the port.', flush=True)
     elif not is_auth_enabled():
         print(f'  [tip] No password set. Any process on this machine can read sessions', flush=True)
-        print(f'        and memory via the local API. Set HERMES_WEBUI_PASSWORD to', flush=True)
+        print(f'        and memory via the local API. Set AGY_WEBUI_PASSWORD to', flush=True)
         print(f'        enable authentication.', flush=True)
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
