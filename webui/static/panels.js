@@ -4268,6 +4268,47 @@ function _syncSettingsMaxTokensPlaceholder(field, fallbackValue){
     : 'No override';
 }
 
+function _normalizeWebUIVersion(value){
+  if(!value) return '';
+  const s=String(value).trim();
+  if(!s) return '';
+  const lower=s.toLowerCase();
+  if(lower==='__webui_version__'||lower==='not detected'||lower==='unknown') return '';
+  return s;
+}
+
+function _currentWebUIBundleVersion(){
+  try{
+    const raw=window.__AGY_WEBUI_BUNDLE_VERSION__||window.__HERMES_WEBUI_BUNDLE_VERSION__;
+    if(!raw) return '';
+    let s=String(raw);
+    try{ s=decodeURIComponent(s.replace(/\+/g,' ')); }catch(_){}
+    return _normalizeWebUIVersion(s);
+  }catch(_){ return ''; }
+}
+
+function _showStaleWebUIClientBanner(clientVersion,serverVersion){
+  const banner=document.getElementById('staleClientBanner');
+  if(!banner) return;
+  const msg=document.getElementById('staleClientMessage');
+  const versions=document.getElementById('staleClientVersions');
+  if(msg) msg.textContent='This tab is running a different WebUI version. Hard refresh to restore full functionality.';
+  if(versions) versions.textContent='Running: '+clientVersion+' → Server: '+serverVersion;
+  banner.style.display='flex';
+}
+
+function checkWebUIVersionSkew(settings){
+  try{
+    if(!settings) return;
+    const client=_currentWebUIBundleVersion();
+    const server=_normalizeWebUIVersion(settings.webui_version);
+    if(!client||!server) return;
+    if(client===server) return;
+    _showStaleWebUIClientBanner(client,server);
+  }catch(_){}
+}
+window.checkWebUIVersionSkew=checkWebUIVersionSkew;
+
 async function loadSettingsPanel(){
   try{
     const settings=await api('/api/settings');
