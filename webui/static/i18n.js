@@ -953,6 +953,7 @@ const LOCALES = {
     tab_chat: 'Chat',
     tab_tasks: 'Tasks',
     tab_skills: 'Skills',
+    tab_subagents: 'Subagents',
     tab_memory: 'Memory',
     tab_workspaces: 'Spaces',
     tab_profiles: 'Profiles',

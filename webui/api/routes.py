@@ -14801,6 +14801,14 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/mcp/tools":
         return _handle_mcp_tools_list(handler)
 
+    # ── Subagent Swarm Visualizer (GET) ──
+    if parsed.path in ("/api/subagents", "/api/subagents/list"):
+        return _handle_subagents_list(handler, parsed)
+    if parsed.path.startswith("/api/subagents/") and "transcript" in parsed.path:
+        return _handle_subagent_transcript(handler, parsed)
+    if parsed.path == "/api/subagents/detail":
+        return _handle_subagent_transcript(handler, parsed)
+
     if parsed.path == "/api/notes/sources":
         return _handle_notes_sources_list(handler)
     if parsed.path == "/api/notes/search":
@@ -29581,3 +29589,33 @@ def _handle_mcp_server_update(handler, name, body):
     _save_yaml_config_file(_get_config_path(), cfg)
     reload_config()
     return j(handler, {"ok": True, "server": _server_summary(name, server_cfg)})
+
+
+def _handle_subagents_list(handler, parsed):
+    """List subagents and hierarchy for current session or conversation."""
+    from api.subagents import list_subagents
+    qs = parse_qs(parsed.query or "")
+    session_id = qs.get("session_id", [""])[0]
+    conv_id = qs.get("conv_id", [""])[0]
+    try:
+        return j(handler, list_subagents(session_id=session_id, conv_id=conv_id))
+    except Exception as e:
+        logger.exception("Failed to list subagents")
+        return bad(handler, str(e), status=500)
+
+
+def _handle_subagent_transcript(handler, parsed):
+    """Retrieve full transcript and steps for a specific subagent."""
+    from api.subagents import get_subagent_transcript
+    qs = parse_qs(parsed.query or "")
+    subagent_id = qs.get("id", [""])[0]
+    if not subagent_id and parsed.path.startswith("/api/subagents/"):
+        subagent_id = parsed.path.split("/api/subagents/", 1)[1].split("/")[0]
+    if not subagent_id:
+        return bad(handler, "Subagent ID is required", status=400)
+    try:
+        return j(handler, get_subagent_transcript(subagent_id))
+    except Exception as e:
+        logger.exception("Failed to get subagent transcript")
+        return bad(handler, str(e), status=500)
+
