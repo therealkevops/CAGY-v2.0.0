@@ -7713,8 +7713,6 @@ function _renderTabVisibilityChips(){
     _wireTabChipDrag(chip,panel);
     container.appendChild(chip);
   });
-  var dashboardChip=_renderDashboardVisibilityChip(container);
-  if(dashboardChip) container.appendChild(dashboardChip);
 }
 
 function _wireTabChipDrag(chip,panel){
