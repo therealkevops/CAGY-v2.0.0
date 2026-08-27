@@ -1121,13 +1121,6 @@
             </div>
             <div class="settings-field" style="margin-top:8px">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowTitlebarProfile" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_show_titlebar_profile">Show profile switcher in titlebar</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_show_titlebar_profile">When enabled, a profile switcher button appears in the top-left app titlebar so you can change profiles from any tab. Off by default; the composer footer always has a profile switcher regardless of this setting.</div>
-            </div>
-            <div class="settings-field" style="margin-top:8px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                 <input type="checkbox" id="settingsWorklogDetailsExpandedDefault" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_worklog_details_expanded_default">Open Worklog details automatically</span>
               </label>
@@ -1394,86 +1387,8 @@
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_new_chat_on_workspace_switch">When on, selecting a different workspace starts a fresh conversation bound to that workspace and leaves your current chat on its original workspace — avoiding stale cross-workspace context. When off (default), switching workspace changes the current conversation's workspace in place.</div>
             </div>
             <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowCliSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_external_sessions">Show non-WebUI sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_external_sessions">Show conversations from CLI, Telegram, Discord, Slack, and other channels in the session list. Click to import and continue.</div>
-            </div>
-            <div class="settings-field" id="settingsShowCronSessionsField" style="margin-left:24px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowCronSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_cron_sessions">Show cron sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_cron_sessions">Surface cron job output as conversations in the sidebar. Only active when non-WebUI sessions are enabled. Defaults off; high-frequency jobs can flood the sidebar.</div>
-            </div>
-            <div class="settings-field" id="settingsShowClaudeCodeSessionsField" style="margin-left:24px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowClaudeCodeSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_claude_code_sessions">Show Claude Code sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_claude_code_sessions">Show Claude Code imported sessions in the sidebar, or hide them while leaving other external sessions visible.</div>
-            </div>
-            <div class="settings-field" id="settingsShowWebhookSessionsField" style="margin-left:24px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowWebhookSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_webhook_sessions">Show webhook sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_webhook_sessions">Surface webhook runs as conversations in the sidebar. Only active when non-WebUI sessions are enabled. Defaults off; high-volume routes can flood the sidebar.</div>
-            </div>
-            <div class="settings-field" id="settingsShowKanbanSessionsField" style="margin-left:24px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowKanbanSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_kanban_sessions">Show kanban sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_kanban_sessions">Surface kanban worker runs as conversations in the sidebar. Only active when non-WebUI sessions are enabled. Defaults off; worker runs are internal and can flood the sidebar.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowPreviousMessagingSessions" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_previous_messaging_sessions">Show previous messaging sessions</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_previous_messaging_sessions">Show older Discord, Telegram, Slack, and Weixin sessions that were replaced by reset or compression.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsSyncInsights" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_sync_insights">Sync usage to /insights</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_sync_insights">Mirrors WebUI token usage to state.db so <code>/insights</code> includes browser session data. Off by default.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsCheckUpdates" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_check_updates">Check for updates</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_check_updates">Show a banner when newer versions of the WebUI or Agent are available. Runs a background git fetch periodically.</div>
-            </div>
-            <div class="settings-field">
-              <label for="settingsUpdateChannel" data-i18n="settings_label_update_channel">Update channel</label>
-              <select id="settingsUpdateChannel" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
-                <option value="stable" data-i18n="settings_update_channel_stable">Stable (recommended)</option>
-                <option value="experimental" data-i18n="settings_update_channel_experimental">Experimental</option>
-              </select>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_update_channel">Stable gets soak-tested, proven releases. Experimental gets every release as it lands — faster, but may hit rough edges. Switching back to Stable keeps your current version until Stable catches up. Applies to WebUI updates only.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsIgnoreAgentUpdates" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_ignore_agent_updates">Ignore Agent updates</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_ignore_agent_updates">Keep WebUI update checks on, but hide Agent update notices and skip Agent update fetches.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsWhatsNewSummary" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_whats_new_summary">Summarize What's New with AI</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_whats_new_summary">Changes the What's New action from opening the raw diff first to generating a short, human-readable summary. The regular diff comparison stays available after the summary.</div>
-            </div>
-            <div class="settings-field">
               <label for="settingsBotName" data-i18n="settings_label_bot_name">Default assistant name</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_bot_name">Used for the default profile only. Other profiles use their own profile names.</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Custom display name for the pair-programming assistant in chat conversations.</div>
               <input type="text" id="settingsBotName" placeholder="CAGY" maxlength="64" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
             </div>
             <button class="sm-btn" onclick="saveSettings()" style="margin-top:12px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>
