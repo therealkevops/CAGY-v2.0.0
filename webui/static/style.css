@@ -4934,22 +4934,15 @@ main.main > #mainSettings,
 main.main > #mainSkills,
 main.main > #mainMcp,
 main.main > #mainSubagents,
-main.main > #mainTasks,
-main.main > #mainKanban,
 main.main > #mainWorkspaces,
-main.main > #mainInsights,
-main.main > #mainLogs{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-mcp):not(.showing-subagents):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-insights):not(.showing-logs):not(.showing-plugin) > #mainChat{display:flex;}
+main.main > #mainPlugin{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-mcp):not(.showing-subagents):not(.showing-workspaces):not(.showing-plugin) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-mcp > #mainMcp{display:flex;}
 main.main.showing-subagents > #mainSubagents{display:flex;}
-main.main.showing-tasks > #mainTasks{display:flex;}
-main.main.showing-kanban > #mainKanban{display:flex;overflow-y:auto;}
 main.main.showing-workspaces > #mainWorkspaces{display:flex;}
-main.main.showing-logs > #mainLogs{display:flex;}
 main.main.showing-plugin > #mainPlugin{display:flex;}
-main.main > #mainPlugin{display:none;}
 #mainPlugin .main-view-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 #pluginPageContainer{flex:1;display:flex;flex-direction:column;min-height:0;}
 #mainSettings{overflow-y:auto;}

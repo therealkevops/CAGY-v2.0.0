@@ -40,11 +40,11 @@ let _logsSeverityFilter = 'all';
 
 // Map of panel names → i18n keys for the app titlebar label.
 const APP_TITLEBAR_KEYS = {
-  chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills',
+  chat: 'tab_chat', skills: 'tab_skills',
   mcp: 'tab_mcp', subagents: 'tab_subagents', workspaces: 'tab_workspaces',
-  todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', settings: 'tab_settings',
+  settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','tasks','kanban','workspaces','insights','logs','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','workspaces','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -448,20 +448,11 @@ async function switchPanel(name, opts = {}) {
     MAIN_VIEW_PANELS.forEach(p => {
       mainEl.classList.toggle('showing-' + p, nextPanel === p);
     });
-  }
   // Lazy-load panel data
-  if (nextPanel === 'tasks') await loadCrons();
-  if (nextPanel === 'kanban') await loadKanban();
   if (nextPanel === 'skills') await loadSkills();
   if (nextPanel === 'mcp') await loadMcpHub();
   if (nextPanel === 'subagents') await loadSubagents();
-  if (nextPanel === 'memory') await loadMemory();
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
-  if (nextPanel === 'profiles') await loadProfilesPanel();
-  if (nextPanel === 'todos') loadTodos();
-  if (nextPanel === 'insights') await loadInsights();
-  if (nextPanel === 'logs') await loadLogs();
-  _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {
     switchSettingsSection(_currentSettingsSection);
