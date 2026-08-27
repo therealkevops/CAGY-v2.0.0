@@ -5,6 +5,7 @@ Parses multi-agent swarms, lifecycle states, hierarchy trees, and transcripts.
 
 import os
 import json
+import re
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -13,8 +14,9 @@ def _get_brain_dirs() -> List[Path]:
     """Return list of possible brain directory locations across container and host."""
     candidates = [
         Path(os.environ.get("AGY_APP_DATA_DIR", "")) / "brain" if os.environ.get("AGY_APP_DATA_DIR") else None,
-        Path.home() / ".gemini" / "antigravity-cli" / "brain",
         Path("/root/.gemini/antigravity-cli/brain"),
+        Path("/opt/data/gemini/antigravity-cli/brain"),
+        Path.home() / ".gemini" / "antigravity-cli" / "brain",
         Path(__file__).resolve().parent.parent.parent / "container_data" / "gemini" / "antigravity-cli" / "brain",
         Path("/workspace/container_data/gemini/antigravity-cli/brain"),
         Path("/Users/kev.gorman/.gemini/antigravity-cli/brain"),
@@ -33,6 +35,8 @@ def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
     # Check session map file
     map_candidates = [
         Path.home() / ".hermes" / "webui" / "sessions" / "agy_session_map.json",
+        Path("/root/.hermes/webui/sessions/agy_session_map.json"),
+        Path("/opt/data/webui/sessions/agy_session_map.json"),
         Path(__file__).resolve().parent.parent.parent / "container_data" / "webui" / "sessions" / "agy_session_map.json",
         Path("/workspace/container_data/webui/sessions/agy_session_map.json"),
     ]
@@ -55,54 +59,72 @@ def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
         return []
 
     subagents = []
-    seen_ids = set()
+    lines = []
 
     try:
         with open(transcript_file, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if not line or "invoke_subagent" not in line:
-                    continue
-                try:
-                    step = json.loads(line)
-                    tool_calls = step.get("tool_calls", [])
-                    for tc in tool_calls:
-                        if tc.get("name") == "invoke_subagent":
-                            args = tc.get("args", {})
-                            if isinstance(args, str):
-                                try:
-                                    args = json.loads(args)
-                                except Exception:
-                                    args = {}
-                            sub_list = args.get("Subagents", [])
-                            if isinstance(sub_list, list):
-                                for sub in sub_list:
-                                    role = sub.get("Role", "Subagent")
-                                    type_name = sub.get("TypeName", "research")
-                                    prompt = sub.get("Prompt", "")
-                                    model = sub.get("Model", "inherit")
-                                    ws = sub.get("Workspace", "inherit")
-                                    
-                                    # Unique key for tracking if conversationId not yet assigned
-                                    sub_entry = {
-                                        "parent_id": conv_dir.name,
-                                        "role": role,
-                                        "type_name": type_name,
-                                        "model": model,
-                                        "workspace": ws,
-                                        "prompt": prompt,
-                                        "created_at": step.get("created_at", ""),
-                                        "status": "done" if step.get("status") == "DONE" else "running",
-                                        "tool_count": 0,
-                                        "tools_used": [],
-                                        "last_activity": "Invoked by parent agent",
-                                        "conversation_id": None
-                                    }
-                                    subagents.append(sub_entry)
-                except Exception:
-                    continue
+            for l in f:
+                l = l.strip()
+                if l:
+                    try:
+                        lines.append(json.loads(l))
+                    except Exception:
+                        pass
     except Exception:
-        pass
+        return []
+
+    for i, step in enumerate(lines):
+        tool_calls = step.get("tool_calls", [])
+        for tc in tool_calls:
+            if tc.get("name") == "invoke_subagent":
+                args = tc.get("args", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                sub_list = args.get("Subagents", [])
+                if isinstance(sub_list, str):
+                    try:
+                        sub_list = json.loads(sub_list)
+                    except Exception:
+                        sub_list = []
+
+                # Look ahead for conversationIds in the next tool execution response
+                found_cids = []
+                for look_idx in range(i + 1, min(i + 4, len(lines))):
+                    nxt = lines[look_idx]
+                    content = str(nxt.get("content", ""))
+                    cids = re.findall(r'"conversationId":\s*"([a-f0-9\-]+)"', content)
+                    if cids:
+                        found_cids.extend(cids)
+                        break
+
+                if isinstance(sub_list, list):
+                    for idx, sub in enumerate(sub_list):
+                        cid = found_cids[idx] if idx < len(found_cids) else None
+                        subagents.append({
+                            "parent_id": conv_dir.name,
+                            "role": sub.get("Role", "Subagent"),
+                            "type_name": sub.get("TypeName", "research"),
+                            "model": sub.get("Model", "inherit"),
+                            "workspace": sub.get("Workspace", "inherit"),
+                            "prompt": sub.get("Prompt", ""),
+                            "created_at": step.get("created_at", ""),
+                            "status": "running",
+                            "tool_count": 0,
+                            "tools_used": [],
+                            "last_activity": "Invoked by parent agent",
+                            "conversation_id": cid
+                        })
+
+    # Check incoming messages across transcript steps for completion
+    for step in lines:
+        content = str(step.get("content", ""))
+        for sub in subagents:
+            if sub.get("conversation_id") and sub["conversation_id"] in content:
+                sub["status"] = "done"
+                sub["last_activity"] = "Completed task & reported to orchestrator"
 
     return subagents
 
@@ -135,7 +157,7 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
     if not all_subagents:
         for bdir in brain_dirs:
             try:
-                for cdir in sorted(bdir.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)[:10]:
+                for cdir in sorted(bdir.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)[:15]:
                     if cdir.is_dir() and cdir.name not in scanned_convs:
                         scanned_convs.add(cdir.name)
                         subs = _parse_transcript_for_subagents(cdir)
@@ -150,8 +172,9 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
             for bdir in brain_dirs:
                 scdir = bdir / cid
                 if scdir.exists():
-                    # Parse steps
                     st_file = scdir / ".system_generated" / "logs" / "transcript.jsonl"
+                    if not st_file.exists():
+                        st_file = scdir / ".system_generated" / "logs" / "transcript_full.jsonl"
                     if st_file.exists():
                         try:
                             tools = []
@@ -159,13 +182,19 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
                             last_act = ""
                             with open(st_file, "r", encoding="utf-8", errors="replace") as sf:
                                 for sline in sf:
+                                    sline = sline.strip()
+                                    if not sline:
+                                        continue
                                     step_cnt += 1
-                                    sdata = json.loads(sline.strip())
-                                    for tc in sdata.get("tool_calls", []):
-                                        tname = tc.get("name")
-                                        if tname:
-                                            tools.append(tname)
-                                            last_act = f"Executed {tname}"
+                                    try:
+                                        sdata = json.loads(sline)
+                                        for tc in sdata.get("tool_calls", []):
+                                            tname = tc.get("name")
+                                            if tname:
+                                                tools.append(tname)
+                                                last_act = f"Executed {tname}"
+                                    except Exception:
+                                        pass
                             sub["tool_count"] = len(tools)
                             sub["tools_used"] = list(set(tools))
                             sub["step_count"] = step_cnt
@@ -185,23 +214,27 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
     }
 
 def get_subagent_transcript(subagent_id: str) -> Dict[str, Any]:
-    """Retrieve full transcript steps and telemetry for a specific subagent."""
+    """Load transcript steps for a specific subagent."""
+    if not subagent_id:
+        return {"error": "subagent_id required"}
+
     brain_dirs = _get_brain_dirs()
     target_dir = None
+
     for bdir in brain_dirs:
         cdir = bdir / subagent_id
         if cdir.exists() and cdir.is_dir():
             target_dir = cdir
             break
-            
+
     if not target_dir:
-        return {"error": "Subagent conversation not found", "subagent_id": subagent_id, "steps": []}
+        return {"steps": [], "total_steps": 0, "message": "Transcript not yet persisted"}
 
     transcript_file = target_dir / ".system_generated" / "logs" / "transcript.jsonl"
     if not transcript_file.exists():
         transcript_file = target_dir / ".system_generated" / "logs" / "transcript_full.jsonl"
     if not transcript_file.exists():
-        return {"subagent_id": subagent_id, "steps": []}
+        return {"steps": [], "total_steps": 0, "message": "Log file not found"}
 
     steps = []
     try:
@@ -211,24 +244,24 @@ def get_subagent_transcript(subagent_id: str) -> Dict[str, Any]:
                 if not line:
                     continue
                 try:
-                    step_data = json.loads(line)
+                    step = json.loads(line)
                     steps.append({
-                        "step_index": step_data.get("step_index"),
-                        "source": step_data.get("source"),
-                        "type": step_data.get("type"),
-                        "status": step_data.get("status"),
-                        "created_at": step_data.get("created_at"),
-                        "content": step_data.get("content", ""),
-                        "thinking": step_data.get("thinking", ""),
-                        "tool_calls": step_data.get("tool_calls", [])
+                        "step_index": step.get("step_index"),
+                        "source": step.get("source"),
+                        "type": step.get("type"),
+                        "status": step.get("status"),
+                        "created_at": step.get("created_at"),
+                        "thinking": step.get("thinking"),
+                        "content": step.get("content"),
+                        "tool_calls": step.get("tool_calls", [])
                     })
                 except Exception:
                     continue
     except Exception as e:
-        return {"error": str(e), "subagent_id": subagent_id, "steps": []}
+        return {"error": str(e)}
 
     return {
         "subagent_id": subagent_id,
-        "total_steps": len(steps),
-        "steps": steps
+        "steps": steps,
+        "total_steps": len(steps)
     }
