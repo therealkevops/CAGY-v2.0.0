@@ -102,3 +102,41 @@ description: {description or f'Specialized skill for {raw_name}'}
             "relative_path": f"skills/{slug}/SKILL.md",
             "created_dirs": created_dirs
         }
+
+def list_workspace_rules() -> List[Dict[str, Any]]:
+    """List all configured workspace rules."""
+    ws = _resolve_workspace()
+    rules = []
+
+    gemini_md = ws / "GEMINI.md"
+    if gemini_md.exists():
+        rules.append({
+            "name": "GEMINI.md (Core Rule)",
+            "category": "Workspace Rules (.gemini)",
+            "description": "Base environment and container namespace configuration.",
+            "path": str(gemini_md),
+            "kind": "rule"
+        })
+
+    rules_dir = ws / ".gemini" / "rules"
+    if rules_dir.exists():
+        for r_file in sorted(rules_dir.glob("*.md")):
+            name = r_file.stem
+            try:
+                content = r_file.read_text(encoding="utf-8")
+                desc = "Workspace constraint rule"
+                for line in content.splitlines():
+                    if line.startswith("# "):
+                        desc = line[2:].strip()
+                        break
+                rules.append({
+                    "name": f"Rule: {name}",
+                    "category": "Workspace Rules (.gemini)",
+                    "description": desc,
+                    "path": str(r_file),
+                    "kind": "rule"
+                })
+            except Exception:
+                pass
+
+    return rules

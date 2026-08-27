@@ -5137,14 +5137,15 @@ function editCurrentSkill() {
 }
 
 function openSkillCreate() {
+  if (typeof openSkillOrRuleWizard === 'function') {
+    openSkillOrRuleWizard();
+    return;
+  }
   if (typeof switchPanel === 'function' && _currentPanel !== 'skills') switchPanel('skills');
   _skillPreFormDetail = _currentSkillDetail ? { ..._currentSkillDetail } : null;
   _editingSkillName = null;
   _skillMode = 'create';
   _renderSkillForm({ name: '', category: '', content: '', isEdit: false });
-  // Mobile: the new-skill form lives in the main view, which is covered by the
-  // full-screen sidebar drawer. Close the drawer so the form is visible (mirror
-  // openSkillDetail's behaviour); no-op on desktop.
   _closeMobileSidebarAfterPanelSelection();
 }
 

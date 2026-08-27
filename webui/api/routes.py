@@ -14664,7 +14664,14 @@ def handle_get(handler, parsed) -> bool:
         qs = parse_qs(parsed.query)
         category = qs.get("category", [None])[0]
         data = _skills_list_from_dir(_active_skills_dir(), category=category)
-        return j(handler, {"skills": data.get("skills", [])})
+        skills = list(data.get("skills", []))
+        try:
+            from api.skills_wizard import list_workspace_rules
+            rules = list_workspace_rules()
+            skills.extend(rules)
+        except Exception:
+            pass
+        return j(handler, {"skills": skills})
 
     if parsed.path == "/api/skills/usage":
         from api.skill_usage import read_skill_usage
@@ -14707,6 +14714,13 @@ def handle_get(handler, parsed) -> bool:
         name = qs.get("name", [""])[0]
         if not name:
             return j(handler, {"error": "name required"}, status=400)
+        # Check if this is a rule
+        if name.startswith("Rule: ") or "GEMINI.md" in name:
+            from api.skills_wizard import list_workspace_rules
+            for r in list_workspace_rules():
+                if r["name"] == name and Path(r["path"]).exists():
+                    c = Path(r["path"]).read_text(encoding="utf-8")
+                    return j(handler, {"name": name, "content": c, "linked_files": {}})
         file_path = qs.get("file", [""])[0]
         if file_path:
             # Serve a linked file from the skill directory
