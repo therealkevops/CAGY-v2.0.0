@@ -7,10 +7,10 @@ cd "$SCRIPT_DIR"
 # Ensure container data & SSL cert bundle exist
 ./agy-container.sh setup >/dev/null 2>&1 || true
 
-HOST_AGY_BIN="/Users/kev.gorman/.local/bin/agy"
+HOST_AGY_BIN="${AGY_BIN:-$(which agy 2>/dev/null || echo "${HOME}/.local/bin/agy")}"
 
 if [ ! -x "$HOST_AGY_BIN" ]; then
-    echo "Error: Host AGY binary not found at $HOST_AGY_BIN"
+    echo "Error: AGY binary not found. Please install the Antigravity CLI or set AGY_BIN."
     exit 1
 fi
 

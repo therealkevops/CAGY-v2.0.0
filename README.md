@@ -1,125 +1,180 @@
-# Containerized Antigravity (AGY Docker & WebUI Bridge)
+# Containerized Antigravity (CAGY Docker & WebUI Bridge)
 
-This project provides a fully containerized, isolated environment for running Google Antigravity (AGY) alongside the browser WebUI. 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Linux / macOS / WSL2](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20WSL2-teal.svg)](https://docker.com)
+[![Engine: Antigravity 2.0](https://img.shields.io/badge/Engine-Antigravity%202.0-orange.svg)](https://deepmind.google)
 
-By encapsulating both the Web UI server and the native Linux `agy` CLI binary inside an isolated Docker/Linux container, all process spawning, bash tool executions, script runs, and file modifications remain completely shielded from host-level endpoint detection (e.g. SentinelOne and SecureWorks on macOS).
+A complete, fully containerized execution environment and browser WebUI for **Google Antigravity (AGY)**.
+
+By encapsulating both the WebUI server and the native Linux `agy` CLI binary inside an isolated Debian container, all process spawning, bash tool executions, script runs, and file modifications remain completely shielded from host-level endpoint detection (e.g. SentinelOne, SecureWorks, or CrowdStrike on macOS/Windows) while providing a rich, responsive pair-programming web experience.
 
 ---
 
 ## Key Features
 
-- **Full EDR Shielding**: The Web UI, the Linux Antigravity CLI binary, and all tool subprocesses execute strictly within the Linux container namespace.
-- **Native Linux `agy` Engine**: Official Google Antigravity Linux binary runs directly inside the container.
-- **Integrated Browser WebUI**: Connects to `http://localhost:8989` with real-time markdown streaming, tool inspection, and live terminal drawer.
-- **Confinement Awareness**: Built-in rules ([`.gemini/rules/container_confinement.md`](.gemini/rules/container_confinement.md) & [`GEMINI.md`](GEMINI.md)) ensure the agent is aware of its container boundaries.
-- **Dual Update Pathways**: Instant in-place CLI updates (`./update.sh`) or full clean rebuilds (`./update.sh full`).
-- **Persistent State**: Chat sessions, journals, and credentials persist across restarts in `./container_data/`.
-- **SSL Certificate Trust**: Automatically exports host macOS root certificates to `./container_data/system_certs.pem` to prevent corporate proxy or TLS inspection errors.
+- **Full EDR & Process Shielding**: All shell executions, python scripts, file manipulations, and agent tool calls run exclusively inside the container's isolated Linux namespace.
+- **Native Antigravity Engine**: Uses the official Google Antigravity Linux binary (`agy`) with automated lifecycle management.
+- **Subagent Swarms Visualizer (`/swarm`)**: Real-time DAG hierarchy viewer, execution timeline, and inspector for delegated multi-agent subtasks (`invoke_subagent`).
+- **Model Context Protocol (MCP) Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets for PostgreSQL, SQLite, Puppeteer (Browser), and Git servers.
+- **Skill & Rule Scaffolder Wizard (`/skills`)**: Visual builder for `.gemini/rules/*.md` and `skills/<name>/SKILL.md`.
+- **Integrated Artifacts & Workspace Drawer**: Collapsible right-hand pane with live file tree, code diff preview, and markdown artifact viewer.
+- **Command Palette (`Cmd + K`)**: Quick access to all views, panels, and slash commands (`/goal`, `/schedule`, `/browser`, `/plan`, `/grill-me`).
+- **Corporate SSL Certificate Trust**: Automatically exports host root certificates into `./container_data/system_certs.pem` to prevent corporate proxy or TLS inspection errors.
+- **Persistent State**: Sessions, transcripts, tokens, and journals persist cleanly across container rebuilds in `./container_data/`.
 
 ---
 
-## Quick Start (Containerized Mode)
+## Prerequisites
 
-### Step 1: Initial Bootstrap & Certificate Setup
-Run the setup script to export corporate SSL certificates, initialize volumes, and build the Docker container:
+Before setting up CAGY, ensure you have:
+1. **Docker Desktop** (macOS / Windows) or **Docker Engine** (Linux) running.
+2. **Git** and **Bash / Zsh**.
+3. A **Google Account** with access to Google Antigravity (Gemini).
+
+---
+
+## Quick Start Guide
+
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/<your-username>/cagy-docker.git
+cd cagy-docker
+```
+
+### Step 2: Run Initial Setup & Certificate Generator
+The setup script exports host root SSL certificates (vital for corporate TLS inspection), initializes the persistent data directories, and builds the container image:
 ```bash
 ./setup.sh
 ```
 
-### Step 2: One-Time Google Authentication in Container
-Because macOS uses Keychain while Linux uses file-based token storage, run the interactive container CLI once to authenticate:
+### Step 3: One-Time Google Authentication in the Container
+Because macOS uses Keychain while Linux uses secure file-based token storage, run the interactive container CLI once to authenticate:
 ```bash
 ./agy-container.sh cli agy
 ```
-Follow the on-screen prompt in your browser to complete Google sign-in. Once logged in, tokens are stored permanently in `./container_data/gemini/`.
+1. Click the URL or press `Enter` to open the Google login page in your browser.
+2. Complete sign-in and approve the Antigravity CLI authorization.
+3. Once authenticated, press `Ctrl + C` or type `/exit` to return to your host terminal.
+*(Your credentials are permanently stored in `./container_data/gemini/` and will persist across restarts and rebuilds.)*
 
-### Step 3: Start the Container Daemon & WebUI
+### Step 4: Start the Background Container & WebUI
 ```bash
 ./agy-container.sh up
 ```
-Open **`http://localhost:8989`** in your browser.
+Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 
-### Step 4: Stop Services Gracefully
+---
+
+## WebUI Overview & Navigation
+
+| View / Feature | Shortcut / Route | Description |
+| :--- | :--- | :--- |
+| **Chat & Pairing Canvas** | `/chat` (Default) | Real-time streaming conversation, syntax highlighting, and inline tool inspection. |
+| **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
+| **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets. |
+| **Skills & Rules Scaffolder** | `/skills` or Left Rail | Domain skills manager and visual rule generator. |
+| **Workspace & Artifacts** | Right Drawer Button | Inspect files in `/workspace` and render generated markdown artifacts. |
+| **Command Palette** | `Cmd + K` / `Ctrl + K` | Universal search for commands, panels, settings, and workflows. |
+
+---
+
+## Managing & Updating Services
+
+### Daily Operations
+
 ```bash
+# Check status of container daemon & WebUI
+./agy-container.sh status
+
+# View live container logs (supervisor, webui, agy stream)
+./agy-container.sh logs
+
+# Open an interactive bash shell inside the container
+./agy-container.sh cli
+
+# Stop services gracefully
 ./agy-container.sh down
 ```
 
----
-
-## Updating Antigravity & the Container
+### Updating Antigravity CLI
 
 We provide two update pathways:
 
-### Option A: Quick In-Place Update (Fast)
-Updates the Antigravity CLI binary directly inside the running container and reloads the WebUI in seconds without rebuilding:
-```bash
-./update.sh
-# or
-./agy-container.sh update
-```
-
-### Option B: Full Container Rebuild (Fresh Base Packages)
-Refreshes host SSL certificates, updates base Linux packages, downloads the latest Antigravity build, and recreates the container:
-```bash
-./update.sh full
-# or
-./agy-container.sh rebuild
-```
+* **Quick In-Place Update (Recommended)**:
+  Downloads and updates the Antigravity binary directly inside the running container in seconds:
+  ```bash
+  ./update.sh
+  ```
+* **Full Clean Rebuild**:
+  Re-exports host certificates, updates Linux base packages, and performs a fresh build of the Docker image:
+  ```bash
+  ./update.sh full
+  ```
 
 ---
 
-## Command Reference
-
-| Command | Description |
-| :--- | :--- |
-| `./agy-container.sh up` | Starts the unified background container daemon with WebUI on port 8989 |
-| `./agy-container.sh down` | Gracefully stops all container services and host processes |
-| `./agy-container.sh cli` | Spawns an interactive bash shell inside the Docker container |
-| `./agy-container.sh cli agy` | Runs an interactive Antigravity CLI session inside the container (for login) |
-| `./update.sh` | Fast in-place update of AGY CLI inside the running container |
-| `./update.sh full` | Rebuilds the entire Docker container with latest packages and certs |
-| `./agy-container.sh logs` | Tails live container logs (supervisor, webui, agy) |
-| `./agy-container.sh status` | Reports the live status of the container and WebUI |
-| `./run-webui.sh` | (Optional) Starts the WebUI natively on macOS host |
-| `./stop-webui.sh` | (Optional) Gracefully stops the native macOS host WebUI |
-
----
-
-## Directory Structure
+## Architecture & Directory Layout
 
 ```text
-├── container_data/        # Persistent data shared across container runs
-│   ├── webui/             # Sessions, workspaces, index, and UI settings
-│   │   └── sessions/      # Persistent JSON transcripts and turn journals
-│   ├── gemini/            # Persistent Antigravity CLI tokens & configs
-│   └── system_certs.pem   # Host SSL root certificate bundle
-├── skills/                # Workspace skills (e.g. agy-webui-bridge)
-├── webui/                 # WebUI frontend & API bridge layer
-│   ├── static/            # Web assets (HTML, CSS, JS)
-│   ├── api/               # API routes, streaming handlers, and settings
-│   ├── run_agent.py       # AGY CLI streaming bridge adapter
-│   └── server.py          # WebUI server entrypoint
-├── .gemini/rules/         # Agent workspace confinement rules
-├── GEMINI.md              # Global workspace architecture & path rules
-├── Dockerfile             # Unified container image definition with Linux AGY
-├── docker-compose.yml     # Compose service definitions and volume mappings
-├── setup.sh               # Initial setup and certificate bundle generator
-├── update.sh              # Update script (in-place CLI or full rebuild)
-├── agy-container.sh       # Main container management CLI
-├── run-webui.sh           # Host-native WebUI start script
-└── stop-webui.sh          # Host-native WebUI stop script
+├── container_data/        # Persistent data (gitignored, survives container restarts)
+│   ├── webui/             # WebUI database, sessions, and settings
+│   │   └── sessions/      # Transcripts, turn journals, and history
+│   ├── gemini/            # Antigravity CLI auth tokens, settings, and brain logs
+│   │   └── antigravity-cli/brain/  # Subagent transcripts and artifacts
+│   └── system_certs.pem   # Exported host SSL root certificates
+├── skills/                # Antigravity domain skills (e.g. agy-webui-bridge)
+├── webui/                 # WebUI frontend & backend bridge
+│   ├── static/            # Static assets (HTML, CSS, JS, Katex)
+│   ├── api/               # API endpoints (subagents, mcp_hub, skills, artifacts)
+│   ├── run_agent.py       # Antigravity CLI event-streaming bridge adapter
+│   └── server.py          # WebUI HTTP daemon entrypoint
+├── .gemini/rules/         # Agent workspace confinement and design system rules
+├── GEMINI.md              # Container execution namespace configuration
+├── Dockerfile             # Unified Debian container with Linux agy and supervisor
+├── docker-compose.yml     # Compose service specification and volume mounts
+├── setup.sh               # Initial setup and certificate exporter
+├── update.sh              # Update script (fast in-place or full rebuild)
+└── agy-container.sh       # Unified container CLI manager
 ```
 
 ---
 
-## Troubleshooting
+## Troubleshooting FAQ
 
-* **"Authentication required" in WebUI**:
-  * Run `./agy-container.sh cli agy` once in your terminal to complete Google sign-in for the containerized Linux binary.
-* **"Connection lost" banner in browser**:
-  * Perform a hard refresh in the browser (`Cmd + Shift + R`).
-  * Check container health with `./agy-container.sh status`.
-* **Corporate Proxy / SSL Errors**:
-  * Run `./setup.sh` to re-export current macOS Keychain certificates into `./container_data/system_certs.pem`.
+### 1. "Authentication required" in WebUI
+If the WebUI reports that the agent is not authenticated:
+* Run `./agy-container.sh cli agy` in your host terminal.
+* Complete the browser authentication link.
+* Refresh the WebUI at `http://localhost:8989`.
+
+### 2. Corporate Proxy or SSL Certificate Errors
+If `agy` reports `x509: certificate signed by unknown authority`:
+* Run `./setup.sh` on your host machine to re-export your local system keychain certificates to `container_data/system_certs.pem`.
+* Restart the container: `./agy-container.sh down && ./agy-container.sh up`.
+
+### 3. Port Conflict on 8989
+If port `8989` is already bound by another service on your machine:
+* Edit `docker-compose.yml` to map a different host port (e.g. `"9090:8989"`).
+* Access the WebUI at `http://localhost:9090`.
+
+### 4. Resetting Container State
+To reset the container while preserving your sessions and login tokens:
+```bash
+./agy-container.sh down
+./update.sh full
+./agy-container.sh up
+```
+
+---
+
+## Acknowledgments & Credits
+
+CAGY was originally adapted and forked from the open-source **[Hermes WebUI](https://github.com/NousResearch/hermes-webui)** project by Nous Research and its contributors. We express our gratitude to the original Hermes authors and community for providing an excellent web interface foundation.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE), preserving the original MIT licensing terms and upstream copyright notices.
 
 

@@ -19,7 +19,6 @@ def _get_brain_dirs() -> List[Path]:
         Path.home() / ".gemini" / "antigravity-cli" / "brain",
         Path(__file__).resolve().parent.parent.parent / "container_data" / "gemini" / "antigravity-cli" / "brain",
         Path("/workspace/container_data/gemini/antigravity-cli/brain"),
-        Path("/Users/kev.gorman/.gemini/antigravity-cli/brain"),
     ]
     valid = []
     for c in candidates:
