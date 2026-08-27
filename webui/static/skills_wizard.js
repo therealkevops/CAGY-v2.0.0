@@ -25,14 +25,14 @@ function _renderSkillWizardForm() {
         <div class="wizard-header">
           <div class="wizard-type-selector">
             <button type="button" class="wizard-type-btn active" id="wizardTypeSkill" onclick="setWizardType('skill')">
-              <span class="wizard-type-icon">⚡</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
               <div>
                 <strong>AGY Domain Skill</strong>
                 <div class="wizard-type-sub">Creates <code>skills/&lt;name&gt;/SKILL.md</code></div>
               </div>
             </button>
             <button type="button" class="wizard-type-btn" id="wizardTypeRule" onclick="setWizardType('rule')">
-              <span class="wizard-type-icon">📐</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
               <div>
                 <strong>Workspace Rule</strong>
                 <div class="wizard-type-sub">Creates <code>.gemini/rules/&lt;name&gt;.md</code></div>
@@ -81,7 +81,7 @@ function _renderSkillWizardForm() {
 
           <div class="wizard-actions-bar">
             <button type="button" class="btn-mcp-action" onclick="cancelSkillForm()">Cancel</button>
-            <button type="button" class="btn-mcp-action primary" onclick="submitSkillWizard()">⚡ Scaffold & Initialize</button>
+            <button type="button" class="btn-mcp-action primary" onclick="submitSkillWizard()">Scaffold & Initialize</button>
           </div>
         </div>
       </div>
@@ -267,9 +267,9 @@ function updateVelocityHud(text, isDone = false, metrics = null) {
   } else {
     _hudStartTime = null;
     if (metrics && metrics.tps) {
-      label.textContent = `⚡ ${metrics.tps} tps · ${metrics.output_tokens || 0} tokens (${metrics.duration_sec || 0}s)`;
+      label.textContent = `${metrics.tps} tps · ${metrics.output_tokens || 0} tok (${metrics.duration_sec || 0}s)`;
     } else {
-      label.textContent = text || '✓ Complete';
+      label.textContent = text || 'Complete';
     }
     _hudFadeTimeout = setTimeout(() => {
       pill.style.display = 'none';

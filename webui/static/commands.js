@@ -531,7 +531,7 @@ async function cmdQuota(){
       const reset = q.reset_time ? q.reset_time.replace('T', ' ').replace('Z', ' UTC') : 'Active';
       table += `| **${q.family}** | ${q.window} | ${barIcon} **${pct}%** | \`${reset}\` |\n`;
     });
-    const content = `### ⚡ Antigravity Quota & Rate Limit Summary\n\n${table}\n> 💡 *Quotas automatically refresh according to DeepMind Cloud Code rate windows.*`;
+    const content = `### Antigravity Quota & Rate Limit Summary\n\n${table}\n> *Quotas automatically refresh according to DeepMind Cloud Code rate windows.*`;
     S.messages.push({role:'assistant', content});
     renderMessages();
   } catch(err){

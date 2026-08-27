@@ -5731,7 +5731,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       const _elapsedSec = Math.max(0.1, (Date.now() - _turnFirstTokenTime) / 1000);
       const _tps = ((_turnTokenChars / 4.0) / _elapsedSec).toFixed(1);
       if (typeof updateVelocityHud === 'function') {
-        updateVelocityHud(`⚡ ${_tps} tps`);
+        updateVelocityHud(`${_tps} tps`);
       }
       syncInflightAssistantMessage();
       if(!S.session||S.session.session_id!==activeSid) return;
