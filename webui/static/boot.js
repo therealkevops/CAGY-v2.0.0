@@ -2715,7 +2715,7 @@ function _normalizeAppearance(theme,skin){
   const rawSkin=typeof skin==='string'?skin.trim().toLowerCase():'';
   const legacy=_LEGACY_THEME_MAP[rawTheme];
   const nextTheme=legacy?legacy.theme:(_VALID_THEMES.has(rawTheme)?rawTheme:'dark');
-  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'graphite');
+  const nextSkin=(_VALID_SKINS.has(rawSkin)&&rawSkin!=='default')?rawSkin:(legacy?legacy.skin:'graphite');
   return {theme:nextTheme,skin:nextSkin};
 }
 
@@ -2751,21 +2751,21 @@ function _skinKey(skin){
 }
 
 function _findSkinEntry(key){
-  const normalized=String(key||'default').toLowerCase();
+  const normalized=String(key||'graphite').toLowerCase();
   return (_SKINS||[]).find(s=>_skinKey(s)===normalized)||null;
 }
 
 function _activeSkinScheme(){
-  const key=(document.documentElement.dataset.skin||'default').toLowerCase();
+  const key=(document.documentElement.dataset.skin||'graphite').toLowerCase();
   const skin=_findSkinEntry(key);
   const scheme=skin&&skin._extScheme;
   return scheme==='light'||scheme==='dark'?scheme:'';
 }
 
 function _effectiveThemeDark(baseIsDark){
-  const skinScheme=_activeSkinScheme();
-  if(skinScheme==='dark') return true;
-  if(skinScheme==='light') return false;
+  const scheme=_activeSkinScheme();
+  if(scheme==='dark') return true;
+  if(scheme==='light') return false;
   return !!baseIsDark;
 }
 
@@ -2785,7 +2785,7 @@ function _setResolvedTheme(isDark){
 }
 
 function _applyTheme(name){
-  const normalized=_normalizeAppearance(name,'default');
+  const normalized=_normalizeAppearance(name,'graphite');
   delete document.documentElement.dataset.theme;
   if(_systemThemeMq&&_onSystemThemeChange){
     _systemThemeMq.removeEventListener('change',_onSystemThemeChange);
@@ -2803,7 +2803,7 @@ function _applyTheme(name){
 }
 
 function _applySkin(name){
-  const key=(name||'slate').toLowerCase();
+  const key=(name&&name!=='default'?name:'graphite').toLowerCase();
   document.documentElement.dataset.skin=key;
   _setResolvedTheme(_resolvedThemeBaseDark);
 }

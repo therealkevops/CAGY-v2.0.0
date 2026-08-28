@@ -4,16 +4,19 @@
      --font-conversation: user/assistant message prose (defaults to --font-ui).
      --font-mono: inline code, fenced code blocks, logs, tool/metadata strings, and terminal.
   */
-  /* ── Light mode (default) — warm gold-tinted palette from Hermes brand ── */
+  /* ── Light mode (default) — neutral graphite workbench ── */
   :root {
-    --bg:#FEFCF7;--sidebar:#FAF7F0;--border:#E0D8C8;--border2:rgba(0,0,0,0.15);
-    --text:#1A1610;--muted:#5C5344;--accent:#B8860B;--blue:#0288A8;--gold:#8B6508;--code-bg:#F5F0E5;
-    --surface:#F3EEE3;--topbar-bg:rgba(250,247,240,.98);--main-bg:rgba(254,252,247,0.5);
-    --focus-ring:rgba(184,134,11,.35);--focus-glow:rgba(184,134,11,.1);
-    --input-bg:rgba(0,0,0,.03);--hover-bg:rgba(0,0,0,.05);
-    --strong:#0F0D08;--em:#5C5344;--code-text:#8b4513;--code-inline-bg:rgba(0,0,0,.06);--pre-text:#1A1610;
-    --accent-hover:#996F08;--accent-bg:rgba(184,134,11,0.08);--accent-bg-strong:rgba(184,134,11,0.15);--accent-text:#8B6508;
-    --error:#C62828;--success:#3D8B40;--warning:#E68A00;--info:#0288A8;
+    color-scheme:light;
+    --bg:#FFFFFF;--sidebar:#F3F3F3;--surface:#FFFFFF;--surface-subtle:#F7F7F7;--surface-subtle-hover:#EFEFEF;
+    --border:#E2E2E2;--border2:#CFCFCF;--border-subtle:#E8E8E8;--border-muted:#D6D6D6;
+    --text:#242424;--strong:#111111;--muted:#707070;--em:#4F4F4F;
+    --accent:#303030;--accent-hover:#171717;--accent-bg:rgba(0,0,0,0.07);--accent-bg-strong:rgba(0,0,0,0.13);--accent-text:#303030;
+    --blue:#5F5F5F;--gold:#303030;--focus-ring:rgba(0,0,0,0.18);--focus-glow:rgba(0,0,0,0.06);
+    --input-bg:#FFFFFF;--hover-bg:rgba(0,0,0,0.05);--code-bg:#F1F1F1;--code-inline-bg:rgba(0,0,0,0.06);--code-text:#242424;--pre-text:#242424;
+    --topbar-bg:rgba(255,255,255,0.94);--main-bg:#FFFFFF;
+    --error:#D44D4D;--success:#0F8F70;--warning:#B87916;--info:#55564F;
+    --user-bubble-bg:#EFEFEF;--user-bubble-border:#DEDEDE;--user-bubble-text:#242424;--user-bubble-placeholder:#707070;
+    --user-selection-bg:rgba(0,0,0,0.16);--user-selection-text:#111111;
     --radius-sm:4px;--radius-md:8px;--radius-card:8px;--radius-lg:12px;--radius-pill:999px;
     --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
     --font-size-xs:11px;--font-size-sm:12px;--font-size-md:14px;
@@ -112,17 +115,19 @@
   :root[data-font-size="large"] { font-size: 16px; }
   :root[data-font-size="xlarge"] { font-size: 18px; }
   /* ── Dark mode (default) — modern slate-gray workbench ── */
+  /* ── Dark mode (default) — neutral graphite workbench ── */
   :root.dark {
-    --bg:#0B0F19;--sidebar:#111827;--surface:#1E293B;--surface-subtle:#162032;--surface-subtle-hover:#273549;
-    --border:#334155;--border2:#475569;--border-subtle:#1E293B;--border-muted:#334155;
-    --text:#F8FAFC;--strong:#FFFFFF;--muted:#94A3B8;--em:#CBD5E1;
-    --accent:#94A3B8;--accent-hover:#CBD5E1;--accent-bg:rgba(148,163,184,0.12);--accent-bg-strong:rgba(148,163,184,0.22);--accent-text:#F8FAFC;
-    --blue:#38BDF8;--gold:#FBBF24;--focus-ring:rgba(148,163,184,0.25);--focus-glow:rgba(148,163,184,0.08);
-    --input-bg:#0F172A;--hover-bg:rgba(255,255,255,0.06);--code-bg:#0B1120;--code-inline-bg:rgba(255,255,255,0.08);--code-text:#E2E8F0;--pre-text:#F8FAFC;
-    --topbar-bg:rgba(17,24,39,0.95);--main-bg:#0B0F19;
-    --error:#F87171;--success:#34D399;--warning:#FBBF24;--info:#38BDF8;
-    --user-bubble-bg:#1E293B;--user-bubble-border:#334155;--user-bubble-text:#F8FAFC;--user-bubble-placeholder:#94A3B8;
-    --user-selection-bg:rgba(148,163,184,0.25);--user-selection-text:#FFFFFF;
+    color-scheme:dark;
+    --bg:#151614;--sidebar:#242624;--surface:#1B1C1A;--surface-subtle:#20211F;--surface-subtle-hover:#292B28;
+    --border:#343631;--border2:#4B4D47;--border-subtle:#2A2C28;--border-muted:#3D3F3A;
+    --text:#ECEBE4;--strong:#FAF9F3;--muted:#A7A79D;--em:#D7D6CE;
+    --accent:#D7D6CE;--accent-hover:#F4F3EC;--accent-bg:rgba(255,255,255,0.08);--accent-bg-strong:rgba(255,255,255,0.14);--accent-text:#D7D6CE;
+    --blue:#C9C8C0;--gold:#D7D6CE;--focus-ring:rgba(244,243,236,0.22);--focus-glow:rgba(244,243,236,0.08);
+    --input-bg:#1E1F1D;--hover-bg:rgba(255,255,255,0.06);--code-bg:#111210;--code-inline-bg:rgba(255,255,255,0.08);--code-text:#F1F0EA;--pre-text:#ECEBE4;
+    --topbar-bg:rgba(21,22,20,0.92);--main-bg:#151614;
+    --error:#FF6B6B;--success:#10A37F;--warning:#E6B15C;--info:#C9C8C0;
+    --user-bubble-bg:#2E302D;--user-bubble-border:#454741;--user-bubble-text:#F4F3EC;--user-bubble-placeholder:#A7A79D;
+    --user-selection-bg:rgba(255,255,255,0.18);--user-selection-text:#FAF9F3;
     --surface-subtle:rgba(255,255,255,.025);--surface-subtle-hover:rgba(255,255,255,.045);
     --border-subtle:rgba(255,255,255,.075);--border-muted:rgba(255,255,255,.12);
   }
