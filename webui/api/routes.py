@@ -2935,19 +2935,6 @@ from api.request_diagnostics import RequestDiagnostics
 from api.system_health import build_system_health_payload
 
 
-def _kanban_unknown_endpoint(handler, parsed, method: str) -> bool:
-    """Return a Kanban-specific 404 for stale clients/obsolete endpoint shapes."""
-    return bad(
-        handler,
-        (
-            f"unknown Kanban endpoint: {method} {parsed.path}. "
-            "If this appeared after a WebUI update, your browser may be running "
-            "a stale cached bundle; use Hard refresh now, then reopen Kanban."
-        ),
-        status=404,
-    ) or True
-
-
 # A cancelled worker that stays in ACTIVE_RUNS longer than this is treated as
 # stuck (e.g. blocked in C-level provider I/O and never reaching its finally).
 # Once the cancel has been outstanding past this grace window, the run row can
@@ -12160,22 +12147,6 @@ def _handle_project_os_dashboard(handler, parsed) -> bool:
     workspace_raw = str(get_last_workspace() or "").strip()
     repo_root = Path(workspace_raw).expanduser() if workspace_raw else None
     selected_board_meta = None
-    if requested_board:
-        try:
-            from api.kanban_bridge import _kb, _board_meta_dict
-            kb = _kb()
-            for meta in kb.list_boards(include_archived=True) or []:
-                board = _board_meta_dict(meta)
-                if str(board.get("slug") or "") == requested_board:
-                    selected_board_meta = board
-                    workdir = str(board.get("default_workdir") or "").strip()
-                    if workdir:
-                        candidate = Path(workdir).expanduser()
-                        if candidate.exists():
-                            repo_root = candidate
-                    break
-        except Exception:
-            selected_board_meta = None
     repo_root = _project_os_resolve_repo_root_for_board(repo_root, requested_board)
     if not repo_root or not repo_root.exists():
         j(handler, {
@@ -13124,17 +13095,6 @@ def handle_get(handler, parsed) -> bool:
         return _handle_insights(handler, parsed)
     if parsed.path == "/api/project-os/dashboard":
         return _handle_project_os_dashboard(handler, parsed)
-
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_get
-
-        # Only treat an explicit False as "no route matched". None means the
-        # bridge already sent a response via bad()/j() — emitting our own 404
-        # on top of that produces concatenated JSON bodies on the wire.
-        result = handle_kanban_get(handler, parsed)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "GET")
-        return True
     if parsed.path == "/api/wiki/status":
         return _handle_llm_wiki_status(handler, parsed)
     if parsed.path == "/api/wiki/browse":
@@ -15295,13 +15255,6 @@ def handle_post(handler, parsed) -> bool:
         result = repair_safe_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path())
         return j(handler, result, status=200 if result.get("clean") else 409)
 
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_post
-
-        result = handle_kanban_post(handler, parsed, body)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "POST")
-        return True
     if parsed.path == "/api/dashboard/config":
         from api import dashboard_probe
 
@@ -17847,13 +17800,6 @@ def handle_patch(handler, parsed) -> bool:
     if parsed.path.startswith("/api/mcp/servers/"):
         name = parsed.path[len("/api/mcp/servers/"):]
         return _handle_mcp_server_toggle(handler, name, body)
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_patch
-
-        result = handle_kanban_patch(handler, parsed, body)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "PATCH")
-        return True
     return False
 
 
@@ -17882,14 +17828,6 @@ def handle_delete(handler, parsed) -> bool:
         prompts = [p for p in _load_saved_prompts() if p.get("id") != pid]
         _save_saved_prompts(prompts)
         return j(handler, {"ok": True})
-
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_delete
-
-        result = handle_kanban_delete(handler, parsed, body)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "DELETE")
-        return True
     return False
 
 
