@@ -2691,18 +2691,18 @@ const _THEMES=[
   {name:'System', value:'system', colors:['#FEFCF7','#0D0D1A','#B8860B']},
 ];
 const _SKINS=[
-  {name:'Default',  colors:['#FFD700','#FFBF00','#CD7F32']},
-  {name:'Slate',    colors:['#334155','#475569','#64748b']},
+  {name:'Slate',    value:'slate', colors:['#334155','#475569','#64748b']},
   {name:'Verdigris', value:'verdigris', colors:['#C89A5A','#0F1714','#22342C']},
+  {name:'Classic Gold', value:'default', colors:['#FFD700','#FFBF00','#CD7F32']},
 ];
 const _VALID_THEMES=new Set((_THEMES||[]).map(t=>t.value));
 const _VALID_SKINS=new Set((_SKINS||[]).map(s=>(s.value||s.name).toLowerCase()));
 const _LEGACY_THEME_MAP={
   slate:{theme:'dark',skin:'slate'},
-  solarized:{theme:'dark',skin:'poseidon'},
-  monokai:{theme:'dark',skin:'sisyphus'},
+  solarized:{theme:'dark',skin:'slate'},
+  monokai:{theme:'dark',skin:'slate'},
   nord:{theme:'dark',skin:'slate'},
-  oled:{theme:'dark',skin:'default'},
+  oled:{theme:'dark',skin:'slate'},
 };
 let _systemThemeMq=null;
 let _onSystemThemeChange=null;
@@ -2713,7 +2713,7 @@ function _normalizeAppearance(theme,skin){
   const rawSkin=typeof skin==='string'?skin.trim().toLowerCase():'';
   const legacy=_LEGACY_THEME_MAP[rawTheme];
   const nextTheme=legacy?legacy.theme:(_VALID_THEMES.has(rawTheme)?rawTheme:'dark');
-  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'default');
+  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'slate');
   return {theme:nextTheme,skin:nextSkin};
 }
 
@@ -2801,9 +2801,8 @@ function _applyTheme(name){
 }
 
 function _applySkin(name){
-  const key=(name||'default').toLowerCase();
-  if(key==='default') delete document.documentElement.dataset.skin;
-  else document.documentElement.dataset.skin=key;
+  const key=(name||'slate').toLowerCase();
+  document.documentElement.dataset.skin=key;
   _setResolvedTheme(_resolvedThemeBaseDark);
 }
 

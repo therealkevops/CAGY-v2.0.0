@@ -111,42 +111,22 @@
   :root[data-font-size="small"] { font-size: 12px; }
   :root[data-font-size="large"] { font-size: 16px; }
   :root[data-font-size="xlarge"] { font-size: 18px; }
-  /* ── Dark mode — navy-black + gold accent matching Hermes terminal ── */
+  /* ── Dark mode (default) — modern slate-gray workbench ── */
   :root.dark {
-    --bg:#0D0D1A;--sidebar:#141425;--border:#2A2A45;--border2:rgba(255,255,255,0.14);
-    --text:#FFF8DC;--muted:#C0C0C0;--accent:#FFD700;--blue:#4DD0E1;--gold:#FFBF00;--code-bg:#1A1A2E;
-    --surface:#1A1A2E;--topbar-bg:rgba(20,20,37,.98);--main-bg:rgba(13,13,26,0.5);
-    --focus-ring:rgba(255,215,0,.35);--focus-glow:rgba(255,215,0,.08);
-    --input-bg:rgba(255,255,255,.04);--hover-bg:rgba(255,255,255,.06);
-    --strong:#fff;--em:#C0C0C0;--code-text:#f0c27f;--code-inline-bg:rgba(0,0,0,.35);--pre-text:#e2e8f0;
-    --accent-hover:#FFBF00;--accent-bg:rgba(255,215,0,0.08);--accent-bg-strong:rgba(255,215,0,0.15);--accent-text:#FFD700;
-    --error:#EF5350;--success:#4CAF50;--warning:#FFA726;--info:#4DD0E1;
+    --bg:#0B0F19;--sidebar:#111827;--surface:#1E293B;--surface-subtle:#162032;--surface-subtle-hover:#273549;
+    --border:#334155;--border2:#475569;--border-subtle:#1E293B;--border-muted:#334155;
+    --text:#F8FAFC;--strong:#FFFFFF;--muted:#94A3B8;--em:#CBD5E1;
+    --accent:#94A3B8;--accent-hover:#CBD5E1;--accent-bg:rgba(148,163,184,0.12);--accent-bg-strong:rgba(148,163,184,0.22);--accent-text:#F8FAFC;
+    --blue:#38BDF8;--gold:#FBBF24;--focus-ring:rgba(148,163,184,0.25);--focus-glow:rgba(148,163,184,0.08);
+    --input-bg:#0F172A;--hover-bg:rgba(255,255,255,0.06);--code-bg:#0B1120;--code-inline-bg:rgba(255,255,255,0.08);--code-text:#E2E8F0;--pre-text:#F8FAFC;
+    --topbar-bg:rgba(17,24,39,0.95);--main-bg:#0B0F19;
+    --error:#F87171;--success:#34D399;--warning:#FBBF24;--info:#38BDF8;
+    --user-bubble-bg:#1E293B;--user-bubble-border:#334155;--user-bubble-text:#F8FAFC;--user-bubble-placeholder:#94A3B8;
+    --user-selection-bg:rgba(148,163,184,0.25);--user-selection-text:#FFFFFF;
     --surface-subtle:rgba(255,255,255,.025);--surface-subtle-hover:rgba(255,255,255,.045);
     --border-subtle:rgba(255,255,255,.075);--border-muted:rgba(255,255,255,.12);
   }
-  /* ── Skin: Default (gold — matches base) ── */
-  /* No overrides needed — :root and .dark already use gold accent */
 
-  /* ── Skin: Graphite (neutral workbench) ──
-     Full palette rewrite with restrained graphite surfaces, soft contrast,
-     and neutral action chrome. Uses native system fonts so it stays local,
-     fast, and license-safe while feeling closer to modern code workbenches. */
-  @media (hover:hover){}
-  /* ── Skin: Codex (OpenAI terminal IDE) ──
-     Full palette rewrite with minimal editor surfaces, crisp contrast,
-     and restrained OpenAI green action chrome. Uses native system fonts so it stays local,
-     fast, and license-safe while feeling closer to modern code workbenches. */
-  @media (hover:hover){}
-  /* ── Skin: Terracotta (warm IDE) ──
-     Full palette rewrite with Anthropic-inspired warm neutrals, soft contrast,
-     and muted Claude orange action chrome. Uses native system fonts so it stays local,
-     fast, and license-safe while feeling closer to modern code workbenches. */
-  @media (hover:hover){}
-/* ── Skin: GitHub (Graphite with GitHub accents) ──
-     Full palette rewrite with restrained graphite surfaces, soft contrast,
-     and GitHub Primer-inspired action chrome. Uses native system fonts so it stays local,
-     fast, and license-safe while feeling closer to modern code workbenches. */
-  @media (hover:hover){}
   /* ── Skin: Slate (modern slate-gray workbench) ── */
   :root[data-skin="slate"]{
     color-scheme:light;
