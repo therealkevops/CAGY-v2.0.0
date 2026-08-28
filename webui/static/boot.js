@@ -2691,18 +2691,20 @@ const _THEMES=[
   {name:'System', value:'system', colors:['#FEFCF7','#0D0D1A','#B8860B']},
 ];
 const _SKINS=[
-  {name:'Slate',    value:'slate', colors:['#334155','#475569','#64748b']},
+  {name:'Graphite', value:'graphite', colors:['#FFFFFF','#D6D6D6','#242424']},
+  {name:'Slate',    value:'slate',    colors:['#334155','#475569','#64748b']},
   {name:'Verdigris', value:'verdigris', colors:['#C89A5A','#0F1714','#22342C']},
   {name:'Classic Gold', value:'default', colors:['#FFD700','#FFBF00','#CD7F32']},
 ];
 const _VALID_THEMES=new Set((_THEMES||[]).map(t=>t.value));
 const _VALID_SKINS=new Set((_SKINS||[]).map(s=>(s.value||s.name).toLowerCase()));
 const _LEGACY_THEME_MAP={
+  graphite:{theme:'dark',skin:'graphite'},
   slate:{theme:'dark',skin:'slate'},
   solarized:{theme:'dark',skin:'slate'},
   monokai:{theme:'dark',skin:'slate'},
   nord:{theme:'dark',skin:'slate'},
-  oled:{theme:'dark',skin:'slate'},
+  oled:{theme:'dark',skin:'graphite'},
 };
 let _systemThemeMq=null;
 let _onSystemThemeChange=null;
@@ -2713,7 +2715,7 @@ function _normalizeAppearance(theme,skin){
   const rawSkin=typeof skin==='string'?skin.trim().toLowerCase():'';
   const legacy=_LEGACY_THEME_MAP[rawTheme];
   const nextTheme=legacy?legacy.theme:(_VALID_THEMES.has(rawTheme)?rawTheme:'dark');
-  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'slate');
+  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'graphite');
   return {theme:nextTheme,skin:nextSkin};
 }
 
