@@ -32,8 +32,8 @@
   }
 
   syncMode();
-  window.addEventListener('online',function(){syncMode();dispatch('hermes:pwa-connection-change',{online:true});});
-  window.addEventListener('offline',function(){syncMode();dispatch('hermes:pwa-connection-change',{online:false});});
+  window.addEventListener('online',function(){syncMode();dispatch('agy:pwa-connection-change',{online:true});});
+  window.addEventListener('offline',function(){syncMode();dispatch('agy:pwa-connection-change',{online:false});});
   if(window.matchMedia){
     ['(display-mode: standalone)','(display-mode: fullscreen)','(display-mode: window-controls-overlay)'].forEach(function(query){
       try{
@@ -47,15 +47,15 @@
 
   window.addEventListener('beforeinstallprompt',function(event){
     event.preventDefault();
-    window.hermesDeferredInstallPrompt=event;
+    window.agyDeferredInstallPrompt=event;
     root.classList.add('pwa-installable');
-    dispatch('hermes:pwa-installable');
+    dispatch('agy:pwa-installable');
   });
   window.addEventListener('appinstalled',function(){
-    window.hermesDeferredInstallPrompt=null;
+    window.agyDeferredInstallPrompt=null;
     root.classList.remove('pwa-installable');
     root.classList.add('pwa-installed');
-    dispatch('hermes:pwa-installed');
+    dispatch('agy:pwa-installed');
   });
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'){
@@ -65,19 +65,21 @@
     }
   });
 
-  window.HermesPWA={
+  window.AgyPWA={
     isStandalone:isStandalone,
     syncMode:syncMode,
     launchAction:function(){
       try{return new URLSearchParams(window.location.search||'').get('action')||null;}catch(_){return null;}
     },
     promptInstall:function(){
-      var prompt=window.hermesDeferredInstallPrompt;
+      var prompt=window.agyDeferredInstallPrompt;
       if(!prompt||typeof prompt['prompt']!=='function')return Promise.resolve({outcome:'unavailable'});
-      window.hermesDeferredInstallPrompt=null;
+      window.agyDeferredInstallPrompt=null;
       root.classList.remove('pwa-installable');
       prompt['prompt']();
       return Promise.resolve(prompt.userChoice).catch(function(){return {outcome:'dismissed'};});
     }
   };
+  // Backward-compat alias so any extensions/plugins that reference window.HermesPWA still work.
+  window.HermesPWA=window.AgyPWA;
 })();

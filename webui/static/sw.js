@@ -1,5 +1,5 @@
 /**
- * Hermes WebUI Service Worker
+ * CAGY WebUI Service Worker
  * Minimal PWA service worker — enables "Add to Home Screen".
  * No offline caching of API responses (the UI requires a live backend).
  * Caches only static shell assets so the app shell loads fast on repeat visits.
@@ -103,8 +103,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // API and streaming endpoints — always go to network.
-  // The WebUI may be mounted under a subpath such as /hermes/, so API
-  // requests can look like /hermes/api/sessions rather than /api/sessions.
+  // The WebUI may be mounted under a subpath such as /cagy/, so API
+  // requests can look like /cagy/api/sessions rather than /api/sessions.
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.includes('/api/') ||

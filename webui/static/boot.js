@@ -3722,8 +3722,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   if (typeof syncSessionSearchClear === 'function') syncSessionSearchClear();
   if(typeof refreshProviderQuotaIndicator==='function') refreshProviderQuotaIndicator();
   const urlSession=(typeof _sessionIdFromLocation==='function')?_sessionIdFromLocation():null;
-  const pwaLaunchAction=(window.HermesPWA&&typeof window.HermesPWA.launchAction==='function')
-    ? window.HermesPWA.launchAction()
+  const pwaLaunchAction=((window.AgyPWA||window.HermesPWA)&&typeof (window.AgyPWA||window.HermesPWA).launchAction==='function')
+    ? (window.AgyPWA||window.HermesPWA).launchAction()
     : null;
   if(_shouldStartFreshPwaChat(pwaLaunchAction,urlSession)){
     try{
