@@ -9747,15 +9747,13 @@ def _normalize_appearance(theme, skin) -> tuple[str, str]:
     Legacy migration table (from `_SETTINGS_LEGACY_THEME_MAP`):
 
         slate     → ("dark", "slate")
-        solarized → ("dark", "poseidon")
-        monokai   → ("dark", "sisyphus")
+        solarized → ("dark", "graphite")
+        monokai   → ("dark", "graphite")
         nord      → ("dark", "slate")
-        oled      → ("dark", "default")
+        oled      → ("dark", "graphite")
 
-    The skin value "default" (old Classic Gold accent) is treated as a legacy
-    alias and remapped to "graphite", which is now the baseline skin.
-
-    Unknown / custom theme names fall back to ("dark", "graphite").
+    Active skins: graphite (default), slate, verdigris, default (Classic Gold).
+    Unknown skin names fall back to "graphite".
 
     The same mapping is mirrored in `static/boot.js` (`_LEGACY_THEME_MAP`)
     so client and server normalize identically; keep them in sync.
@@ -9770,11 +9768,9 @@ def _normalize_appearance(theme, skin) -> tuple[str, str]:
     else:
         # Unknown themes used to exist; default to dark/graphite so upgrades stay visually stable.
         next_theme, legacy_skin = "dark", "graphite"
-    # "default" is the old Classic Gold skin name — treat as legacy alias for graphite.
-    effective_skin = "graphite" if raw_skin == "default" else raw_skin
     next_skin = (
-        effective_skin
-        if effective_skin in _SETTINGS_SKIN_VALUES
+        raw_skin
+        if raw_skin in _SETTINGS_SKIN_VALUES
         else legacy_skin
     )
     return next_theme, next_skin

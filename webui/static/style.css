@@ -408,7 +408,55 @@
   :root.dark[data-skin="verdigris"] .img-lightbox-close:hover{background:rgba(200,154,90,.35);}
   :root.dark[data-skin="verdigris"] .img-lightbox-nav:hover{background:rgba(200,154,90,.40);}
 
-  /* #594: app-dialog light mode overrides */
+  /* ── Skin: Classic Gold (warm cream light / deep navy-gold dark) ──
+     The original CAGY accent: gold action chrome on warm cream surfaces (light)
+     and on deep navy near-black surfaces (dark). */
+  :root[data-skin="default"]{
+    color-scheme:light;
+    --bg:#FEFCF7;--sidebar:#FAF7F0;--surface:#F3EEE3;--surface-subtle:#F0EAD6;--surface-subtle-hover:#EAE1CA;
+    --border:#E0D8C8;--border2:rgba(0,0,0,0.15);--border-subtle:#EAE1CA;--border-muted:#D8CDB8;
+    --text:#1A1610;--strong:#0F0D08;--muted:#5C5344;--em:#5C5344;
+    --accent:#B8860B;--accent-hover:#996F08;--accent-bg:rgba(184,134,11,0.08);--accent-bg-strong:rgba(184,134,11,0.15);--accent-text:#8B6508;
+    --blue:#0288A8;--gold:#8B6508;--focus-ring:rgba(184,134,11,.35);--focus-glow:rgba(184,134,11,.1);
+    --input-bg:rgba(0,0,0,.03);--hover-bg:rgba(0,0,0,.05);--code-bg:#F5F0E5;--code-inline-bg:rgba(0,0,0,.06);--code-text:#8b4513;--pre-text:#1A1610;
+    --topbar-bg:rgba(250,247,240,.98);--main-bg:rgba(254,252,247,0.5);
+    --error:#C62828;--success:#3D8B40;--warning:#E68A00;--info:#0288A8;
+    --user-bubble-bg:#EDE8D8;--user-bubble-border:#D8CDB8;--user-bubble-text:#1A1610;--user-bubble-placeholder:#5C5344;
+    --user-selection-bg:rgba(184,134,11,0.18);--user-selection-text:#0F0D08;
+  }
+  :root.dark[data-skin="default"]{
+    color-scheme:dark;
+    --bg:#0D0D1A;--sidebar:#141425;--surface:#1A1A2E;--surface-subtle:#1F1F36;--surface-subtle-hover:#28283F;
+    --border:#2A2A40;--border2:#3A3A55;--border-subtle:#222236;--border-muted:#32324C;
+    --text:#F0E6D3;--strong:#FFF8E7;--muted:#9A8F7A;--em:#C8B99A;
+    --accent:#FFD700;--accent-hover:#FFE033;--accent-bg:rgba(255,215,0,0.10);--accent-bg-strong:rgba(255,215,0,0.20);--accent-text:#FFD700;
+    --blue:#38BDF8;--gold:#FFD700;--focus-ring:rgba(255,215,0,.30);--focus-glow:rgba(255,215,0,.08);
+    --input-bg:#0F0F22;--hover-bg:rgba(255,255,255,0.05);--code-bg:#0A0A18;--code-inline-bg:rgba(255,255,255,0.08);--code-text:#FFE57A;--pre-text:#F0E6D3;
+    --topbar-bg:rgba(13,13,26,0.95);--main-bg:#0D0D1A;
+    --error:#FF6B6B;--success:#10A37F;--warning:#E6B15C;--info:#38BDF8;
+    --user-bubble-bg:#1E1E36;--user-bubble-border:#32324C;--user-bubble-text:#F0E6D3;--user-bubble-placeholder:#9A8F7A;
+    --user-selection-bg:rgba(255,215,0,0.18);--user-selection-text:#FFF8E7;
+    --surface-subtle:rgba(255,255,255,.025);--surface-subtle-hover:rgba(255,255,255,.045);
+    --border-subtle:rgba(255,255,255,.07);--border-muted:rgba(255,255,255,.12);
+  }
+  /* Classic Gold: primary action buttons */
+  :root[data-skin="default"] .new-chat-btn,
+  :root[data-skin="default"] button.send-btn:not(:disabled),
+  :root[data-skin="default"] .btn.primary,
+  :root[data-skin="default"] .update-primary,
+  :root[data-skin="default"] .clarify-submit{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important;font-weight:600!important;}
+  :root.dark[data-skin="default"] .new-chat-btn,
+  :root.dark[data-skin="default"] button.send-btn:not(:disabled),
+  :root.dark[data-skin="default"] .btn.primary,
+  :root.dark[data-skin="default"] .update-primary,
+  :root.dark[data-skin="default"] .clarify-submit{color:#0D0D1A!important;}
+  :root[data-skin="default"] .new-chat-btn:hover,
+  :root[data-skin="default"] button.send-btn:not(:disabled):hover,
+  :root[data-skin="default"] .btn.primary:hover,
+  :root[data-skin="default"] .update-primary:hover,
+  :root[data-skin="default"] .clarify-submit:hover{background:var(--accent-hover)!important;border-color:var(--accent-hover)!important;}
+
+
   :root:not(.dark) .app-dialog{
     background:var(--surface);
     border-color:var(--border);

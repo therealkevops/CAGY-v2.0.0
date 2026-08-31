@@ -2715,7 +2715,7 @@ function _normalizeAppearance(theme,skin){
   const rawSkin=typeof skin==='string'?skin.trim().toLowerCase():'';
   const legacy=_LEGACY_THEME_MAP[rawTheme];
   const nextTheme=legacy?legacy.theme:(_VALID_THEMES.has(rawTheme)?rawTheme:'dark');
-  const nextSkin=(_VALID_SKINS.has(rawSkin)&&rawSkin!=='default')?rawSkin:(legacy?legacy.skin:'graphite');
+  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'graphite');
   return {theme:nextTheme,skin:nextSkin};
 }
 
@@ -2803,7 +2803,8 @@ function _applyTheme(name){
 }
 
 function _applySkin(name){
-  const key=(name&&name!=='default'?name:'graphite').toLowerCase();
+  const raw=(name||'').toLowerCase();
+  const key=(_VALID_SKINS.has(raw)&&raw)?raw:'graphite';
   document.documentElement.dataset.skin=key;
   _setResolvedTheme(_resolvedThemeBaseDark);
 }
