@@ -9640,7 +9640,7 @@ _SETTINGS_DEFAULTS = {
     "voice_silence_ms": 1800,
     "raw_audio_mode": False,
     "theme": "dark",  # light | dark | system
-    "skin": "default",  # accent color skin: default | ares | mono | graphite | slate | poseidon | sisyphus | charizard | sienna | catppuccin | nous
+    "skin": "graphite",  # accent color skin: graphite | slate | verdigris | default (classic gold)
     "font_size": "default",  # small | default | large | xlarge
     "session_jump_buttons": False,  # show Start/End transcript jump pills
     "render_user_markdown": False,  # opt-in: render full markdown in user messages (#3870)
@@ -9723,30 +9723,21 @@ _COMPOSER_CONTROL_ORDER_KEYS = {
 }
 _SETTINGS_THEME_VALUES = {"light", "dark", "system"}
 _SETTINGS_SKIN_VALUES = {
-    "default",
-    "ares",
-    "mono",
+    # Active skins — CSS definitions exist in style.css
     "graphite",
     "slate",
-    "poseidon",
-    "sisyphus",
-    "charizard",
-    "sienna",
-    "catppuccin",
-    "nous",
-    "geist-contrast",
-    "zeus",
     "verdigris",
-    "neon-soft",
-    "neon-paint",
+    # Legacy alias retained so stored values from old Hermes installs pass validation
+    # before the "default" → "graphite" remap in _normalize_appearance.
+    "default",
 }
 _SETTINGS_LEGACY_THEME_MAP = {
-    # Legacy full themes now map onto the closest supported theme + accent skin pair.
+    # Legacy full themes now map onto the closest supported skin.
     "slate": ("dark", "slate"),
-    "solarized": ("dark", "poseidon"),
-    "monokai": ("dark", "sisyphus"),
+    "solarized": ("dark", "graphite"),
+    "monokai": ("dark", "graphite"),
     "nord": ("dark", "slate"),
-    "oled": ("dark", "default"),
+    "oled": ("dark", "graphite"),
 }
 
 
@@ -9761,11 +9752,10 @@ def _normalize_appearance(theme, skin) -> tuple[str, str]:
         nord      → ("dark", "slate")
         oled      → ("dark", "default")
 
-    Unknown / custom theme names fall back to ("dark", "default").  This is a
-    behavior change vs. the pre-PR-#627 state, where the `theme` field was
-    open-ended ("no enum gate -- allows custom themes").  Users who set a
-    custom CSS theme via `data-theme` will need to re-apply via skin or
-    custom CSS — see CHANGELOG entry for details.
+    The skin value "default" (old Classic Gold accent) is treated as a legacy
+    alias and remapped to "graphite", which is now the baseline skin.
+
+    Unknown / custom theme names fall back to ("dark", "graphite").
 
     The same mapping is mirrored in `static/boot.js` (`_LEGACY_THEME_MAP`)
     so client and server normalize identically; keep them in sync.
@@ -9776,13 +9766,15 @@ def _normalize_appearance(theme, skin) -> tuple[str, str]:
     if legacy:
         next_theme, legacy_skin = legacy
     elif raw_theme in _SETTINGS_THEME_VALUES:
-        next_theme, legacy_skin = raw_theme, "default"
+        next_theme, legacy_skin = raw_theme, "graphite"
     else:
-        # Unknown themes used to exist; default to dark so upgrades stay visually stable.
-        next_theme, legacy_skin = "dark", "default"
+        # Unknown themes used to exist; default to dark/graphite so upgrades stay visually stable.
+        next_theme, legacy_skin = "dark", "graphite"
+    # "default" is the old Classic Gold skin name — treat as legacy alias for graphite.
+    effective_skin = "graphite" if raw_skin == "default" else raw_skin
     next_skin = (
-        raw_skin
-        if raw_skin in _SETTINGS_SKIN_VALUES
+        effective_skin
+        if effective_skin in _SETTINGS_SKIN_VALUES
         else legacy_skin
     )
     return next_theme, next_skin
