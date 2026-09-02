@@ -1,4 +1,4 @@
-"""Embedded workspace terminal support for Hermes Web UI.
+"""Embedded workspace terminal support for AGY WebUI.
 
 The terminal is intentionally independent from the agent execution path.  It
 starts a shell with an explicit cwd/env per process and never mutates

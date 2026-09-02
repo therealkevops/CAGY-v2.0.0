@@ -404,8 +404,8 @@ def build_share_snapshot(session) -> dict:
         if val:
             redact_paths.append(str(val))
     try:
-        from api.profiles import get_active_hermes_home
-        redact_paths.append(str(get_active_hermes_home()))
+        from api.profiles import get_active_agy_home
+        redact_paths.append(str(get_active_agy_home()))
     except Exception:
         pass
     try:

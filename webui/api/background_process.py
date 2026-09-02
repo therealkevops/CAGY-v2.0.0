@@ -1,6 +1,6 @@
 """Drain thread for terminal(notify_on_complete=true) agent wakeup.
 
-The hermes-agent ``tools.process_registry.ProcessRegistry`` exposes a thread-safe
+The agy-agent ``tools.process_registry.ProcessRegistry`` exposes a thread-safe
 ``completion_queue`` (a ``queue.Queue``) that any background process pushes onto
 when it exits or matches a ``watch_patterns`` rule. In the CLI and in the
 gateway adapter this queue is drained by the host's main loop; in WebUI the

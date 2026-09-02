@@ -39,7 +39,7 @@ _CLONE_CONFIG_FILES = ['config.yaml', '.env', 'SOUL.md']
 # init_profile_state() rewrites it. The opt-in flag is also an operator-level
 # startup control: a pinned profile's .env may be loaded into live os.environ
 # later, but must not be able to change whether the process is isolated.
-_INITIAL_HERMES_HOME = os.getenv('HERMES_HOME', '').strip()
+_INITIAL_AGY_HOME = os.getenv('HERMES_HOME', '').strip()
 _INITIAL_ISOLATED_PROFILE_OPT_IN = os.getenv('HERMES_WEBUI_ISOLATED_PROFILE', '').strip().lower()
 _ISOLATED_SYMLINK_WARNING_EMITTED = False
 _ISOLATED_PROFILE_SHAPE_WITHOUT_OPT_IN_WARNING_EMITTED = False
@@ -228,7 +228,7 @@ def _warn_if_profile_shape_without_isolated_opt_in() -> None:
     global _ISOLATED_PROFILE_SHAPE_WITHOUT_OPT_IN_WARNING_EMITTED
     if _ISOLATED_PROFILE_SHAPE_WITHOUT_OPT_IN_WARNING_EMITTED:
         return
-    hermes_home = _INITIAL_HERMES_HOME
+    hermes_home = _INITIAL_AGY_HOME
     if not hermes_home:
         return
     p = Path(hermes_home).expanduser()
@@ -264,7 +264,7 @@ def _is_isolated_profile_mode() -> bool:
     everyone else is never caught. The shape stays as a secondary requirement so
     a stray flag without a profile-shaped HERMES_HOME does not engage isolation.
 
-    Uses _INITIAL_HERMES_HOME (snapshotted at import time) to detect the shape,
+    Uses _INITIAL_AGY_HOME (snapshotted at import time) to detect the shape,
     not the current os.environ value. init_profile_state() overwrites HERMES_HOME
     at startup, which would disable detection if we read it here.
     """
@@ -276,7 +276,7 @@ def _is_isolated_profile_mode() -> bool:
         _warn_if_profile_shape_without_isolated_opt_in()
         return False
 
-    hermes_home = _INITIAL_HERMES_HOME
+    hermes_home = _INITIAL_AGY_HOME
     if not hermes_home:
         return False
 
@@ -299,11 +299,11 @@ def _is_isolated_profile_mode() -> bool:
 
 
 def _isolated_profile_name() -> str:
-    """Return the profile directory name from _INITIAL_HERMES_HOME."""
-    return Path(_INITIAL_HERMES_HOME).expanduser().name
+    """Return the profile directory name from _INITIAL_AGY_HOME."""
+    return Path(_INITIAL_AGY_HOME).expanduser().name
 
 
-def _resolve_base_hermes_home() -> Path:
+def _resolve_base_agy_home() -> Path:
     """Return the BASE ~/.hermes directory — the root that contains profiles/.
 
     This is intentionally distinct from HERMES_HOME, which tracks the *active
@@ -319,7 +319,7 @@ def _resolve_base_hermes_home() -> Path:
 
     The bug this prevents: if HERMES_HOME has already been mutated to
     /home/user/.hermes/profiles/webui (by init_profile_state at startup),
-    reading it here would make _DEFAULT_HERMES_HOME point to that subdir,
+    reading it here would make _DEFAULT_AGY_HOME point to that subdir,
     causing switch_profile('webui') to look for
     /home/user/.hermes/profiles/webui/profiles/webui — which doesn't exist.
 
@@ -345,16 +345,16 @@ def _resolve_base_hermes_home() -> Path:
     # instead of importing api.config here; api.config imports profiles during
     # startup, so going through config creates a partial-module circular import
     # when api.profiles is imported first.
-    from api.paths import _platform_default_hermes_home
+    from api.paths import _platform_default_agy_home
 
-    return _platform_default_hermes_home()
+    return _platform_default_agy_home()
 
-_DEFAULT_HERMES_HOME = _resolve_base_hermes_home()
+_DEFAULT_AGY_HOME = _resolve_base_agy_home()
 
 
 def _read_active_profile_file() -> str:
     """Read the sticky active profile from ~/.hermes/active_profile."""
-    ap_file = _DEFAULT_HERMES_HOME / 'active_profile'
+    ap_file = _DEFAULT_AGY_HOME / 'active_profile'
     if ap_file.exists():
         try:
             name = ap_file.read_text(encoding="utf-8").strip()
@@ -377,7 +377,7 @@ def _read_active_profile_file() -> str:
 #
 # `_is_root_profile(name)` answers "does this name resolve to ~/.hermes?" and
 # is the canonical replacement for scattered `if name == 'default':` checks
-# in switch_profile, get_active_hermes_home, _validate_profile_name, etc.
+# in switch_profile, get_active_agy_home, _validate_profile_name, etc.
 #
 # Cost note: list_profiles_api() shells out via hermes_cli (non-trivial), so
 # we memoize the lookup. The cache is invalidated whenever profiles are
@@ -502,8 +502,8 @@ def clear_request_profile() -> None:
 def _resolve_profile_home_for_name(name: str) -> Path:
     """Resolve a logical profile name to its Hermes home path.
 
-    Root/default aliases resolve to _DEFAULT_HERMES_HOME.  Valid named profiles
-    resolve to _DEFAULT_HERMES_HOME/profiles/<name> even when the directory has
+    Root/default aliases resolve to _DEFAULT_AGY_HOME.  Valid named profiles
+    resolve to _DEFAULT_AGY_HOME/profiles/<name> even when the directory has
     not been created yet; the agent layer may create it on first use.  Invalid
     names fall back to the base home so traversal-shaped cookie values cannot
     influence filesystem paths.
@@ -512,7 +512,7 @@ def _resolve_profile_home_for_name(name: str) -> Path:
     # startup HERMES_HOME so callers cannot resolve a foreign profile path.
     if _is_isolated_profile_mode():
         isolated_name = _isolated_profile_name()
-        isolated_home = Path(_INITIAL_HERMES_HOME).expanduser()
+        isolated_home = Path(_INITIAL_AGY_HOME).expanduser()
         if name and not _profiles_match(name, isolated_name):
             logger.warning(
                 "Ignoring profile lookup %r in isolated profile mode; using pinned profile %r",
@@ -520,20 +520,20 @@ def _resolve_profile_home_for_name(name: str) -> Path:
             )
         return isolated_home
     if not name or _is_root_profile(name):
-        return _DEFAULT_HERMES_HOME
+        return _DEFAULT_AGY_HOME
     if not _PROFILE_ID_RE.fullmatch(name):
-        return _DEFAULT_HERMES_HOME
+        return _DEFAULT_AGY_HOME
     return _resolve_named_profile_home(name)
 
 
-def get_active_hermes_home() -> Path:
+def get_active_agy_home() -> Path:
     """Return the HERMES_HOME path for the currently active profile.
 
     Uses get_active_profile_name() so per-request TLS context (issue #798)
     is respected, not just the process-level global.
     """
     if _is_isolated_profile_mode():
-        return Path(_INITIAL_HERMES_HOME).expanduser()
+        return Path(_INITIAL_AGY_HOME).expanduser()
     return _resolve_profile_home_for_name(get_active_profile_name())
 
 
@@ -588,24 +588,24 @@ def _home_for_scheduled_cron_job(job: dict) -> Path:
                 "Cron job %s references profile %r outside isolated profile %r; falling back to isolated home",
                 (job or {}).get('id', '?'), raw, active,
             )
-        return get_active_hermes_home()
+        return get_active_agy_home()
     if not raw:
-        return get_active_hermes_home()
+        return get_active_agy_home()
     if _is_root_profile(raw):
-        return _DEFAULT_HERMES_HOME
+        return _DEFAULT_AGY_HOME
     if not _PROFILE_ID_RE.fullmatch(raw):
         logger.warning(
             "Cron job %s has invalid profile %r; falling back to server default",
             (job or {}).get('id', '?'), raw,
         )
-        return get_active_hermes_home()
+        return get_active_agy_home()
     home = _resolve_named_profile_home(raw)
     if not home.is_dir():
         logger.warning(
             "Cron job %s references missing profile %r; falling back to server default",
             (job or {}).get('id', '?'), raw,
         )
-        return get_active_hermes_home()
+        return get_active_agy_home()
     return home
 
 
@@ -748,7 +748,7 @@ class cron_profile_context:
         _push_cron_profile_context_depth()
         try:
             self._prev_env = os.environ.get('HERMES_HOME')
-            home = get_active_hermes_home()
+            home = get_active_agy_home()
             os.environ['HERMES_HOME'] = str(home)
 
             # Re-patch cron.jobs module-level constants. They are snapshot at
@@ -812,14 +812,14 @@ class cron_profile_context:
         return False
 
 
-def get_hermes_home_for_profile(name: str) -> Path:
+def get_agy_home_for_profile(name: str) -> Path:
     """Return the HERMES_HOME Path for *name* without mutating any process state.
 
     Safe to call from per-request context (streaming, session creation) because
     it reads only the filesystem — it never touches os.environ, module-level
     cached paths, or the process-level _active_profile global.
 
-    Falls back to _DEFAULT_HERMES_HOME (same as 'default') when *name* is None,
+    Falls back to _DEFAULT_AGY_HOME (same as 'default') when *name* is None,
     empty, 'default', or does not match the profile-name format (rejects path
     traversal such as '../../etc').
     """
@@ -1190,7 +1190,7 @@ def profile_env_for_background_worker(
         from api.config import _clear_thread_env, _set_thread_env, _thread_ctx
         from api.streaming import _ENV_LOCK
 
-        profile_home_path = Path(get_hermes_home_for_profile(profile))
+        profile_home_path = Path(get_agy_home_for_profile(profile))
         runtime_env = get_profile_runtime_env(profile_home_path)
         safe_runtime_env = filter_runtime_env_for_gateway_parity(runtime_env)
         secret_env_names = _profile_secret_env_names(profile_home_path)
@@ -1365,7 +1365,7 @@ def profile_env_for_active_request_readonly(
         return
     try:
         from api.config import _clear_thread_env, _set_thread_env, _thread_ctx
-        profile_home_path = Path(get_hermes_home_for_profile(profile))
+        profile_home_path = Path(get_agy_home_for_profile(profile))
         runtime_env = get_profile_runtime_env(profile_home_path)
         safe_runtime_env = filter_runtime_env_for_gateway_parity(runtime_env)
     except Exception:
@@ -1587,10 +1587,10 @@ def init_profile_state() -> None:
     global _active_profile
     if _is_isolated_profile_mode():
         _active_profile = _isolated_profile_name()
-        home = Path(_INITIAL_HERMES_HOME).expanduser()
+        home = Path(_INITIAL_AGY_HOME).expanduser()
     else:
         _active_profile = _read_active_profile_file()
-        home = get_active_hermes_home()
+        home = get_active_agy_home()
     _set_hermes_home(home)
     install_cron_scheduler_profile_isolation()
     _reload_dotenv(home)
@@ -1644,9 +1644,9 @@ def switch_profile(name: str, *, process_wide: bool = True) -> dict:
 
     # Resolve profile directory
     if _is_isolated_profile_mode():
-        home = Path(_INITIAL_HERMES_HOME).expanduser()
+        home = Path(_INITIAL_AGY_HOME).expanduser()
     elif _is_root_profile(name):
-        home = _DEFAULT_HERMES_HOME
+        home = _DEFAULT_AGY_HOME
     else:
         home = _resolve_named_profile_home(name)
         if not home.is_dir():
@@ -1663,7 +1663,7 @@ def switch_profile(name: str, *, process_wide: bool = True) -> dict:
     if process_wide:
         # Write sticky default for CLI consistency
         try:
-            ap_file = _DEFAULT_HERMES_HOME / 'active_profile'
+            ap_file = _DEFAULT_AGY_HOME / 'active_profile'
             ap_file.write_text('' if _is_root_profile(name) else name, encoding='utf-8')
         except Exception:
             logger.debug("Failed to write active profile file")
@@ -2054,7 +2054,7 @@ def list_profiles_api() -> list:
     # In isolated profile mode, return only the active (isolated) profile
     if _is_isolated_profile_mode():
         active = _isolated_profile_name()
-        hermes_home = Path(_INITIAL_HERMES_HOME).expanduser()
+        hermes_home = Path(_INITIAL_AGY_HOME).expanduser()
         try:
             from hermes_cli.profiles import list_profiles
             infos = list_profiles()
@@ -2170,16 +2170,16 @@ def _profile_visible_from_meta(profile_path: Path) -> bool:
 
 def _default_profile_dict() -> dict:
     """Fallback profile dict when hermes_cli is not importable."""
-    enabled_count, compatible_count = _get_profile_skills_stats(_DEFAULT_HERMES_HOME)
+    enabled_count, compatible_count = _get_profile_skills_stats(_DEFAULT_AGY_HOME)
     return {
         'name': 'default',
-        'path': str(_DEFAULT_HERMES_HOME),
+        'path': str(_DEFAULT_AGY_HOME),
         'is_default': True,
         'is_active': True,
         'gateway_running': False,
         'model': None,
         'provider': None,
-        'has_env': (_DEFAULT_HERMES_HOME / '.env').exists(),
+        'has_env': (_DEFAULT_AGY_HOME / '.env').exists(),
         'visible': True,
         'skill_count': enabled_count,
         'enabled_skills': enabled_count,
@@ -2201,7 +2201,7 @@ def _validate_profile_name(name: str):
 
 def _profiles_root() -> Path:
     """Return the canonical root that contains named profiles."""
-    return (_DEFAULT_HERMES_HOME / 'profiles').resolve()
+    return (_DEFAULT_AGY_HOME / 'profiles').resolve()
 
 
 def _resolve_named_profile_home(name: str) -> Path:
@@ -2220,7 +2220,7 @@ def _resolve_named_profile_home(name: str) -> Path:
 def _create_profile_fallback(name: str, clone_from: str = None,
                               clone_config: bool = False) -> Path:
     """Create a profile directory without hermes_cli (Docker/standalone fallback)."""
-    profile_dir = _DEFAULT_HERMES_HOME / 'profiles' / name
+    profile_dir = _DEFAULT_AGY_HOME / 'profiles' / name
     if profile_dir.exists():
         raise FileExistsError(f"Profile '{name}' already exists.")
 
@@ -2232,9 +2232,9 @@ def _create_profile_fallback(name: str, clone_from: str = None,
     # Clone config files from source profile if requested
     if clone_config and clone_from:
         if _is_root_profile(clone_from):
-            source_dir = _DEFAULT_HERMES_HOME
+            source_dir = _DEFAULT_AGY_HOME
         else:
-            source_dir = _DEFAULT_HERMES_HOME / 'profiles' / clone_from
+            source_dir = _DEFAULT_AGY_HOME / 'profiles' / clone_from
         if source_dir.is_dir():
             for filename in _CLONE_CONFIG_FILES:
                 src = source_dir / filename
@@ -2574,7 +2574,7 @@ def create_profile_api(name: str, clone_from: str = None,
     # hermes_cli and the webui runtime do not always agree on the exact root,
     # so we prefer the path returned by list_profiles_api() and fall back to the
     # standard profile location only if the profile cannot be found there yet.
-    profile_path = _DEFAULT_HERMES_HOME / 'profiles' / name
+    profile_path = _DEFAULT_AGY_HOME / 'profiles' / name
     for p in list_profiles_api():
         if p['name'] == name:
             try:

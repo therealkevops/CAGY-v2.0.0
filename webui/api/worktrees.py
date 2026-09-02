@@ -355,7 +355,7 @@ def _setup_agent_worktree(repo_root: str) -> dict:
         # site-packages will preempt the real hermes-agent/cli.py module.
         cli_path = str(Path(_AGENT_DIR) / "cli.py")
         spec = importlib.util.spec_from_file_location(
-            "hermes_cli_worktree", cli_path,
+            "agy_cli_worktree", cli_path,
         )
         if spec is None or spec.loader is None:
             raise RuntimeError(
@@ -365,13 +365,13 @@ def _setup_agent_worktree(repo_root: str) -> dict:
         spec.loader.exec_module(cli_mod)
         _setup_worktree = cli_mod._setup_worktree
     except Exception as exc:
-        raise RuntimeError("Hermes Agent worktree helper is unavailable") from exc
+        raise RuntimeError("AGY agent worktree helper is unavailable") from exc
     output = StringIO()
     with redirect_stdout(output), redirect_stderr(output):
         info = _setup_worktree(repo_root)
     emitted = output.getvalue().strip()
     if emitted:
-        logger.debug("Hermes Agent worktree helper output: %s", emitted)
+        logger.debug("AGY agent worktree helper output: %s", emitted)
     if not info:
         raise RuntimeError("Hermes Agent failed to create a git worktree")
     return info

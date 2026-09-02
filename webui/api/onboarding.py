@@ -16,7 +16,7 @@ from api.config import (
     DEFAULT_MODEL,
     DEFAULT_WORKSPACE,
     _FALLBACK_MODELS,
-    _HERMES_FOUND,
+    _AGY_FOUND,
     invalidate_models_cache,
     _PROVIDER_DISPLAY,
     _PROVIDER_MODELS,
@@ -26,7 +26,7 @@ from api.config import (
     load_settings,
     reload_config,
     save_settings,
-    verify_hermes_imports,
+    verify_agy_imports,
 )
 from api.paths import _atomic_write_text
 from api.providers import _write_env_file  # shared impl with _ENV_LOCK (#1164)
@@ -204,11 +204,11 @@ _UNSUPPORTED_PROVIDER_NOTE = (
 )
 
 
-def _get_active_hermes_home() -> Path:
+def _get_active_agy_home() -> Path:
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        return get_active_hermes_home()
+        return get_active_agy_home()
     except ImportError:
         return Path.home() / ".hermes"
 
@@ -689,7 +689,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
     provider = _extract_current_provider(cfg)
     model = _extract_current_model(cfg)
     base_url = _extract_current_base_url(cfg)
-    env_values = _load_env_file(_get_active_hermes_home() / ".env")
+    env_values = _load_env_file(_get_active_agy_home() / ".env")
 
     provider_configured = bool(provider and model)
     provider_ready = False
@@ -721,7 +721,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
                     provider_ready = _provider_api_key_present(provider, cfg, env_values)
                 if not provider_ready and meta.get("oauth_provider"):
                     provider_ready = _provider_oauth_authenticated(
-                        str(meta.get("oauth_provider")), _get_active_hermes_home()
+                        str(meta.get("oauth_provider")), _get_active_agy_home()
                     )
         else:
             # Unknown provider — may be an OAuth flow (openai-codex, copilot, etc.)
@@ -730,13 +730,13 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
             # third-party providers), then OAuth auth.json.
             provider_ready = (
                 _provider_api_key_present(provider, cfg, env_values)
-                or _provider_oauth_authenticated(provider, _get_active_hermes_home())
+                or _provider_oauth_authenticated(provider, _get_active_agy_home())
             )
 
-    chat_ready = bool(_HERMES_FOUND and imports_ok and provider_ready)
+    chat_ready = bool(_AGY_FOUND and imports_ok and provider_ready)
     note_args: list[str] = []
 
-    if not _HERMES_FOUND or not imports_ok:
+    if not _AGY_FOUND or not imports_ok:
         state = "agent_unavailable"
         note_key = "onboarding_notice_system_unavailable"
         note = (
@@ -790,7 +790,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
         "current_provider": provider or None,
         "current_model": model or None,
         "current_base_url": base_url or None,
-        "env_path": str(_get_active_hermes_home() / ".env"),
+        "env_path": str(_get_active_agy_home() / ".env"),
     }
 
 
@@ -839,7 +839,7 @@ def _build_setup_catalog(cfg: dict) -> dict:
     # of a key input when the user has already authenticated via 'hermes auth'.
     current_is_oauth = (
         current_provider not in _SUPPORTED_PROVIDER_SETUPS and bool(current_provider)
-    ) or _provider_oauth_authenticated(current_provider, _get_active_hermes_home())
+    ) or _provider_oauth_authenticated(current_provider, _get_active_agy_home())
 
     return {
         "providers": providers,
@@ -860,7 +860,7 @@ def _build_setup_catalog(cfg: dict) -> dict:
 def get_onboarding_status() -> dict:
     settings = load_settings()
     cfg = get_config()
-    imports_ok, missing, errors = verify_hermes_imports()
+    imports_ok, missing, errors = verify_agy_imports()
     runtime = _status_from_runtime(cfg, imports_ok)
     workspaces = load_workspaces()
     last_workspace = get_last_workspace()
@@ -933,7 +933,7 @@ def get_onboarding_status() -> dict:
             "bot_name": settings.get("bot_name") or "Hermes",
         },
         "system": {
-            "hermes_found": bool(_HERMES_FOUND),
+            "hermes_found": bool(_AGY_FOUND),
             "imports_ok": bool(imports_ok),
             "missing_modules": missing,
             "import_errors": errors,
@@ -998,7 +998,7 @@ def apply_onboarding_setup(body: dict) -> dict:
         }
 
     cfg = _load_yaml_config(config_path)
-    env_path = _get_active_hermes_home() / ".env"
+    env_path = _get_active_agy_home() / ".env"
     env_values = _load_env_file(env_path)
 
     if not api_key and not _provider_api_key_present(provider, cfg, env_values):
@@ -1008,7 +1008,7 @@ def apply_onboarding_setup(body: dict) -> dict:
         # via Claude Code) are also allowed once their server-side OAuth/link
         # marker is present.
         oauth_ready = bool(provider_meta.get("oauth_provider")) and _provider_oauth_authenticated(
-            str(provider_meta.get("oauth_provider")), _get_active_hermes_home()
+            str(provider_meta.get("oauth_provider")), _get_active_agy_home()
         )
         if not provider_meta.get("key_optional") and not oauth_ready:
             raise ValueError(f"{provider_meta['env_var']} is required")
@@ -1037,7 +1037,7 @@ def apply_onboarding_setup(body: dict) -> dict:
     # picks up the new key without requiring a server restart.
     try:
         from api.profiles import _reload_dotenv
-        _reload_dotenv(_get_active_hermes_home())
+        _reload_dotenv(_get_active_agy_home())
     except Exception:
         logger.debug("Failed to reload dotenv")
 
@@ -1109,12 +1109,12 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key and env_var:
-        _write_env_file(_get_active_hermes_home() / ".env", {env_var: api_key})
+        _write_env_file(_get_active_agy_home() / ".env", {env_var: api_key})
         os.environ[env_var] = api_key
 
     try:
         from api.profiles import _reload_dotenv
-        _reload_dotenv(_get_active_hermes_home())
+        _reload_dotenv(_get_active_agy_home())
     except Exception:
         logger.debug("Failed to reload dotenv")
 

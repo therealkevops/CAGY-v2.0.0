@@ -32,7 +32,7 @@ def _get_state_db(profile: Optional[str] = None):
     would defeat the point of the explicit-profile path (#2762).
 
     When ``profile`` is None it falls back to the TLS-based
-    ``get_active_hermes_home()`` lookup for backward compatibility,
+    ``get_active_agy_home()`` lookup for backward compatibility,
     with a final ``HERMES_HOME`` fallback only on that path. TLS may be
     unset in background/worker threads, in which case the lookup falls
     through to the process-global active profile and can write to the
@@ -88,8 +88,8 @@ def _get_state_db(profile: Optional[str] = None):
         # Implicit / TLS-fallback path — preserves pre-#2762 behavior
         # for any caller that doesn't pass profile= explicitly.
         try:
-            from api.profiles import get_active_hermes_home
-            hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+            from api.profiles import get_active_agy_home
+            hermes_home = Path(get_active_agy_home()).expanduser().resolve()
         except Exception:
             logger.debug("Failed to resolve hermes home, using default")
             hermes_home = Path(os.getenv('HERMES_HOME', str(Path.home() / '.hermes')))

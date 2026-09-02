@@ -545,7 +545,7 @@ def _abort_if_already_serving(host: str, port: int) -> None:
 
 
 def main() -> None:
-    from api.config import print_startup_config, verify_hermes_imports, _HERMES_FOUND
+    from api.config import print_startup_config, verify_agy_imports, _AGY_FOUND
 
     _ignore_sigpipe()
 

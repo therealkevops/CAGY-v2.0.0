@@ -143,12 +143,12 @@ def _normalize_onboarding_oauth_provider(provider: str) -> str:
     return provider or "openai-codex"
 
 
-def _get_active_hermes_home() -> Path:
+def _get_active_agy_home() -> Path:
     """Return the active Hermes profile home directory, falling back to ~/.hermes when profile resolution fails."""
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        return Path(get_active_hermes_home())
+        return Path(get_active_agy_home())
     except Exception as exc:
         # Per Opus advisor on stage-296: log the silent fallback so a corrupt
         # profile state ending up writing tokens to ~/.hermes (instead of the
@@ -302,7 +302,7 @@ def _persist_codex_credentials(hermes_home: Path, token_data: dict[str, Any]) ->
 # Backward-compatible wrapper used by older code/tests.
 def _save_codex_credentials(token_data):
     """Backward-compatible wrapper: persist Codex OAuth tokens to the active-profile auth.json."""
-    return _persist_codex_credentials(_get_active_hermes_home(), token_data)
+    return _persist_codex_credentials(_get_active_agy_home(), token_data)
 
 
 # ── Anthropic / Claude Code credential linking ─────────────────────────────
@@ -773,10 +773,10 @@ def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
 
     # Normalize Claude aliases to canonical "anthropic"
     if provider in _ANTHROPIC_PROVIDER_ALIASES:
-        return _start_anthropic_flow(_get_active_hermes_home())
+        return _start_anthropic_flow(_get_active_agy_home())
 
     # Codex flow
-    hermes_home = _get_active_hermes_home()
+    hermes_home = _get_active_agy_home()
     # Serialize check -> device-code request -> flow insertion -> worker spawn
     # for this provider/profile. The global flow lock is still held only for
     # short in-memory checks/inserts, so unrelated polling/status/cleanup paths

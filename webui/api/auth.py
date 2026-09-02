@@ -1,5 +1,5 @@
 """
-Hermes Web UI -- optional authentication.
+AGY WebUI -- optional authentication.
 Off by default. Enable by setting HERMES_WEBUI_PASSWORD, configuring a
 password in Settings, registering passkeys, or configuring native OIDC SSO.
 """

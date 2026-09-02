@@ -1,5 +1,5 @@
 """
-Hermes Web UI -- Shared configuration, constants, and global state.
+AGY WebUI -- Shared configuration, constants, and global state.
 Imported by all other api/* modules and by server.py.
 
 Discovery order for all paths:
@@ -41,7 +41,7 @@ from api.plugin_providers import (
 
 HOME = _paths.HOME
 _hermes_home_has_webui_state = _paths._hermes_home_has_webui_state
-_platform_default_hermes_home = _paths._platform_default_hermes_home
+_platform_default_agy_home = _paths._platform_default_agy_home
 
 # REPO_ROOT is the directory that contains this file's parent (api/ -> repo root)
 REPO_ROOT = Path(__file__).parent.parent.resolve()
@@ -74,8 +74,8 @@ TLS_KEY = os.getenv("HERMES_WEBUI_TLS_KEY", "").strip() or None
 TLS_ENABLED = TLS_CERT is not None and TLS_KEY is not None
 
 # ── State directory (env-overridable, never inside repo) ──────────────────────
-_DEFAULT_HERMES_HOME = _platform_default_hermes_home()
-_DEFAULT_STATE_HOME = Path(os.getenv("HERMES_HOME") or _DEFAULT_HERMES_HOME).expanduser()
+_DEFAULT_AGY_HOME = _platform_default_agy_home()
+_DEFAULT_STATE_HOME = Path(os.getenv("HERMES_HOME") or _DEFAULT_AGY_HOME).expanduser()
 
 STATE_DIR = (
     Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
@@ -151,7 +151,7 @@ def _discover_agent_dir() -> Path:
     candidates = []
 
     # 2. HERMES_HOME / hermes-agent
-    hermes_home = os.getenv("HERMES_HOME", str(_DEFAULT_HERMES_HOME))
+    hermes_home = os.getenv("HERMES_HOME", str(_DEFAULT_AGY_HOME))
     candidates.append(Path(hermes_home).expanduser() / "hermes-agent")
 
     # 3. Sibling: <repo-root>/../hermes-agent
@@ -162,7 +162,7 @@ def _discover_agent_dir() -> Path:
         candidates.append(REPO_ROOT.parent)
 
     # 5. ~/.hermes/hermes-agent (explicit common path)
-    candidates.append(_DEFAULT_HERMES_HOME / "hermes-agent")
+    candidates.append(_DEFAULT_AGY_HOME / "hermes-agent")
 
     # 6. ~/hermes-agent
     candidates.append(HOME / "hermes-agent")
@@ -277,9 +277,9 @@ PYTHON_EXE = _discover_python(_AGENT_DIR)
 if _AGENT_DIR is not None:
     if str(_AGENT_DIR) not in sys.path:
         sys.path.append(str(_AGENT_DIR))
-    _HERMES_FOUND = True
+    _AGY_FOUND = True
 else:
-    _HERMES_FOUND = False
+    _AGY_FOUND = False
 
 # ── Thread-local env context ─────────────────────────────────────────────────
 # Defined BEFORE the config-file section because _expand_env_vars() (below) calls
@@ -384,11 +384,11 @@ def _get_config_path() -> Path:
     if env_override:
         return Path(env_override).expanduser()
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        return get_active_hermes_home() / "config.yaml"
+        return get_active_agy_home() / "config.yaml"
     except ImportError:
-        return _DEFAULT_HERMES_HOME / "config.yaml"
+        return _DEFAULT_AGY_HOME / "config.yaml"
 
 
 _WEBUI_SESSION_SAVE_MODES = {"deferred", "eager"}
@@ -725,9 +725,9 @@ def get_config_for_profile_home(profile_home: "Path | str | None") -> dict:
     except Exception:
         return get_config()
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        if Path(get_active_hermes_home()).expanduser() == target:
+        if Path(get_active_agy_home()).expanduser() == target:
             return get_config()
     except Exception:
         pass
@@ -948,7 +948,7 @@ def print_startup_config() -> None:
     print("\n".join(lines), flush=True)
 
 
-def verify_hermes_imports() -> tuple:
+def verify_agy_imports() -> tuple:
     return True, [], {}
     """
     Attempt to import the key Hermes modules.
@@ -5123,7 +5123,7 @@ def _endpoint_advertised_model_ids(provider_id: str | None) -> frozenset | None:
     # snapshot we're now reading. Only trust it for provenance when the
     # fingerprint captured AT PUBLISH TIME still matches the current runtime
     # fingerprint — the ``config_yaml`` axis of that fingerprint is the
-    # PROFILE-SPECIFIC config path (_get_config_path -> get_active_hermes_home),
+    # PROFILE-SPECIFIC config path (_get_config_path -> get_active_agy_home),
     # so a match guarantees the snapshot belongs to the profile asking. Any
     # mismatch (foreign profile, config edit, stale) returns None so the caller
     # preserves the id verbatim rather than stripping against another profile's
@@ -5997,11 +5997,11 @@ def _get_models_cache_path() -> Path:
 def _get_auth_store_path() -> Path:
     """Return the auth.json path for the active Hermes profile."""
     try:
-        from api.profiles import get_active_hermes_home as _gah
+        from api.profiles import get_active_agy_home as _gah
 
         return _gah() / "auth.json"
     except ImportError:
-        return _DEFAULT_HERMES_HOME / "auth.json"
+        return _DEFAULT_AGY_HOME / "auth.json"
 
 
 def _models_cache_file_fingerprint(path: Path) -> dict:
@@ -7049,11 +7049,11 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
 
         if not _hermes_auth_used:
             try:
-                from api.profiles import get_active_hermes_home as _gah2
+                from api.profiles import get_active_agy_home as _gah2
 
                 hermes_env_path = _gah2() / ".env"
             except ImportError:
-                hermes_env_path = _DEFAULT_HERMES_HOME / ".env"
+                hermes_env_path = _DEFAULT_AGY_HOME / ".env"
             env_keys = {}
             if hermes_env_path.exists():
                 try:

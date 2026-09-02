@@ -474,7 +474,7 @@ from api.profiles import (  # noqa: F401, E402  (re-export)
     _SKILLS_STATS_CACHE,
     get_active_profile_name,
     get_active_profile_name as _get_active_profile_name,
-    get_active_hermes_home,
+    get_active_agy_home,
     list_profiles_api,
     profile_scope_for_detached_worker,
 )
@@ -770,9 +770,9 @@ def _active_profile_config_path() -> Path:
     if test_override_module != "api.config":
         return _get_config_path()
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        return Path(get_active_hermes_home()) / "config.yaml"
+        return Path(get_active_agy_home()) / "config.yaml"
     except Exception:
         return _get_config_path()
 
@@ -1149,8 +1149,8 @@ def _safe_first(*values):
 
 def _gateway_session_metadata_path():
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_agy_home
+        hermes_home = Path(get_active_agy_home()).expanduser().resolve()
     except Exception:
         hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
     return hermes_home / "sessions" / "sessions.json"
@@ -1537,7 +1537,7 @@ def _cron_jobs_cross_profile(active_profile: str) -> tuple[list[dict], list[dict
     from cron.jobs import list_jobs
     from api.profiles import (
         cron_profile_context_for_home,
-        get_hermes_home_for_profile,
+        get_agy_home_for_profile,
         list_profiles_api,
     )
 
@@ -1575,7 +1575,7 @@ def _cron_jobs_cross_profile(active_profile: str) -> tuple[list[dict], list[dict
     other_jobs: list[dict] = []
     seen_homes: set[str] = set()
     for owner_profile in names:
-        home = Path(get_hermes_home_for_profile(owner_profile))
+        home = Path(get_agy_home_for_profile(owner_profile))
         home_key = _home_key(home)
         if home_key in seen_homes:
             continue
@@ -1631,18 +1631,18 @@ def _profile_home_for_cron_job(job: dict):
     points at a profile that was deleted after save, fall back to the active
     server profile and log a warning instead of crashing the Run Now path.
     """
-    from api.profiles import get_active_hermes_home, get_hermes_home_for_profile
+    from api.profiles import get_active_agy_home, get_agy_home_for_profile
 
     raw = str((job or {}).get("profile") or "").strip()
     if not raw:
-        return get_active_hermes_home()
+        return get_active_agy_home()
     if raw not in _available_cron_profile_names():
         logger.warning(
             "Cron job %s references missing profile %r; falling back to server default",
             (job or {}).get("id", "?"), raw,
         )
-        return get_active_hermes_home()
-    return get_hermes_home_for_profile(raw)
+        return get_active_agy_home()
+    return get_agy_home_for_profile(raw)
 
 
 def _event_profile_for_cron_job(job: dict) -> str | None:
@@ -7031,10 +7031,10 @@ def _read_profile_model_config(
         return None, None, None
 
     try:
-        from api.profiles import get_hermes_home_for_profile
+        from api.profiles import get_agy_home_for_profile
 
         _profile_name = str(session.profile or "")
-        _profile_home = get_hermes_home_for_profile(_profile_name)
+        _profile_home = get_agy_home_for_profile(_profile_name)
         _profile_cfg_path = os.path.join(str(_profile_home), "config.yaml")
         if not os.path.isfile(_profile_cfg_path):
             return None, None, None
@@ -7151,10 +7151,10 @@ def _load_profile_config_dict(session) -> dict | None:
     if not getattr(session, "profile", None):
         return None
     try:
-        from api.profiles import get_hermes_home_for_profile
+        from api.profiles import get_agy_home_for_profile
 
         _profile_cfg_path = os.path.join(
-            str(get_hermes_home_for_profile(session.profile)),
+            str(get_agy_home_for_profile(session.profile)),
             "config.yaml",
         )
         if not os.path.isfile(_profile_cfg_path):
@@ -7948,9 +7948,9 @@ def _worktree_default_from_config(profile: str | None) -> bool:
     """
     try:
         if profile:
-            from api.profiles import get_hermes_home_for_profile
+            from api.profiles import get_agy_home_for_profile
 
-            cfg_dict = get_config_for_profile_home(get_hermes_home_for_profile(profile))
+            cfg_dict = get_config_for_profile_home(get_agy_home_for_profile(profile))
         else:
             cfg_dict = get_config_for_profile_home(None)
         # Strict boolean: only a real YAML `true` opts in.  Any other shape
@@ -11086,9 +11086,9 @@ def _handle_logs(handler, parsed) -> bool:
 
     tail = _normalize_logs_tail(query.get("tail", [None])[0])
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        hermes_home = Path(get_active_hermes_home()).expanduser()
+        hermes_home = Path(get_active_agy_home()).expanduser()
     except Exception:
         hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes")).expanduser()
 
@@ -11139,8 +11139,8 @@ _LLM_WIKI_PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")
 
 def _llm_wiki_active_hermes_home() -> Path:
     try:
-        from api.profiles import get_active_hermes_home
-        return Path(get_active_hermes_home()).expanduser()
+        from api.profiles import get_active_agy_home
+        return Path(get_active_agy_home()).expanduser()
     except Exception:
         return Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
 
@@ -12777,8 +12777,8 @@ def _serve_manifest(handler) -> bool:
 
 def _saved_prompts_path() -> "Path":
     try:
-        from api.profiles import get_active_hermes_home
-        return Path(get_active_hermes_home()).expanduser() / "webui" / "saved_prompts.json"
+        from api.profiles import get_active_agy_home
+        return Path(get_active_agy_home()).expanduser() / "webui" / "saved_prompts.json"
     except Exception:
         return Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser() / "webui" / "saved_prompts.json"
 
@@ -14764,7 +14764,7 @@ def handle_get(handler, parsed) -> bool:
             handler,
             {
                 "name": active_profile_name,
-                "path": str(profiles_api.get_active_hermes_home()),
+                "path": str(profiles_api.get_active_agy_home()),
                 "is_default": profiles_api._is_root_profile(active_profile_name),
                 "default_workspace": _profile_default_workspace,
             },
@@ -20124,8 +20124,8 @@ def _handle_tts(handler, parsed):
             # Fall back to reading from Hermes .env file
             try:
                 from api.onboarding import _load_env_file
-                from api.profiles import get_active_hermes_home
-                api_key = _load_env_file(get_active_hermes_home() / ".env").get("ELEVENLABS_API_KEY", "")
+                from api.profiles import get_active_agy_home
+                api_key = _load_env_file(get_active_agy_home() / ".env").get("ELEVENLABS_API_KEY", "")
             except Exception:
                 pass
         if not api_key:
@@ -20204,8 +20204,8 @@ def _handle_tts(handler, parsed):
         if not api_key:
             try:
                 from api.onboarding import _load_env_file
-                from api.profiles import get_active_hermes_home
-                env_cfg = _load_env_file(get_active_hermes_home() / ".env")
+                from api.profiles import get_active_agy_home
+                env_cfg = _load_env_file(get_active_agy_home() / ".env")
                 api_key = env_cfg.get("VOICE_TOOLS_OPENAI_KEY", "") or env_cfg.get("OPENAI_API_KEY", "")
             except Exception:
                 pass
@@ -22296,9 +22296,9 @@ def _read_active_project_context(workspace: Path | None) -> dict:
 
 def _handle_memory_read(handler, parsed=None):
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        home = get_active_hermes_home()
+        home = get_active_agy_home()
         mem_dir = home / "memories"
     except ImportError:
         home = Path.home() / ".hermes"
@@ -24039,9 +24039,9 @@ def _handle_goal_command(handler, body):
             _clear_stale_stream_state(s)
 
     try:
-        from api.profiles import get_hermes_home_for_profile
+        from api.profiles import get_agy_home_for_profile
 
-        profile_home = get_hermes_home_for_profile(getattr(s, "profile", None))
+        profile_home = get_agy_home_for_profile(getattr(s, "profile", None))
     except Exception:
         profile_home = None
 
@@ -24945,7 +24945,7 @@ def _handle_cron_run(handler, body):
     # Capture the TLS-active profile home now — the thread runs after the
     # request finishes, so TLS is gone by then.
     #
-    # Resolve directly without a try/except: get_active_hermes_home() does
+    # Resolve directly without a try/except: get_active_agy_home() does
     # in-memory dict reads + a single Path.is_dir() stat, so the only way
     # it could raise from inside a request handler is if api.profiles
     # itself partially failed to import (in which case we'd already be
@@ -24954,9 +24954,9 @@ def _handle_cron_run(handler, body):
     # run unpinned against the process-global HERMES_HOME — so we'd
     # rather let any unexpected exception 500 the request than corrupt
     # cross-profile state.
-    from api.profiles import get_active_hermes_home
+    from api.profiles import get_active_agy_home
 
-    _profile_home = get_active_hermes_home()
+    _profile_home = get_active_agy_home()
     _execution_profile_home = _profile_home_for_cron_job(job)
     _event_profile = _event_profile_for_cron_job(job)
     threading.Thread(target=_run_cron_tracked, args=(job, _profile_home, _execution_profile_home, _event_profile), daemon=True).start()
@@ -27566,9 +27566,9 @@ def _persist_handoff_summary_to_state_db(sid: str, message: dict) -> bool:
         return False
 
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        hermes_home = Path(get_active_agy_home()).expanduser().resolve()
     except Exception:
         hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
 
@@ -28252,9 +28252,9 @@ def _handle_memory_write(handler, body):
             return bad(handler, "User profile is disabled by configuration (user_profile_enabled: false)", 403)
 
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_agy_home
 
-        home = get_active_hermes_home()
+        home = get_active_agy_home()
         mem_dir = home / "memories"
     except ImportError:
         home = Path.home() / ".hermes"
@@ -28957,7 +28957,7 @@ def _mcp_tools_from_registry(server_summaries):
 
 def _handle_mcp_tools_list(handler):
     """List known MCP tools from already-available runtime inventory only."""
-    cfg = get_config_for_profile_home(get_active_hermes_home())
+    cfg = get_config_for_profile_home(get_active_agy_home())
     servers = cfg.get("mcp_servers", {})
     if not isinstance(servers, dict):
         servers = {}
@@ -29471,7 +29471,7 @@ def _handle_notes_item(handler, parsed):
 
 def _handle_mcp_servers_list(handler):
     """List configured MCP servers with safe, read-only runtime visibility."""
-    cfg = get_config_for_profile_home(get_active_hermes_home())
+    cfg = get_config_for_profile_home(get_active_agy_home())
     servers = cfg.get("mcp_servers", {})
     if not isinstance(servers, dict):
         servers = {}

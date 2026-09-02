@@ -135,7 +135,7 @@ class AIAgent:
             env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
         return env
 
-    def _sync_hermes_memory(self):
+    def _sync_agy_memory(self):
         try:
             rules_dir = self.workspace / ".gemini" / "rules"
             rules_dir.mkdir(parents=True, exist_ok=True)
@@ -173,7 +173,7 @@ class AIAgent:
         **kwargs
     ) -> Dict[str, Any]:
         """Execute a turn by invoking agy CLI with stream-json format."""
-        self._sync_hermes_memory()
+        self._sync_agy_memory()
         if not self.session_id and kwargs.get("session_id"):
             self.session_id = kwargs.get("session_id")
             if not self.conversation_id:

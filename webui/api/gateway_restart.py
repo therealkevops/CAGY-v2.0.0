@@ -13,9 +13,9 @@ from pathlib import Path
 from api.profiles import (
     _PROFILE_ID_RE,
     _is_root_profile,
-    get_active_hermes_home,
+    get_active_agy_home,
     get_active_profile_name,
-    get_hermes_home_for_profile,
+    get_agy_home_for_profile,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,12 +56,12 @@ def _gateway_restart_profile_context(profile: str | None = None) -> tuple[Path, 
     """Return the HERMES_HOME and CLI profile arg for a gateway restart."""
     if profile is None:
         raw_profile = str(get_active_profile_name() or "default").strip()
-        active_home = Path(get_active_hermes_home())
+        active_home = Path(get_active_agy_home())
     else:
         raw_profile = str(profile or "")
         if not raw_profile or not _PROFILE_ID_RE.fullmatch(raw_profile):
             raise ValueError(f"Invalid profile for gateway restart: {profile!r}")
-        active_home = Path(get_hermes_home_for_profile(raw_profile))
+        active_home = Path(get_agy_home_for_profile(raw_profile))
 
     if (
         raw_profile == "default"

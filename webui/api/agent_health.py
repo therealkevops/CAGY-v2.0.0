@@ -186,13 +186,13 @@ def _gateway_root_pid_path() -> Path | None:
     active profile's directory so the gateway is detected correctly.
     """
     try:
-        from hermes_constants import get_default_hermes_root
-        root_pid = get_default_hermes_root() / _GATEWAY_PID_FILE
+        from hermes_constants import get_default_agy_root
+        root_pid = get_default_agy_root() / _GATEWAY_PID_FILE
         if root_pid.exists():
             return root_pid
         try:
-            from api.profiles import get_active_hermes_home
-            profile_pid = Path(get_active_hermes_home()) / _GATEWAY_PID_FILE
+            from api.profiles import get_active_agy_home
+            profile_pid = Path(get_active_agy_home()) / _GATEWAY_PID_FILE
             if profile_pid.exists():
                 return profile_pid
         except Exception:
@@ -388,13 +388,13 @@ def get_active_profile_gateway_running_pid(profile: str | None = None) -> int | 
     the default-root health path. Keep this fail-closed when status is unavailable.
     """
     try:
-        from api.profiles import get_active_hermes_home, get_hermes_home_for_profile
+        from api.profiles import get_active_agy_home, get_agy_home_for_profile
 
         gateway_status = _gateway_status_module()
         if profile is None:
-            gateway_home = get_active_hermes_home()
+            gateway_home = get_active_agy_home()
         else:
-            gateway_home = get_hermes_home_for_profile(profile)
+            gateway_home = get_agy_home_for_profile(profile)
         gateway_pid_path = Path(gateway_home) / _GATEWAY_PID_FILE
         return _gateway_running_pid_strict_path(gateway_status, gateway_pid_path)
     except Exception:

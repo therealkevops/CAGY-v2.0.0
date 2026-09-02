@@ -287,7 +287,7 @@ def _hermes_home_has_webui_state(base: Path) -> bool:
         return False
 
 
-def _platform_default_hermes_home() -> Path:
+def _platform_default_agy_home() -> Path:
     """Return the platform-aware default Hermes home when HERMES_HOME is unset.
 
     Native Windows Hermes Agent installs default to %LOCALAPPDATA%\\hermes,
