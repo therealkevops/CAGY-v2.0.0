@@ -57,7 +57,7 @@ def fix_credential_permissions() -> None:
 
 def _agent_dir() -> Path | None:
     hermes_home = Path(os.environ.get('HERMES_HOME', str(Path.home() / '.hermes')))
-    for raw in [os.environ.get('HERMES_WEBUI_AGENT_DIR', '').strip(), str(hermes_home / 'hermes-agent')]:
+    for raw in [(os.environ.get('AGY_WEBUI_AGENT_DIR') or os.environ.get('HERMES_WEBUI_AGENT_DIR', '')).strip(), str(hermes_home / 'hermes-agent')]:
         if not raw:
             continue
         p = Path(raw).expanduser()
@@ -89,7 +89,7 @@ def _trusted_agent_dir(agent_dir: Path) -> bool:
 
 
 def auto_install_agent_deps() -> bool:
-    enabled = os.environ.get('HERMES_WEBUI_AUTO_INSTALL', '').strip().lower() in ('1', 'true', 'yes')
+    enabled = (os.environ.get('AGY_WEBUI_AUTO_INSTALL') or os.environ.get('HERMES_WEBUI_AUTO_INSTALL', '')).strip().lower() in ('1', 'true', 'yes')
     if not enabled:
         print('[!!] Auto-install disabled. Set HERMES_WEBUI_AUTO_INSTALL=1 to enable.', flush=True)
         return False

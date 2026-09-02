@@ -6122,7 +6122,7 @@ def _apply_sidebar_state_db_overrides(sessions: list[dict]) -> None:
     """
     import os as _os
     try:
-        _cap = int(_os.environ.get("HERMES_WEBUI_STATE_DB_OVERRIDE_TOP_N", "300"))
+        _cap = int(_os.environ.get("AGY_WEBUI_STATE_DB_OVERRIDE_TOP_N") or _os.environ.get("HERMES_WEBUI_STATE_DB_OVERRIDE_TOP_N", "300"))
     except (TypeError, ValueError):
         _cap = 300
     all_ids = {str(s.get('session_id')) for s in sessions if s.get('session_id')}
@@ -6239,7 +6239,7 @@ def _enrich_sidebar_lineage_metadata(sessions: list[dict]) -> None:
     # 2026-06-21: configurable via env to ease A/B and rollback without a redeploy.
     import os as _os
     try:
-        _cap = int(_os.environ.get("HERMES_WEBUI_LINEAGE_TOP_N", "300"))
+        _cap = int(_os.environ.get("AGY_WEBUI_LINEAGE_TOP_N") or _os.environ.get("HERMES_WEBUI_LINEAGE_TOP_N", "300"))
     except (TypeError, ValueError):
         _cap = 300
     if _cap > 0 and len(sessions) > _cap:
@@ -6800,10 +6800,10 @@ def _normalize_cli_session_source_filter(source_filter) -> str | None:
 
 def _default_claude_code_projects_dir() -> Path | None:
     """Resolve the Claude Code projects directory without touching real home in tests."""
-    override = os.getenv('HERMES_WEBUI_CLAUDE_PROJECTS_DIR')
+    override = os.getenv("AGY_WEBUI_CLAUDE_PROJECTS_DIR") or os.getenv("HERMES_WEBUI_CLAUDE_PROJECTS_DIR")
     if override:
         return Path(override).expanduser()
-    if os.getenv('HERMES_WEBUI_TEST_STATE_DIR'):
+    if os.getenv("AGY_WEBUI_TEST_STATE_DIR") or os.getenv("HERMES_WEBUI_TEST_STATE_DIR"):
         return None
     return Path.home() / '.claude' / 'projects'
 

@@ -35,7 +35,7 @@ def _resolve_session_ttl() -> int:
     first, then settings.json, falling back to ``SESSION_TTL`` (30 days).
     Clamped to [60s, 1 year] to prevent runaway cookies or self-lockout.
     """
-    env_v = os.getenv('HERMES_WEBUI_SESSION_TTL', '').strip()
+    env_v = (os.getenv('AGY_WEBUI_SESSION_TTL') or os.getenv('HERMES_WEBUI_SESSION_TTL', '')).strip()
     if env_v.isdigit():
         val = int(env_v)
         if 60 <= val <= 86400 * 365:
@@ -77,7 +77,7 @@ def _resolve_cookie_name() -> str:
     host+port (RFC 6265). Falls back to ``COOKIE_NAME`` when the env var is
     unset, empty, or not a valid RFC 6265 token.
     """
-    name = os.getenv('HERMES_WEBUI_COOKIE_NAME', '').strip()
+    name = (os.getenv('AGY_WEBUI_COOKIE_NAME') or os.getenv('HERMES_WEBUI_COOKIE_NAME', '')).strip()
     if not name:
         return COOKIE_NAME
     if _COOKIE_NAME_RE.match(name):
@@ -102,10 +102,14 @@ def _warn_auth_persistence_failure(prefix: str, artifact: Path, exc: Exception, 
 
 
 _SESSIONS_FILE = STATE_DIR / '.sessions.json'
-_TRUSTED_AUTH_HEADER_ENV = 'HERMES_WEBUI_TRUSTED_AUTH_HEADER'
-_TRUSTED_GROUPS_HEADER_ENV = 'HERMES_WEBUI_TRUSTED_GROUPS_HEADER'
-_TRUSTED_GROUP_PROFILE_MAP_ENV = 'HERMES_WEBUI_GROUP_PROFILE_MAP'
-_TRUSTED_AUTH_LOGOUT_URL_ENV = 'HERMES_WEBUI_TRUSTED_AUTH_LOGOUT_URL'
+_TRUSTED_AUTH_HEADER_ENV = 'AGY_WEBUI_TRUSTED_AUTH_HEADER'
+_TRUSTED_AUTH_HEADER_ENV_LEGACY = 'HERMES_WEBUI_TRUSTED_AUTH_HEADER'
+_TRUSTED_GROUPS_HEADER_ENV = 'AGY_WEBUI_TRUSTED_GROUPS_HEADER'
+_TRUSTED_GROUPS_HEADER_ENV_LEGACY = 'HERMES_WEBUI_TRUSTED_GROUPS_HEADER'
+_TRUSTED_GROUP_PROFILE_MAP_ENV = 'AGY_WEBUI_GROUP_PROFILE_MAP'
+_TRUSTED_GROUP_PROFILE_MAP_ENV_LEGACY = 'HERMES_WEBUI_GROUP_PROFILE_MAP'
+_TRUSTED_AUTH_LOGOUT_URL_ENV = 'AGY_WEBUI_TRUSTED_AUTH_LOGOUT_URL'
+_TRUSTED_AUTH_LOGOUT_URL_ENV_LEGACY = 'HERMES_WEBUI_TRUSTED_AUTH_LOGOUT_URL'
 _TRUSTED_AUTH_WARNINGS_EMITTED: set[str] = set()
 
 
@@ -451,7 +455,7 @@ def _passkey_feature_flag_enabled() -> bool:
     With the flag off, ``are_passkeys_enabled()`` always returns False even if
     credentials were registered in the past, and ``/login`` shows password-only.
     """
-    env_value = os.getenv("HERMES_WEBUI_PASSKEY", "")
+    env_value = os.getenv("AGY_WEBUI_PASSKEY") or os.getenv("HERMES_WEBUI_PASSKEY", "")
     if env_value:
         return env_value.strip().lower() in {"1", "true", "yes", "on"}
     try:
@@ -505,15 +509,17 @@ def get_oidc_startup_warning() -> str | None:
         logger.debug("Failed to read webui_oidc config", exc_info=True)
         raw = {}
 
-    def pick(name: str, env_name: str) -> str:
+    def pick(name: str, env_name: str, legacy_env_name: str | None = None) -> str:
         env_value = os.getenv(env_name)
+        if env_value is None and legacy_env_name:
+            env_value = os.getenv(legacy_env_name)
         value = env_value if env_value is not None else raw.get(name)
         return str(value or "").strip()
 
-    issuer = bool(pick("issuer", "HERMES_WEBUI_OIDC_ISSUER"))
-    client_id = bool(pick("client_id", "HERMES_WEBUI_OIDC_CLIENT_ID"))
-    allow_claim = bool(pick("allow_claim", "HERMES_WEBUI_OIDC_ALLOW_CLAIM"))
-    raw_allow_env = os.getenv("HERMES_WEBUI_OIDC_ALLOW_VALUES")
+    issuer = bool(pick("issuer", "AGY_WEBUI_OIDC_ISSUER", "HERMES_WEBUI_OIDC_ISSUER"))
+    client_id = bool(pick("client_id", "AGY_WEBUI_OIDC_CLIENT_ID", "HERMES_WEBUI_OIDC_CLIENT_ID"))
+    allow_claim = bool(pick("allow_claim", "AGY_WEBUI_OIDC_ALLOW_CLAIM", "HERMES_WEBUI_OIDC_ALLOW_CLAIM"))
+    raw_allow_env = os.getenv("AGY_WEBUI_OIDC_ALLOW_VALUES") or os.getenv("HERMES_WEBUI_OIDC_ALLOW_VALUES")
     raw_allow = raw_allow_env if raw_allow_env is not None else raw.get("allow_values")
     normalized_allow_values = []
     allow_values_warning = None
@@ -659,7 +665,7 @@ def verify_session(cookie_value: str) -> bool:
 
 
 def _trusted_auth_header_name() -> str | None:
-    name = os.getenv(_TRUSTED_AUTH_HEADER_ENV, '').strip()
+    name = (os.getenv(_TRUSTED_AUTH_HEADER_ENV) or os.getenv(_TRUSTED_AUTH_HEADER_ENV_LEGACY) or '').strip()
     if not name:
         return None
     if not _COOKIE_NAME_RE.match(name):
@@ -674,11 +680,11 @@ def _trusted_auth_header_name() -> str | None:
 
 
 def _trusted_auth_header_configured() -> bool:
-    return bool(os.getenv(_TRUSTED_AUTH_HEADER_ENV, '').strip())
+    return bool((os.getenv(_TRUSTED_AUTH_HEADER_ENV) or os.getenv(_TRUSTED_AUTH_HEADER_ENV_LEGACY) or '').strip())
 
 
 def _trusted_group_profile_map() -> dict[str, str] | None:
-    raw = os.getenv(_TRUSTED_GROUP_PROFILE_MAP_ENV, '').strip()
+    raw = (os.getenv(_TRUSTED_GROUP_PROFILE_MAP_ENV) or os.getenv(_TRUSTED_GROUP_PROFILE_MAP_ENV_LEGACY) or '').strip()
     if not raw:
         return None
     try:
@@ -713,7 +719,7 @@ def _trusted_group_profile_map() -> dict[str, str] | None:
 
 
 def _trusted_groups_header_value(handler) -> list[str]:
-    header_name = os.getenv(_TRUSTED_GROUPS_HEADER_ENV, '').strip()
+    header_name = (os.getenv(_TRUSTED_GROUPS_HEADER_ENV) or os.getenv(_TRUSTED_GROUPS_HEADER_ENV_LEGACY) or '').strip()
     if not header_name:
         return []
     try:
@@ -840,7 +846,7 @@ def is_trusted_auth_enabled() -> bool:
 
 
 def get_trusted_auth_logout_url() -> str | None:
-    value = os.getenv(_TRUSTED_AUTH_LOGOUT_URL_ENV, '').strip()
+    value = (os.getenv(_TRUSTED_AUTH_LOGOUT_URL_ENV) or os.getenv(_TRUSTED_AUTH_LOGOUT_URL_ENV_LEGACY) or '').strip()
     return value or None
 
 
@@ -1220,7 +1226,7 @@ def _is_secure_context(handler=None) -> bool:
        set explicitly, preventing header-injection attacks on plain-HTTP
        deployments.
     """
-    env = os.getenv('HERMES_WEBUI_SECURE', '').strip().lower()
+    env = (os.getenv('AGY_WEBUI_SECURE') or os.getenv('HERMES_WEBUI_SECURE', '')).strip().lower()
     if env in ('1', 'true', 'yes'):
         return True
     if env in ('0', 'false', 'no'):
@@ -1228,7 +1234,7 @@ def _is_secure_context(handler=None) -> bool:
     if handler is not None:
         if getattr(handler.request, 'getpeercert', None) is not None:
             return True
-        trust_fwd = os.getenv('HERMES_WEBUI_TRUST_FORWARDED_PROTO', '').strip().lower()
+        trust_fwd = (os.getenv('AGY_WEBUI_TRUST_FORWARDED_PROTO') or os.getenv('HERMES_WEBUI_TRUST_FORWARDED_PROTO', '')).strip().lower()
         if trust_fwd in ('1', 'true', 'yes'):
             if handler.headers.get('X-Forwarded-Proto', '') == 'https':
                 return True

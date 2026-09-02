@@ -40,7 +40,7 @@ _CLONE_CONFIG_FILES = ['config.yaml', '.env', 'SOUL.md']
 # startup control: a pinned profile's .env may be loaded into live os.environ
 # later, but must not be able to change whether the process is isolated.
 _INITIAL_AGY_HOME = os.getenv('HERMES_HOME', '').strip()
-_INITIAL_ISOLATED_PROFILE_OPT_IN = os.getenv('HERMES_WEBUI_ISOLATED_PROFILE', '').strip().lower()
+_INITIAL_ISOLATED_PROFILE_OPT_IN = (os.getenv('AGY_WEBUI_ISOLATED_PROFILE') or os.getenv('HERMES_WEBUI_ISOLATED_PROFILE', '')).strip().lower()
 _ISOLATED_SYMLINK_WARNING_EMITTED = False
 _ISOLATED_PROFILE_SHAPE_WITHOUT_OPT_IN_WARNING_EMITTED = False
 _ISOLATED_PROFILE_TRUTHY_VALUES = frozenset({'1', 'true', 'yes', 'on'})
@@ -198,7 +198,7 @@ def _unwrap_profile_home_to_base(home: Path) -> Path:
 # are operator/deployment-level postures, not per-profile toggles. Letting a
 # profile .env set HERMES_WEBUI_ISOLATED_PROFILE=0 would let a contained user
 # escape isolation (#4589).
-_PROTECTED_ENV_KEYS = frozenset({'HERMES_WEBUI_ISOLATED_PROFILE'})
+_PROTECTED_ENV_KEYS = frozenset({'AGY_WEBUI_ISOLATED_PROFILE', 'HERMES_WEBUI_ISOLATED_PROFILE'})
 
 
 def _isolated_profile_opt_in() -> bool:
@@ -933,6 +933,7 @@ _BLOCKED_RUNTIME_ENV_KEYS = {
     'LD_LIBRARY_PATH',
     # #4589: operator/deployment isolation posture — never overridable by a
     # profile's own env on any runtime/gateway-parity path.
+    'AGY_WEBUI_ISOLATED_PROFILE',
     'HERMES_WEBUI_ISOLATED_PROFILE',
 }
 

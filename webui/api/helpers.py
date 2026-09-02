@@ -119,12 +119,12 @@ def _valid_csp_extra_connect_source(source: str) -> bool:
 
 
 def _csp_extra_connect_src() -> str:
-    raw = os.getenv("HERMES_WEBUI_CSP_CONNECT_EXTRA", "").strip()
+    raw = (os.getenv("AGY_WEBUI_CSP_CONNECT_EXTRA") or os.getenv("HERMES_WEBUI_CSP_CONNECT_EXTRA", "")).strip()
     if not raw:
         return ""
     sources = raw.split()
     if not sources or any(not _valid_csp_extra_connect_source(src) for src in sources):
-        logger.warning("Ignoring invalid HERMES_WEBUI_CSP_CONNECT_EXTRA value")
+        logger.warning("Ignoring invalid CSP_CONNECT_EXTRA value")
         return ""
     return " " + " ".join(sources)
 
@@ -143,7 +143,7 @@ def _valid_csp_extra_frame_source(source: str) -> bool:
 
 
 def _csp_extra_frame_src() -> str:
-    raw = os.getenv("HERMES_WEBUI_CSP_FRAME_EXTRA", "").strip()
+    raw = (os.getenv("AGY_WEBUI_CSP_FRAME_EXTRA") or os.getenv("HERMES_WEBUI_CSP_FRAME_EXTRA", "")).strip()
     if not raw:
         return ""
     sources = raw.split()
@@ -1277,7 +1277,8 @@ def read_body(handler) -> dict:
 # ── Profile cookie helpers (issue #798) ─────────────────────────────────────
 
 PROFILE_COOKIE_NAME = 'hermes_profile'
-_PROFILE_COOKIE_ENV = 'HERMES_WEBUI_PROFILE_COOKIE_NAME'
+_PROFILE_COOKIE_ENV = 'AGY_WEBUI_PROFILE_COOKIE_NAME'
+_PROFILE_COOKIE_ENV_LEGACY = 'HERMES_WEBUI_PROFILE_COOKIE_NAME'
 _LEGACY_PROFILE_COOKIE_ENV = 'WEBUI_PROFILE_COOKIE_NAME'
 _legacy_profile_cookie_warned = False
 
@@ -1292,7 +1293,7 @@ def get_profile_cookie_name() -> str:
     honoured as a deprecated fallback (warned once per process, since this is
     called on every request).
     """
-    name = os.getenv(_PROFILE_COOKIE_ENV, '').strip()
+    name = (os.getenv(_PROFILE_COOKIE_ENV) or os.getenv(_PROFILE_COOKIE_ENV_LEGACY, '')).strip()
     if name:
         return name
     legacy = os.getenv(_LEGACY_PROFILE_COOKIE_ENV, '').strip()

@@ -139,15 +139,29 @@ fi
 
 # Ensure state directory exists and point both host and container to container_data/webui
 mkdir -p "$SCRIPT_DIR/container_data/webui/sessions"
-export HERMES_WEBUI_STATE_DIR="$SCRIPT_DIR/container_data/webui"
+export AGY_WEBUI_STATE_DIR="$SCRIPT_DIR/container_data/webui"
+export HERMES_WEBUI_STATE_DIR="$AGY_WEBUI_STATE_DIR"  # compat alias
 
-export HERMES_WEBUI_AGENT_DIR="$SCRIPT_DIR/webui"
-export HERMES_WEBUI_HOST="127.0.0.1"
-export HERMES_WEBUI_PORT="8989"
-export HERMES_WEBUI_DEFAULT_MODEL="Antigravity 2.0 (agy CLI)"
-export HERMES_WEBUI_DEFAULT_WORKSPACE="$SCRIPT_DIR"
-export HERMES_WORKSPACE_ROOT="$SCRIPT_DIR"
-export HERMES_WEBUI_SKIP_ONBOARDING="1"
+export AGY_WEBUI_AGENT_DIR="$SCRIPT_DIR/webui"
+export HERMES_WEBUI_AGENT_DIR="$AGY_WEBUI_AGENT_DIR"  # compat alias
+
+export AGY_WEBUI_HOST="127.0.0.1"
+export HERMES_WEBUI_HOST="$AGY_WEBUI_HOST"  # compat alias
+
+export AGY_WEBUI_PORT="8989"
+export HERMES_WEBUI_PORT="$AGY_WEBUI_PORT"  # compat alias
+
+export AGY_WEBUI_DEFAULT_MODEL="Antigravity 2.0 (agy CLI)"
+export HERMES_WEBUI_DEFAULT_MODEL="$AGY_WEBUI_DEFAULT_MODEL"  # compat alias
+
+export AGY_WEBUI_DEFAULT_WORKSPACE="$SCRIPT_DIR"
+export HERMES_WEBUI_DEFAULT_WORKSPACE="$AGY_WEBUI_DEFAULT_WORKSPACE"  # compat alias
+
+export AGY_WORKSPACE_ROOT="$SCRIPT_DIR"
+export HERMES_WORKSPACE_ROOT="$AGY_WORKSPACE_ROOT"  # compat alias
+
+export AGY_WEBUI_SKIP_ONBOARDING="1"
+export HERMES_WEBUI_SKIP_ONBOARDING="$AGY_WEBUI_SKIP_ONBOARDING"  # compat alias
 export PYTHONPATH="$SCRIPT_DIR/webui:$PYTHONPATH"
 
 # Setup cleanup trap for foreground runs

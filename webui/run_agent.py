@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Union
 
 def _get_map_file() -> Path:
-    state_dir = Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser().resolve()
+    state_dir = Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser().resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / "sessions" / "agy_session_map.json"
 
@@ -75,7 +75,7 @@ class AIAgent:
             else:
                 self.workspace = Path(raw_ws).resolve()
         else:
-            self.workspace = Path(raw_ws or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE", os.getcwd())).resolve()
+            self.workspace = Path(raw_ws or os.getenv("AGY_WEBUI_DEFAULT_WORKSPACE") or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE", os.getcwd())).resolve()
 
         try:
             self.workspace.mkdir(parents=True, exist_ok=True)

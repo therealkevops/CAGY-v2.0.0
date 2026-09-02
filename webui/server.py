@@ -16,7 +16,7 @@ def _ignore_sigpipe() -> None:
         signal.signal(sigpipe, signal.SIG_IGN)
 
 # Test-mode network isolation keeps subprocess-backed tests hermetic.
-if os.environ.get("HERMES_WEBUI_TEST_NETWORK_BLOCK", "").strip() in ("1", "true", "yes"):
+if (os.environ.get("AGY_WEBUI_TEST_NETWORK_BLOCK") or os.environ.get("HERMES_WEBUI_TEST_NETWORK_BLOCK", "")).strip() in ("1", "true", "yes"):
     _REAL_CREATE_CONN = socket.create_connection
     _REAL_SOCK_CONNECT = socket.socket.connect
 

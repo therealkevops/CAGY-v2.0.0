@@ -5522,7 +5522,7 @@ def _allowed_public_origins() -> set[str]:
     Each entry must include the scheme, e.g. https://myapp.example.com:8000.
     Entries without a scheme are silently skipped and a warning is printed.
     """
-    raw = os.getenv('HERMES_WEBUI_ALLOWED_ORIGINS', '')
+    raw = os.getenv('AGY_WEBUI_ALLOWED_ORIGINS') or os.getenv('HERMES_WEBUI_ALLOWED_ORIGINS', '')
     result = set()
     for value in raw.split(','):
         value = value.strip().rstrip('/').lower()
@@ -5582,7 +5582,7 @@ def _check_same_origin_browser_request(handler, *, require_provenance: bool = Fa
         origin_allowed = True
     if not origin_allowed:
         allowed_hosts = [h.strip() for h in [host] if h.strip()]
-        trust_forwarded_host = os.getenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "").strip().lower()
+        trust_forwarded_host = (os.getenv("AGY_WEBUI_TRUST_FORWARDED_HOST") or os.getenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "")).strip().lower()
         if trust_forwarded_host in ("1", "true", "yes", "on"):
             allowed_hosts.extend(
                 h.strip()
@@ -5937,8 +5937,11 @@ def _client_ip_for_rate_limit(handler) -> str:
     return "unknown"
 
 
-def _truthy_env(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _truthy_env(*names: str) -> bool:
+    for name in names:
+        if os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+    return False
 
 
 def _request_client_ip(handler) -> str:
@@ -5983,7 +5986,7 @@ def _trusted_proxy_networks():
         ipaddress.ip_network("::1/128"),
         ipaddress.ip_network("::ffff:127.0.0.0/104"),
     ]
-    raw = os.getenv("HERMES_WEBUI_TRUSTED_PROXY_CIDRS", "") or ""
+    raw = (os.getenv("AGY_WEBUI_TRUSTED_PROXY_CIDRS") or os.getenv("HERMES_WEBUI_TRUSTED_PROXY_CIDRS", "") or "")
     for token in raw.replace(";", ",").split(","):
         token = token.strip()
         if not token:
@@ -6119,7 +6122,7 @@ def _onboarding_request_is_local(handler) -> bool:
       forwarded chain at all; without it the raw peer is authoritative. Either
       way the classification fails closed on malformed/empty chains.
     """
-    trust_forwarded = _truthy_env("HERMES_WEBUI_TRUST_FORWARDED_FOR")
+    trust_forwarded = _truthy_env("AGY_WEBUI_TRUST_FORWARDED_FOR", "HERMES_WEBUI_TRUST_FORWARDED_FOR")
     peer_is_trusted_proxy = _raw_peer_is_trusted_proxy(handler)
 
     if trust_forwarded and peer_is_trusted_proxy:
@@ -6169,7 +6172,7 @@ def _onboarding_gate_allows(handler, auth_enabled: bool | None = None) -> bool:
     from api.auth import is_auth_enabled
 
     auth_enabled = is_auth_enabled() if auth_enabled is None else auth_enabled
-    if auth_enabled or _truthy_env("HERMES_WEBUI_ONBOARDING_OPEN"):
+    if auth_enabled or _truthy_env("AGY_WEBUI_ONBOARDING_OPEN", "HERMES_WEBUI_ONBOARDING_OPEN"):
         return True
     return _onboarding_request_is_local(handler)
 
@@ -20083,7 +20086,7 @@ def _handle_tts(handler, parsed):
                 self._checks = 0
 
             def _get_client_key(self, h):
-                trust_proxy = os.getenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", "").strip().lower()
+                trust_proxy = (os.getenv("AGY_WEBUI_TRUST_FORWARDED_FOR") or os.getenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", "")).strip().lower()
                 if trust_proxy in ("1", "true", "yes", "on"):
                     for hdr in ("X-Forwarded-For", "X-Real-IP", "Forwarded"):
                         val = h.headers.get(hdr)
@@ -20892,7 +20895,7 @@ def _file_raw_target(session, sid: str, rel: str) -> tuple[Path, Path] | None:
 # inside zipfile, not the cap value.
 def _folder_zip_max_bytes() -> int:
     try:
-        mb = int(os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_MB", "1024"))
+        mb = int(os.getenv("AGY_WEBUI_FOLDER_ZIP_MAX_MB") or os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_MB", "1024"))
     except ValueError:
         mb = 1024
     return max(1, mb) * 1024 * 1024
@@ -20900,7 +20903,7 @@ def _folder_zip_max_bytes() -> int:
 
 def _folder_zip_max_files() -> int:
     try:
-        return max(1, int(os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_FILES", "50000")))
+        return max(1, int(os.getenv("AGY_WEBUI_FOLDER_ZIP_MAX_FILES") or os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_FILES", "50000")))
     except ValueError:
         return 50000
 
@@ -24604,9 +24607,11 @@ def _handle_chat_sync(handler, body):
         old_cwd = os.environ.get("TERMINAL_CWD")
         os.environ["TERMINAL_CWD"] = str(workspace)
         old_exec_ask = os.environ.get("HERMES_EXEC_ASK")
+        old_agy_exec_ask = os.environ.get("AGY_EXEC_ASK")
         old_session_key = os.environ.get("HERMES_SESSION_KEY")
-        os.environ["HERMES_EXEC_ASK"] = "1"
-        os.environ["HERMES_SESSION_KEY"] = s.session_id
+        old_agy_session_key = os.environ.get("AGY_SESSION_KEY")
+        os.environ["AGY_EXEC_ASK"] = os.environ["HERMES_EXEC_ASK"] = "1"
+        os.environ["AGY_SESSION_KEY"] = os.environ["HERMES_SESSION_KEY"] = s.session_id
     try:
         AIAgent = require_ai_agent_class()
 
@@ -24716,10 +24721,18 @@ def _handle_chat_sync(handler, body):
                 os.environ.pop("HERMES_EXEC_ASK", None)
             else:
                 os.environ["HERMES_EXEC_ASK"] = old_exec_ask
+            if old_agy_exec_ask is None:
+                os.environ.pop("AGY_EXEC_ASK", None)
+            else:
+                os.environ["AGY_EXEC_ASK"] = old_agy_exec_ask
             if old_session_key is None:
                 os.environ.pop("HERMES_SESSION_KEY", None)
             else:
                 os.environ["HERMES_SESSION_KEY"] = old_session_key
+            if old_agy_session_key is None:
+                os.environ.pop("AGY_SESSION_KEY", None)
+            else:
+                os.environ["AGY_SESSION_KEY"] = old_agy_session_key
     with _get_session_agent_lock(s.session_id):
         _result_messages = result.get("messages") or _previous_context_messages
         _next_context_messages = _restore_reasoning_metadata(
@@ -28995,7 +29008,7 @@ def _external_notes_sources_enabled(config_data: dict | None = None) -> bool:
     The Memory panel is a primary surface, so this power-user drawer stays
     default-off unless a deployment opts in through config or environment.
     """
-    env_value = os.getenv("HERMES_WEBUI_EXTERNAL_NOTES_SOURCES", "")
+    env_value = os.getenv("AGY_WEBUI_EXTERNAL_NOTES_SOURCES") or os.getenv("HERMES_WEBUI_EXTERNAL_NOTES_SOURCES", "")
     if env_value:
         return _webui_truthy(env_value)
     cfg = config_data if isinstance(config_data, dict) else get_config()
@@ -29365,7 +29378,8 @@ def _joplin_prefill_script_path() -> Path | None:
     # configured. Fall back to the legacy generic session prefill script only for
     # deployments that have not opted into WebUI dynamic recall.
     return _script_path_from_config_value(
-        os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT", "")
+        os.getenv("AGY_WEBUI_PREFILL_MESSAGES_SCRIPT", "")
+        or os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT", "")
         or cfg.get("webui_prefill_messages_script")
         or cfg.get("prefill_messages_script")
     )

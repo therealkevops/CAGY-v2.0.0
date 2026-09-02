@@ -15,8 +15,10 @@ import urllib.request
 from typing import Any
 
 
-_RUNNER_BASE_URL_ENV = "HERMES_WEBUI_RUNNER_BASE_URL"
-_RUNNER_API_KEY_ENV = "HERMES_WEBUI_RUNNER_API_KEY"
+_RUNNER_BASE_URL_ENV = "AGY_WEBUI_RUNNER_BASE_URL"
+_RUNNER_BASE_URL_ENV_LEGACY = "HERMES_WEBUI_RUNNER_BASE_URL"
+_RUNNER_API_KEY_ENV = "AGY_WEBUI_RUNNER_API_KEY"
+_RUNNER_API_KEY_ENV_LEGACY = "HERMES_WEBUI_RUNNER_API_KEY"
 
 
 class RunnerClientError(RuntimeError):
@@ -25,7 +27,7 @@ class RunnerClientError(RuntimeError):
 
 def runner_client_configured(environ: dict[str, str] | None = None) -> bool:
     source = os.environ if environ is None else environ
-    return bool(str(source.get(_RUNNER_BASE_URL_ENV) or "").strip())
+    return bool(str(source.get(_RUNNER_BASE_URL_ENV) or source.get(_RUNNER_BASE_URL_ENV_LEGACY) or "").strip())
 
 
 class HttpRunnerClient:
@@ -48,10 +50,10 @@ class HttpRunnerClient:
     @classmethod
     def from_env(cls, environ: dict[str, str] | None = None) -> "HttpRunnerClient":
         source = os.environ if environ is None else environ
-        base_url = str(source.get(_RUNNER_BASE_URL_ENV) or "").strip()
+        base_url = str(source.get(_RUNNER_BASE_URL_ENV) or source.get(_RUNNER_BASE_URL_ENV_LEGACY) or "").strip()
         if not base_url:
             raise NotImplementedError("runner-local chat backend is not configured")
-        return cls(base_url=base_url, api_key=str(source.get(_RUNNER_API_KEY_ENV) or ""))
+        return cls(base_url=base_url, api_key=str(source.get(_RUNNER_API_KEY_ENV) or source.get(_RUNNER_API_KEY_ENV_LEGACY) or ""))
 
     def start_run(self, request) -> dict[str, Any]:
         return self._post("/v1/runs", {

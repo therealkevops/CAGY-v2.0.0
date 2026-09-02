@@ -986,8 +986,10 @@ _PREFILL_CONTEXT_DEFAULT_MAX_CHARS = 12_000
 
 
 def _prefill_context_max_chars(config_data: dict) -> int:
-    raw = os.getenv("HERMES_WEBUI_PREFILL_CONTEXT_MAX_CHARS", "") or str(
-        config_data.get("webui_prefill_context_max_chars") or ""
+    raw = (
+        os.getenv("AGY_WEBUI_PREFILL_CONTEXT_MAX_CHARS")
+        or os.getenv("HERMES_WEBUI_PREFILL_CONTEXT_MAX_CHARS", "")
+        or str(config_data.get("webui_prefill_context_max_chars") or "")
     )
     try:
         value = int(raw or _PREFILL_CONTEXT_DEFAULT_MAX_CHARS)
@@ -1035,7 +1037,11 @@ def _apply_prefill_context_budget(context: dict, config_data: dict) -> dict:
     if char_count <= max_chars:
         return context
 
-    file_raw = os.getenv("HERMES_PREFILL_MESSAGES_FILE", "") or str(config_data.get("prefill_messages_file") or "")
+    file_raw = (
+        os.getenv("AGY_PREFILL_MESSAGES_FILE")
+        or os.getenv("HERMES_PREFILL_MESSAGES_FILE", "")
+        or str(config_data.get("prefill_messages_file") or "")
+    )
     if context.get("source") == "script" and file_raw:
         fallback = _load_prefill_messages_file(file_raw, source="file_budget_fallback")
         fallback_messages = fallback.get("messages") if isinstance(fallback, dict) else []
@@ -1069,7 +1075,11 @@ def _load_prefill_messages_file(file_raw: str, *, source: str = "file", status: 
 
 
 def _prefill_script_timeout(config_data: dict) -> float:
-    raw = os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT_TIMEOUT", "") or str(config_data.get("webui_prefill_messages_script_timeout") or "")
+    raw = (
+        os.getenv("AGY_WEBUI_PREFILL_MESSAGES_SCRIPT_TIMEOUT")
+        or os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT_TIMEOUT", "")
+        or str(config_data.get("webui_prefill_messages_script_timeout") or "")
+    )
     try:
         return max(0.1, min(float(raw or 5), 30.0))
     except Exception:
@@ -1106,7 +1116,11 @@ def _messages_from_prefill_script_output(text: str) -> list[dict]:
 
 
 def _load_prefill_messages_script(config_data: dict) -> dict:
-    script_raw = os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT", "") or config_data.get("webui_prefill_messages_script")
+    script_raw = (
+        os.getenv("AGY_WEBUI_PREFILL_MESSAGES_SCRIPT")
+        or os.getenv("HERMES_WEBUI_PREFILL_MESSAGES_SCRIPT", "")
+        or config_data.get("webui_prefill_messages_script")
+    )
     if not script_raw:
         return _prefill_not_configured()
     command = _prefill_script_command(script_raw)
@@ -1154,7 +1168,11 @@ def _load_webui_prefill_context(
     """
     cfg = config_data if isinstance(config_data, dict) else get_config()
     script_context = _load_prefill_messages_script(cfg)
-    file_raw = os.getenv("HERMES_PREFILL_MESSAGES_FILE", "") or str(cfg.get("prefill_messages_file") or "")
+    file_raw = (
+        os.getenv("AGY_PREFILL_MESSAGES_FILE")
+        or os.getenv("HERMES_PREFILL_MESSAGES_FILE", "")
+        or str(cfg.get("prefill_messages_file") or "")
+    )
     if script_context.get("status") == "not_configured":
         if file_raw:
             return _apply_prefill_context_budget(_load_prefill_messages_file(file_raw), cfg)
@@ -2451,11 +2469,11 @@ def _aiagent_import_error_detail() -> str:
     lines = ["AIAgent not available -- check that hermes-agent is on sys.path"]
     lines.append("")
     lines.append(f"  python:  {_sys.executable}")
-    agent_dir = _os.environ.get("HERMES_WEBUI_AGENT_DIR")
+    agent_dir = _os.environ.get("AGY_WEBUI_AGENT_DIR") or _os.environ.get("HERMES_WEBUI_AGENT_DIR")
     if agent_dir:
-        lines.append(f"  HERMES_WEBUI_AGENT_DIR: {agent_dir}")
+        lines.append(f"  AGY_WEBUI_AGENT_DIR: {agent_dir}")
     else:
-        lines.append("  HERMES_WEBUI_AGENT_DIR: (not set)")
+        lines.append("  AGY_WEBUI_AGENT_DIR: (not set)")
 
     # Show only the sys.path entries that look relevant — full sys.path is noisy.
     relevant = [p for p in _sys.path if "hermes" in p.lower() or "agent" in p.lower()]
@@ -2649,15 +2667,20 @@ def _build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, se
     env.update({
         'TERMINAL_CWD': str(workspace),
         'HERMES_EXEC_ASK': '1',
+        'AGY_EXEC_ASK': '1',
         'HERMES_SESSION_KEY': session_id,
+        'AGY_SESSION_KEY': session_id,
         'HERMES_SESSION_ID': session_id,
+        'AGY_SESSION_ID': session_id,
         'HERMES_SESSION_PLATFORM': 'webui',
+        'AGY_SESSION_PLATFORM': 'webui',
         # process_complete agent-wakeup wiring (ours-original, Option B): the
         # terminal_tool watcher routing gate (terminal_tool.py:~1940) reads
         # HERMES_SESSION_CHAT_ID to populate pending_watchers for WebUI
         # sessions so notify_on_complete completions enqueue and the agent
         # can be woken. HERMES_SESSION_ID/PLATFORM come from upstream #2279.
         'HERMES_SESSION_CHAT_ID': str(session_id),
+        'AGY_SESSION_CHAT_ID': str(session_id),
         'HERMES_HOME': profile_home,
     })
     return env
@@ -2854,7 +2877,7 @@ def _stale_completion_max_age_seconds() -> float:
     0 (or negative) disables age-gating and restores the legacy drain-all
     behavior. Defaults to 6 hours.
     """
-    raw = os.environ.get("HERMES_WEBUI_STALE_COMPLETION_MAX_AGE_SECONDS")
+    raw = os.environ.get("AGY_WEBUI_STALE_COMPLETION_MAX_AGE_SECONDS") or os.environ.get("HERMES_WEBUI_STALE_COMPLETION_MAX_AGE_SECONDS")
     if raw is not None:
         try:
             return float(raw)
@@ -7763,7 +7786,12 @@ def _sse(handler, event, data):
 # so no events are lost for a tab that comes back. Operators behind unusual
 # proxies can tune the deadline without code changes.
 try:
-    _raw_deadline = os.getenv("HERMES_WEBUI_SSE_WRITE_DEADLINE") or os.getenv("HERMES_SSE_WRITE_DEADLINE")
+    _raw_deadline = (
+        os.getenv("AGY_WEBUI_SSE_WRITE_DEADLINE")
+        or os.getenv("AGY_SSE_WRITE_DEADLINE")
+        or os.getenv("HERMES_WEBUI_SSE_WRITE_DEADLINE")
+        or os.getenv("HERMES_SSE_WRITE_DEADLINE")
+    )
     SSE_WRITE_DEADLINE_SECONDS = float(_raw_deadline or "20.0")
 except (TypeError, ValueError):
     SSE_WRITE_DEADLINE_SECONDS = 20.0
@@ -9323,20 +9351,25 @@ def _run_agent_streaming(
             old_profile_env = {key: os.environ.get(key) for key in _safe_profile_runtime_env}
             old_cwd = os.environ.get('TERMINAL_CWD')
             old_exec_ask = os.environ.get('HERMES_EXEC_ASK')
+            old_agy_exec_ask = os.environ.get('AGY_EXEC_ASK')
             old_session_key = os.environ.get('HERMES_SESSION_KEY')
+            old_agy_session_key = os.environ.get('AGY_SESSION_KEY')
             old_session_id = os.environ.get('HERMES_SESSION_ID')
+            old_agy_session_id = os.environ.get('AGY_SESSION_ID')
             old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')
+            old_agy_session_platform = os.environ.get('AGY_SESSION_PLATFORM')
             old_session_chat_id = os.environ.get('HERMES_SESSION_CHAT_ID')
+            old_agy_session_chat_id = os.environ.get('AGY_SESSION_CHAT_ID')
             old_hermes_home = os.environ.get('HERMES_HOME')
             os.environ.update(_safe_profile_runtime_env)
             os.environ['TERMINAL_CWD'] = str(s.workspace)
-            os.environ['HERMES_EXEC_ASK'] = '1'
-            os.environ['HERMES_SESSION_KEY'] = session_id
-            os.environ['HERMES_SESSION_ID'] = session_id
-            os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
+            os.environ['AGY_EXEC_ASK'] = os.environ['HERMES_EXEC_ASK'] = '1'
+            os.environ['AGY_SESSION_KEY'] = os.environ['HERMES_SESSION_KEY'] = session_id
+            os.environ['AGY_SESSION_ID'] = os.environ['HERMES_SESSION_ID'] = session_id
+            os.environ['AGY_SESSION_PLATFORM'] = os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
             # process_complete wiring (ours-original, Option B): see
             # _build_agent_thread_env above.
-            os.environ['HERMES_SESSION_CHAT_ID'] = str(session_id)
+            os.environ['AGY_SESSION_CHAT_ID'] = os.environ['HERMES_SESSION_CHAT_ID'] = str(session_id)
             if _profile_home:
                 os.environ['HERMES_HOME'] = _profile_home
                 # Prefer context-local Hermes-home overrides when available.
@@ -12348,14 +12381,24 @@ def _run_agent_streaming(
                 else: os.environ['TERMINAL_CWD'] = old_cwd
                 if old_exec_ask is None: os.environ.pop('HERMES_EXEC_ASK', None)
                 else: os.environ['HERMES_EXEC_ASK'] = old_exec_ask
+                if old_agy_exec_ask is None: os.environ.pop('AGY_EXEC_ASK', None)
+                else: os.environ['AGY_EXEC_ASK'] = old_agy_exec_ask
                 if old_session_key is None: os.environ.pop('HERMES_SESSION_KEY', None)
                 else: os.environ['HERMES_SESSION_KEY'] = old_session_key
+                if old_agy_session_key is None: os.environ.pop('AGY_SESSION_KEY', None)
+                else: os.environ['AGY_SESSION_KEY'] = old_agy_session_key
                 if old_session_id is None: os.environ.pop('HERMES_SESSION_ID', None)
                 else: os.environ['HERMES_SESSION_ID'] = old_session_id
+                if old_agy_session_id is None: os.environ.pop('AGY_SESSION_ID', None)
+                else: os.environ['AGY_SESSION_ID'] = old_agy_session_id
                 if old_session_platform is None: os.environ.pop('HERMES_SESSION_PLATFORM', None)
                 else: os.environ['HERMES_SESSION_PLATFORM'] = old_session_platform
+                if old_agy_session_platform is None: os.environ.pop('AGY_SESSION_PLATFORM', None)
+                else: os.environ['AGY_SESSION_PLATFORM'] = old_agy_session_platform
                 if old_session_chat_id is None: os.environ.pop('HERMES_SESSION_CHAT_ID', None)
                 else: os.environ['HERMES_SESSION_CHAT_ID'] = old_session_chat_id
+                if old_agy_session_chat_id is None: os.environ.pop('AGY_SESSION_CHAT_ID', None)
+                else: os.environ['AGY_SESSION_CHAT_ID'] = old_agy_session_chat_id
                 if old_hermes_home is None: os.environ.pop('HERMES_HOME', None)
                 else: os.environ['HERMES_HOME'] = old_hermes_home
 

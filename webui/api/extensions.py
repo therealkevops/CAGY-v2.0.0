@@ -75,10 +75,14 @@ class ExtensionSidecarProxyError(Exception):
 
 
 EXTENSION_ROUTE_PREFIX = "/extensions/"
-_EXTENSION_DIR_ENV = "HERMES_WEBUI_EXTENSION_DIR"
-_EXTENSION_SCRIPT_URLS_ENV = "HERMES_WEBUI_EXTENSION_SCRIPT_URLS"
-_EXTENSION_STYLESHEET_URLS_ENV = "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS"
-_EXTENSION_MANIFEST_ENV = "HERMES_WEBUI_EXTENSION_MANIFEST"
+_EXTENSION_DIR_ENV = "AGY_WEBUI_EXTENSION_DIR"
+_EXTENSION_DIR_ENV_LEGACY = "HERMES_WEBUI_EXTENSION_DIR"
+_EXTENSION_SCRIPT_URLS_ENV = "AGY_WEBUI_EXTENSION_SCRIPT_URLS"
+_EXTENSION_SCRIPT_URLS_ENV_LEGACY = "HERMES_WEBUI_EXTENSION_SCRIPT_URLS"
+_EXTENSION_STYLESHEET_URLS_ENV = "AGY_WEBUI_EXTENSION_STYLESHEET_URLS"
+_EXTENSION_STYLESHEET_URLS_ENV_LEGACY = "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS"
+_EXTENSION_MANIFEST_ENV = "AGY_WEBUI_EXTENSION_MANIFEST"
+_EXTENSION_MANIFEST_ENV_LEGACY = "HERMES_WEBUI_EXTENSION_MANIFEST"
 _ALLOWED_ASSET_PREFIXES = ("/extensions/", "/static/")
 _SIDECAR_WARNING_SOURCE = "manifest:sidecars"
 _DEFAULT_SIDECAR_HEALTH_PATH = "/health"
@@ -239,7 +243,7 @@ def _extension_root() -> Optional[Path]:
        (see ``_writable_extension_root``); until then this stays None and the
        UI reports the same "nothing installed yet" state as before.
     """
-    raw = os.getenv(_EXTENSION_DIR_ENV, "").strip()
+    raw = (os.getenv(_EXTENSION_DIR_ENV) or os.getenv(_EXTENSION_DIR_ENV_LEGACY) or "").strip()
     if raw:
         root = Path(raw).expanduser().resolve()
         if not root.exists() or not root.is_dir():
@@ -262,7 +266,7 @@ def _writable_extension_root() -> Optional[Path]:
     WebUI-managed default so a fresh install can install an extension with zero
     configuration — plug and play.
     """
-    raw = os.getenv(_EXTENSION_DIR_ENV, "").strip()
+    raw = (os.getenv(_EXTENSION_DIR_ENV) or os.getenv(_EXTENSION_DIR_ENV_LEGACY) or "").strip()
     if raw:
         return _extension_root()
     default_root = _default_extension_root()
@@ -286,7 +290,7 @@ def _extension_root_status() -> Tuple[Optional[Path], bool, bool]:
     no longer "not configured" out of the box). ``valid`` reflects whether that
     managed directory currently exists — it is created on the first install.
     """
-    raw = os.getenv(_EXTENSION_DIR_ENV, "").strip()
+    raw = (os.getenv(_EXTENSION_DIR_ENV) or os.getenv(_EXTENSION_DIR_ENV_LEGACY) or "").strip()
     if raw:
         root = Path(raw).expanduser().resolve()
         if not root.exists() or not root.is_dir():
@@ -573,8 +577,11 @@ def _read_url_list(
     existing: Optional[List[str]] = None,
     *,
     diagnostics: Optional[Dict[str, Any]] = None,
+    legacy_env_name: Optional[str] = None,
 ) -> List[str]:
     raw = os.getenv(env_name, "")
+    if not raw.strip() and legacy_env_name:
+        raw = os.getenv(legacy_env_name, "")
     urls = list(existing or [])
     # Preserve legacy env-only behavior: duplicate env URLs injected twice before
     # manifests existed. When a manifest seeds the list, dedupe appended env URLs
@@ -589,7 +596,7 @@ def _read_url_list(
 
 
 def _manifest_path_with_status(root: Path) -> Tuple[Optional[Path], str]:
-    raw = os.getenv(_EXTENSION_MANIFEST_ENV, "").strip()
+    raw = (os.getenv(_EXTENSION_MANIFEST_ENV) or os.getenv(_EXTENSION_MANIFEST_ENV_LEGACY) or "").strip()
     if not raw:
         return None, "not_configured"
     if raw.startswith(("/", "~")):
@@ -1406,10 +1413,14 @@ def get_extension_config() -> Dict[str, Any]:
     config = {
         "enabled": True,
         "script_urls": _read_url_list(
-            _EXTENSION_SCRIPT_URLS_ENV, manifest_scripts or None
+            _EXTENSION_SCRIPT_URLS_ENV,
+            manifest_scripts or None,
+            legacy_env_name=_EXTENSION_SCRIPT_URLS_ENV_LEGACY,
         ),
         "stylesheet_urls": _read_url_list(
-            _EXTENSION_STYLESHEET_URLS_ENV, manifest_stylesheets or None
+            _EXTENSION_STYLESHEET_URLS_ENV,
+            manifest_stylesheets or None,
+            legacy_env_name=_EXTENSION_STYLESHEET_URLS_ENV_LEGACY,
         ),
     }
     runtime_entries = _extension_runtime_entries(manifest, disabled_ids) if manifest is not None else []
@@ -1425,7 +1436,7 @@ def get_extension_status() -> Dict[str, Any]:
     root, dir_configured, dir_valid = _extension_root_status()
     state = _load_extension_state(diagnostics)
     disabled_ids = set(state.get("disabled_extensions") or [])
-    manifest_configured = bool(os.getenv(_EXTENSION_MANIFEST_ENV, "").strip())
+    manifest_configured = bool((os.getenv(_EXTENSION_MANIFEST_ENV) or os.getenv(_EXTENSION_MANIFEST_ENV_LEGACY) or "").strip())
     manifest_status: Dict[str, Any] = {
         "configured": manifest_configured,
         "loaded": False,
@@ -1439,7 +1450,7 @@ def get_extension_status() -> Dict[str, Any]:
     # HERMES_WEBUI_EXTENSION_DIR to a path that is missing/not-a-dir. The
     # WebUI-managed default simply not existing yet (pre-first-install) is the
     # normal opt-in state, not a misconfiguration worth surfacing.
-    env_dir_set = bool(os.getenv(_EXTENSION_DIR_ENV, "").strip())
+    env_dir_set = bool((os.getenv(_EXTENSION_DIR_ENV) or os.getenv(_EXTENSION_DIR_ENV_LEGACY) or "").strip())
     if env_dir_set and dir_configured and not dir_valid:
         _add_diagnostic_warning(diagnostics, "extension_dir_unavailable", "extension_dir")
 
@@ -1490,11 +1501,13 @@ def get_extension_status() -> Dict[str, Any]:
         _EXTENSION_SCRIPT_URLS_ENV,
         manifest_scripts or None,
         diagnostics=diagnostics,
+        legacy_env_name=_EXTENSION_SCRIPT_URLS_ENV_LEGACY,
     )
     stylesheet_urls = _read_url_list(
         _EXTENSION_STYLESHEET_URLS_ENV,
         manifest_stylesheets or None,
         diagnostics=diagnostics,
+        legacy_env_name=_EXTENSION_STYLESHEET_URLS_ENV_LEGACY,
     )
     public_manifest_status = {
         key: value for key, value in manifest_status.items() if not key.startswith("_")

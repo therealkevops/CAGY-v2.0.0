@@ -16,7 +16,8 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal, Protocol
 
-_RUNTIME_ADAPTER_ENV = "HERMES_WEBUI_RUNTIME_ADAPTER"
+_RUNTIME_ADAPTER_ENV = "AGY_WEBUI_RUNTIME_ADAPTER"
+_RUNTIME_ADAPTER_ENV_LEGACY = "HERMES_WEBUI_RUNTIME_ADAPTER"
 _RUNTIME_ADAPTER_DIRECT = "legacy-direct"
 _RUNTIME_ADAPTER_JOURNAL = "legacy-journal"
 _RUNTIME_ADAPTER_RUNNER_LOCAL = "runner-local"
@@ -105,7 +106,7 @@ class RuntimeAdapter(Protocol):
 def runtime_adapter_mode(environ: dict[str, str] | None = None) -> str:
     """Return the configured adapter mode, defaulting safely to legacy-direct."""
     source = os.environ if environ is None else environ
-    raw = str(source.get(_RUNTIME_ADAPTER_ENV, _RUNTIME_ADAPTER_DIRECT) or "").strip().lower()
+    raw = str(source.get(_RUNTIME_ADAPTER_ENV) or source.get(_RUNTIME_ADAPTER_ENV_LEGACY, _RUNTIME_ADAPTER_DIRECT) or "").strip().lower()
     return raw if raw in _VALID_RUNTIME_ADAPTER_MODES else _RUNTIME_ADAPTER_DIRECT
 
 

@@ -500,8 +500,11 @@ def _remote_gateway_base_url() -> str | None:
     """
     for var in (
         "GATEWAY_HEALTH_URL",
+        "AGY_GATEWAY_HEALTH_URL",
         "HERMES_GATEWAY_HEALTH_URL",
+        "AGY_API_URL",
         "HERMES_API_URL",
+        "AGY_WEBUI_GATEWAY_BASE_URL",
         "HERMES_WEBUI_GATEWAY_BASE_URL",
     ):
         val = os.environ.get(var, "").strip()
@@ -523,7 +526,8 @@ def _remote_gateway_api_key() -> str:
     expects on ``/health/detailed`` (#5418).
     """
     return str(
-        os.environ.get("HERMES_WEBUI_GATEWAY_API_KEY")
+        os.environ.get("AGY_WEBUI_GATEWAY_API_KEY")
+        or os.environ.get("HERMES_WEBUI_GATEWAY_API_KEY")
         or os.environ.get("API_SERVER_KEY")
         or ""
     ).strip()

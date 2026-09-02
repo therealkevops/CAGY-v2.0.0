@@ -45,7 +45,8 @@ TERMINAL_SSE_EVENTS = frozenset({"done", "cancel", "apperror", "error", "stream_
 SSE_RELAY_CLOSE_EVENTS = frozenset({"stream_end", "cancel", "apperror", "error"})
 # Back-compat alias used by older call sites / tests.
 _TERMINAL_SSE_EVENTS = TERMINAL_SSE_EVENTS
-_FSYNC_MODE_ENV = "HERMES_WEBUI_RUN_JOURNAL_FSYNC"
+_FSYNC_MODE_ENV = "AGY_WEBUI_RUN_JOURNAL_FSYNC"
+_FSYNC_MODE_ENV_LEGACY = "HERMES_WEBUI_RUN_JOURNAL_FSYNC"
 _FSYNC_MODE_EAGER = "eager"
 _FSYNC_MODE_TERMINAL_ONLY = "terminal-only"
 _SESSION_REPLAY_MAX_BYTES = 4 * 1024 * 1024
@@ -318,7 +319,7 @@ def _terminal_state_for_event(event_name: str, payload) -> str | None:
 
 
 def _run_journal_fsync_mode() -> str:
-    raw = os.environ.get(_FSYNC_MODE_ENV, _FSYNC_MODE_TERMINAL_ONLY)
+    raw = os.environ.get(_FSYNC_MODE_ENV) or os.environ.get(_FSYNC_MODE_ENV_LEGACY, _FSYNC_MODE_TERMINAL_ONLY)
     mode = str(raw or "").strip().lower()
     if mode in {_FSYNC_MODE_EAGER, _FSYNC_MODE_TERMINAL_ONLY}:
         return mode

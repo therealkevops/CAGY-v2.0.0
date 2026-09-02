@@ -70,7 +70,8 @@ _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
 DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024          # 50 MB per snapshot
 DEFAULT_TOTAL_CAP_BYTES = 2 * 1024 * 1024 * 1024   # 2 GB total store
 
-_SNAPSHOT_DIR_ENV = "HERMES_WEBUI_MEDIA_SNAPSHOT_DIR"
+_SNAPSHOT_DIR_ENV = "AGY_WEBUI_MEDIA_SNAPSHOT_DIR"
+_SNAPSHOT_DIR_ENV_LEGACY = "HERMES_WEBUI_MEDIA_SNAPSHOT_DIR"
 
 # Capture and eviction run on the streaming worker thread; serialize them so
 # two concurrent settles cannot race the same tmp file or the quota scan.
@@ -198,7 +199,7 @@ def _default_snapshot_dir() -> Path:
 
 def get_snapshot_dir() -> Path:
     """Snapshot store root (created lazily by capture)."""
-    override = os.getenv(_SNAPSHOT_DIR_ENV, "").strip()
+    override = (os.getenv(_SNAPSHOT_DIR_ENV) or os.getenv(_SNAPSHOT_DIR_ENV_LEGACY, "")).strip()
     if override:
         return Path(override).expanduser()
     return _default_snapshot_dir()
@@ -286,14 +287,14 @@ def snapshot_servable_for_path(digest: str, target: Path) -> bool:
 
 def _total_cap_bytes() -> int:
     try:
-        return max(0, int(os.getenv("HERMES_WEBUI_MEDIA_SNAPSHOT_CAP_BYTES", "")))
+        return max(0, int(os.getenv("AGY_WEBUI_MEDIA_SNAPSHOT_CAP_BYTES") or os.getenv("HERMES_WEBUI_MEDIA_SNAPSHOT_CAP_BYTES", "")))
     except ValueError:
         return DEFAULT_TOTAL_CAP_BYTES
 
 
 def _max_file_bytes() -> int:
     try:
-        return max(0, int(os.getenv("HERMES_WEBUI_MEDIA_SNAPSHOT_MAX_FILE_BYTES", "")))
+        return max(0, int(os.getenv("AGY_WEBUI_MEDIA_SNAPSHOT_MAX_FILE_BYTES") or os.getenv("HERMES_WEBUI_MEDIA_SNAPSHOT_MAX_FILE_BYTES", "")))
     except ValueError:
         return DEFAULT_MAX_FILE_BYTES
 

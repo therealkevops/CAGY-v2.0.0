@@ -29,7 +29,7 @@ def _max_extracted_bytes() -> int:
     time (not import) so the value reflects the running process's environment
     and is exercisable by tests against the out-of-process test server.
     """
-    raw = os.getenv("HERMES_WEBUI_MAX_EXTRACTED_MB", "").strip()
+    raw = (os.getenv("AGY_WEBUI_MAX_EXTRACTED_MB") or os.getenv("HERMES_WEBUI_MAX_EXTRACTED_MB", "")).strip()
     if raw:
         try:
             mb = float(raw)
@@ -116,7 +116,7 @@ def _attachment_root() -> Path:
     source files.  Keep them out of the active workspace by default while still
     allowing operators to move the inbox with HERMES_WEBUI_ATTACHMENT_DIR.
     """
-    override = os.getenv('HERMES_WEBUI_ATTACHMENT_DIR', '').strip()
+    override = (os.getenv('AGY_WEBUI_ATTACHMENT_DIR') or os.getenv('HERMES_WEBUI_ATTACHMENT_DIR', '')).strip()
     if override:
         return Path(override).expanduser().resolve()
     return (STATE_DIR / 'attachments').resolve()

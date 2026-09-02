@@ -147,10 +147,14 @@ def wait_for_gateway_run_id(stream_id: str, timeout: float) -> tuple[bool, str |
                 if _retire_gateway_run_starting_if_done(stream_id):
                     _STREAM_RUN_STARTING_CONDITION.notify_all()
 
-_WEBUI_CHAT_BACKEND_ENV = "HERMES_WEBUI_CHAT_BACKEND"
-_WEBUI_GATEWAY_BASE_URL_ENV = "HERMES_WEBUI_GATEWAY_BASE_URL"
-_WEBUI_GATEWAY_API_KEY_ENV = "HERMES_WEBUI_GATEWAY_API_KEY"
-_WEBUI_GATEWAY_USE_RUNS_API_ENV = "HERMES_WEBUI_GATEWAY_USE_RUNS_API"
+_WEBUI_CHAT_BACKEND_ENV = "AGY_WEBUI_CHAT_BACKEND"
+_WEBUI_CHAT_BACKEND_ENV_LEGACY = "HERMES_WEBUI_CHAT_BACKEND"
+_WEBUI_GATEWAY_BASE_URL_ENV = "AGY_WEBUI_GATEWAY_BASE_URL"
+_WEBUI_GATEWAY_BASE_URL_ENV_LEGACY = "HERMES_WEBUI_GATEWAY_BASE_URL"
+_WEBUI_GATEWAY_API_KEY_ENV = "AGY_WEBUI_GATEWAY_API_KEY"
+_WEBUI_GATEWAY_API_KEY_ENV_LEGACY = "HERMES_WEBUI_GATEWAY_API_KEY"
+_WEBUI_GATEWAY_USE_RUNS_API_ENV = "AGY_WEBUI_GATEWAY_USE_RUNS_API"
+_WEBUI_GATEWAY_USE_RUNS_API_ENV_LEGACY = "HERMES_WEBUI_GATEWAY_USE_RUNS_API"
 _GATEWAY_CHAT_BACKENDS = {"gateway", "api_server", "api-server"}
 
 
@@ -195,13 +199,14 @@ def _gateway_model_field(model: str | None) -> str:
 # flat timeout ignored Stop on a half-open gateway); the budget itself stays 600s
 # for backward compatibility. Deployments that want a tighter dead-gateway cap can
 # lower ``HERMES_WEBUI_GATEWAY_READ_TIMEOUT``.
-_GATEWAY_READ_TIMEOUT_ENV = "HERMES_WEBUI_GATEWAY_READ_TIMEOUT"
+_GATEWAY_READ_TIMEOUT_ENV = "AGY_WEBUI_GATEWAY_READ_TIMEOUT"
+_GATEWAY_READ_TIMEOUT_ENV_LEGACY = "HERMES_WEBUI_GATEWAY_READ_TIMEOUT"
 _GATEWAY_READ_TIMEOUT_DEFAULT = 600.0
 
 
 def _gateway_read_timeout_secs() -> float:
     """Total byte-silence budget for gateway SSE reads (default 600s, env-tunable)."""
-    raw = os.environ.get(_GATEWAY_READ_TIMEOUT_ENV)
+    raw = os.environ.get(_GATEWAY_READ_TIMEOUT_ENV) or os.environ.get(_GATEWAY_READ_TIMEOUT_ENV_LEGACY)
     if raw:
         try:
             val = float(raw)
@@ -266,6 +271,7 @@ def webui_chat_backend_mode(config_data=None, environ: dict[str, str] | None = N
     cfg = config_data if isinstance(config_data, dict) else {}
     raw = str(
         source.get(_WEBUI_CHAT_BACKEND_ENV)
+        or source.get(_WEBUI_CHAT_BACKEND_ENV_LEGACY)
         or cfg.get("webui_chat_backend")
         or ""
     ).strip().lower()
@@ -283,6 +289,7 @@ def _gateway_base_url(config_data=None, environ: dict[str, str] | None = None) -
     cfg = config_data if isinstance(config_data, dict) else {}
     raw = str(
         source.get(_WEBUI_GATEWAY_BASE_URL_ENV)
+        or source.get(_WEBUI_GATEWAY_BASE_URL_ENV_LEGACY)
         or cfg.get("webui_gateway_base_url")
         or "http://127.0.0.1:8642"
     ).strip()
@@ -293,6 +300,7 @@ def _gateway_api_key(environ: dict[str, str] | None = None) -> str:
     source = os.environ if environ is None else environ
     return str(
         source.get(_WEBUI_GATEWAY_API_KEY_ENV)
+        or source.get(_WEBUI_GATEWAY_API_KEY_ENV_LEGACY)
         or source.get("API_SERVER_KEY")
         or ""
     ).strip()
@@ -304,6 +312,7 @@ def _gateway_use_runs_api_enabled(config_data=None, environ: dict[str, str] | No
     cfg = config_data if isinstance(config_data, dict) else {}
     raw = str(
         source.get(_WEBUI_GATEWAY_USE_RUNS_API_ENV)
+        or source.get(_WEBUI_GATEWAY_USE_RUNS_API_ENV_LEGACY)
         or cfg.get("webui_gateway_use_runs_api")
         or ""
     ).strip().lower()

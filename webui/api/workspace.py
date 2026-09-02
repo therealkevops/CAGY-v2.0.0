@@ -202,7 +202,7 @@ def _remote_terminal_workspace_candidate(path: str | Path) -> Path | None:
 
 
 def _profile_default_workspace() -> str:
-    env_ws = os.environ.get("HERMES_WEBUI_DEFAULT_WORKSPACE", "").strip()
+    env_ws = (os.environ.get("AGY_WEBUI_DEFAULT_WORKSPACE") or os.environ.get("HERMES_WEBUI_DEFAULT_WORKSPACE", "")).strip()
     if env_ws and Path(env_ws).is_dir():
         return str(Path(env_ws).resolve())
     try:

@@ -27,7 +27,7 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 def chunked_sse_enabled() -> bool:
     """True when ``HERMES_WEBUI_SSE_CHUNKED`` opts into chunked SSE framing."""
-    return os.getenv("HERMES_WEBUI_SSE_CHUNKED", "").strip().lower() in _TRUTHY
+    return (os.getenv("AGY_WEBUI_SSE_CHUNKED") or os.getenv("HERMES_WEBUI_SSE_CHUNKED", "")).strip().lower() in _TRUTHY
 
 
 class _ChunkedSSEWriter:

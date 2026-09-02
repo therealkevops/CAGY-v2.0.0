@@ -171,12 +171,14 @@ def _resolve_oidc_config() -> dict[str, Any]:
     except Exception:
         logger.debug("Failed to read webui_oidc config", exc_info=True)
 
-    def pick(name: str, env_name: str) -> Any:
+    def pick(name: str, env_name: str, legacy_env_name: str | None = None) -> Any:
         env_value = os.getenv(env_name)
+        if env_value is None and legacy_env_name:
+            env_value = os.getenv(legacy_env_name)
         return env_value if env_value is not None else raw.get(name)
 
-    scopes = _normalize_scopes(pick("scopes", "HERMES_WEBUI_OIDC_SCOPES"))
-    raw_allow = pick("allow_values", "HERMES_WEBUI_OIDC_ALLOW_VALUES")
+    scopes = _normalize_scopes(pick("scopes", "AGY_WEBUI_OIDC_SCOPES", "HERMES_WEBUI_OIDC_SCOPES"))
+    raw_allow = pick("allow_values", "AGY_WEBUI_OIDC_ALLOW_VALUES", "HERMES_WEBUI_OIDC_ALLOW_VALUES")
     allow_values = _normalize_allow_values(raw_allow)
     if (
         raw_allow is not None
@@ -188,12 +190,12 @@ def _resolve_oidc_config() -> dict[str, Any]:
             _warned_allow_values.add(key)
             logger.warning(_ALLOW_VALUES_WHITESPACE_WARNING)
     return {
-        "issuer": str(pick("issuer", "HERMES_WEBUI_OIDC_ISSUER") or "").strip(),
-        "client_id": str(pick("client_id", "HERMES_WEBUI_OIDC_CLIENT_ID") or "").strip(),
-        "client_secret": str(pick("client_secret", "HERMES_WEBUI_OIDC_CLIENT_SECRET") or "").strip(),
-        "redirect_uri": str(pick("redirect_uri", "HERMES_WEBUI_OIDC_REDIRECT_URI") or "").strip(),
+        "issuer": str(pick("issuer", "AGY_WEBUI_OIDC_ISSUER", "HERMES_WEBUI_OIDC_ISSUER") or "").strip(),
+        "client_id": str(pick("client_id", "AGY_WEBUI_OIDC_CLIENT_ID", "HERMES_WEBUI_OIDC_CLIENT_ID") or "").strip(),
+        "client_secret": str(pick("client_secret", "AGY_WEBUI_OIDC_CLIENT_SECRET", "HERMES_WEBUI_OIDC_CLIENT_SECRET") or "").strip(),
+        "redirect_uri": str(pick("redirect_uri", "AGY_WEBUI_OIDC_REDIRECT_URI", "HERMES_WEBUI_OIDC_REDIRECT_URI") or "").strip(),
         "scopes": scopes,
-        "allow_claim": str(pick("allow_claim", "HERMES_WEBUI_OIDC_ALLOW_CLAIM") or "").strip(),
+        "allow_claim": str(pick("allow_claim", "AGY_WEBUI_OIDC_ALLOW_CLAIM", "HERMES_WEBUI_OIDC_ALLOW_CLAIM") or "").strip(),
         "allow_values": allow_values,
     }
 

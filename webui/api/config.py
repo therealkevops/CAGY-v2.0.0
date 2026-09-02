@@ -47,11 +47,11 @@ _platform_default_agy_home = _paths._platform_default_agy_home
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 # ── Network config (env-overridable) ─────────────────────────────────────────
-HOST = os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
-PORT = int(os.getenv("HERMES_WEBUI_PORT", "8787"))
+HOST = os.getenv("AGY_WEBUI_HOST") or os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
+PORT = int(os.getenv("AGY_WEBUI_PORT") or os.getenv("HERMES_WEBUI_PORT", "8787"))
 
 
-def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+def _env_int(name: str, default: int, *, minimum: int = 1, legacy_name: str | None = None) -> int:
     """Read a positive int from the environment, falling back on bad input.
 
     Used for operator-tunable memory caps (issue #3506) so large installs can
@@ -60,6 +60,8 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     can never disable a cache bound entirely.
     """
     raw = os.getenv(name)
+    if (raw is None or not str(raw).strip()) and legacy_name:
+        raw = os.getenv(legacy_name)
     if raw is None or not str(raw).strip():
         return default
     try:
@@ -69,8 +71,8 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     return value if value >= minimum else default
 
 # ── TLS/HTTPS config (optional, env-overridable) ────────────────────────────
-TLS_CERT = os.getenv("HERMES_WEBUI_TLS_CERT", "").strip() or None
-TLS_KEY = os.getenv("HERMES_WEBUI_TLS_KEY", "").strip() or None
+TLS_CERT = (os.getenv("AGY_WEBUI_TLS_CERT") or os.getenv("HERMES_WEBUI_TLS_CERT", "")).strip() or None
+TLS_KEY = (os.getenv("AGY_WEBUI_TLS_KEY") or os.getenv("HERMES_WEBUI_TLS_KEY", "")).strip() or None
 TLS_ENABLED = TLS_CERT is not None and TLS_KEY is not None
 
 # ── State directory (env-overridable, never inside repo) ──────────────────────
@@ -78,7 +80,7 @@ _DEFAULT_AGY_HOME = _platform_default_agy_home()
 _DEFAULT_STATE_HOME = Path(os.getenv("HERMES_HOME") or _DEFAULT_AGY_HOME).expanduser()
 
 STATE_DIR = (
-    Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
+    Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
     .expanduser()
     .resolve()
 )
@@ -99,13 +101,13 @@ logger = logging.getLogger(__name__)
 CUSTOM_MODELS_ENDPOINT_TIMEOUT_SECONDS = 5.0
 
 
-def _env_mb_bytes(name: str, default_mb: int) -> int:
+def _env_mb_bytes(name: str, default_mb: int, legacy_name: str | None = None) -> int:
     """Parse an optional megabyte environment variable into bytes.
 
     Accepts values like ``200``, ``200MB``, or ``200MiB``. Invalid or
     non-positive values fall back to the provided default.
     """
-    raw = os.getenv(name, "").strip()
+    raw = (os.getenv(name) or (os.getenv(legacy_name, "") if legacy_name else "")).strip()
     if not raw:
         return default_mb * 1024 * 1024
     m = re.match(r"^(\d+)\s*(?:m|mb|mib)?$", raw, re.IGNORECASE)
@@ -142,7 +144,7 @@ def _discover_agent_dir() -> Path:
       5. Common install paths            -- ~/.hermes/hermes-agent (again as fallback)
       6. HOME / hermes-agent             -- ~/hermes-agent (simple flat layout)
     """
-    explicit_override = os.getenv("HERMES_WEBUI_AGENT_DIR")
+    explicit_override = os.getenv("AGY_WEBUI_AGENT_DIR") or os.getenv("HERMES_WEBUI_AGENT_DIR")
     if explicit_override:
         explicit_path = Path(explicit_override).expanduser().resolve()
         if explicit_path.exists() and _looks_like_agent_source_root(explicit_path):
@@ -217,8 +219,9 @@ def _discover_python(agent_dir: Path) -> str:
       3. Local .venv inside this repo
       4. System python3
     """
-    if os.getenv("HERMES_WEBUI_PYTHON"):
-        return os.getenv("HERMES_WEBUI_PYTHON")
+    py_env = os.getenv("AGY_WEBUI_PYTHON") or os.getenv("HERMES_WEBUI_PYTHON")
+    if py_env:
+        return py_env
 
     if agent_dir:
         venv_py = agent_dir / "venv" / "bin" / "python"
@@ -815,8 +818,9 @@ def _workspace_candidates(raw: str | Path | None = None) -> list[Path]:
             candidates.append(path)
 
     add(raw)
-    if os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE"):
-        add(os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE"))
+    ws_env = os.getenv("AGY_WEBUI_DEFAULT_WORKSPACE") or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE")
+    if ws_env:
+        add(ws_env)
 
     home_workspace = HOME / "workspace"
     home_work = HOME / "work"
@@ -867,7 +871,7 @@ def _discover_default_workspace() -> Path:
 
 
 DEFAULT_WORKSPACE = _discover_default_workspace()
-DEFAULT_MODEL = os.getenv("HERMES_WEBUI_DEFAULT_MODEL", "")  # Empty = use provider default; avoids showing unavailable OpenAI model to non-OpenAI users (#646)
+DEFAULT_MODEL = os.getenv("AGY_WEBUI_DEFAULT_MODEL") or os.getenv("HERMES_WEBUI_DEFAULT_MODEL", "")  # Empty = use provider default; avoids showing unavailable OpenAI model to non-OpenAI users (#646)
 
 
 # ── Startup diagnostics ───────────────────────────────────────────────────────
@@ -970,7 +974,7 @@ def verify_agy_imports() -> tuple:
 
 # ── Limits ───────────────────────────────────────────────────────────────────
 MAX_FILE_BYTES = 400_000
-MAX_UPLOAD_BYTES = _env_mb_bytes("HERMES_WEBUI_MAX_UPLOAD_MB", 20)
+MAX_UPLOAD_BYTES = _env_mb_bytes("AGY_WEBUI_MAX_UPLOAD_MB", 20, legacy_name="HERMES_WEBUI_MAX_UPLOAD_MB")
 
 # ── File type maps ───────────────────────────────────────────────────────────
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".bmp"}
@@ -5179,7 +5183,9 @@ def _endpoint_advertised_model_ids(provider_id: str | None) -> frozenset | None:
 # (unbounded) behaviour.
 try:
     _LIVE_REBUILD_BUDGET_SECONDS: float = float(
-        os.getenv("HERMES_WEBUI_MODELS_REBUILD_BUDGET", "4") or "4"
+        os.getenv("AGY_WEBUI_MODELS_REBUILD_BUDGET")
+        or os.getenv("HERMES_WEBUI_MODELS_REBUILD_BUDGET", "4")
+        or "4"
     )
 except (TypeError, ValueError):
     _LIVE_REBUILD_BUDGET_SECONDS = 4.0
@@ -5196,7 +5202,9 @@ except (TypeError, ValueError):
 # Override the default cooldown via HERMES_WEBUI_BUDGET_WARN_COOLDOWN (seconds).
 try:
     _BUDGET_WARN_COOLDOWN_SECONDS: float = float(
-        os.getenv("HERMES_WEBUI_BUDGET_WARN_COOLDOWN", "300") or "300"
+        os.getenv("AGY_WEBUI_BUDGET_WARN_COOLDOWN")
+        or os.getenv("HERMES_WEBUI_BUDGET_WARN_COOLDOWN", "300")
+        or "300"
     )
 except (TypeError, ValueError):
     _BUDGET_WARN_COOLDOWN_SECONDS = 300.0
@@ -8827,7 +8835,7 @@ LOCK = threading.Lock()
 #   2. HERMES_WEBUI_SESSIONS_MAX env var        (legacy operator override)
 #   3. DEFAULT_SESSIONS_CACHE_MAX               (sane bounded default)
 DEFAULT_SESSIONS_CACHE_MAX = 100
-SESSIONS_MAX = _env_int("HERMES_WEBUI_SESSIONS_MAX", DEFAULT_SESSIONS_CACHE_MAX)
+SESSIONS_MAX = _env_int("AGY_WEBUI_SESSIONS_MAX", DEFAULT_SESSIONS_CACHE_MAX, legacy_name="HERMES_WEBUI_SESSIONS_MAX")
 
 
 def get_sessions_cache_max(config_data: dict | None = None) -> int:
@@ -9476,7 +9484,7 @@ SESSION_AGENT_CACHE: collections.OrderedDict = collections.OrderedDict()  # LRU 
 # deliberately modest -- large/long sessions can each weigh tens of MB, so 50
 # live agents could pin >1 GB on a heavily multiplexed install. Operators can
 # tune it via HERMES_WEBUI_AGENT_CACHE_MAX without editing source.
-SESSION_AGENT_CACHE_MAX = _env_int("HERMES_WEBUI_AGENT_CACHE_MAX", 25)
+SESSION_AGENT_CACHE_MAX = _env_int("AGY_WEBUI_AGENT_CACHE_MAX", 25, legacy_name="HERMES_WEBUI_AGENT_CACHE_MAX")
 SESSION_AGENT_CACHE_LOCK = threading.Lock()
 
 
@@ -9679,7 +9687,7 @@ _SETTINGS_DEFAULTS = {
     "tab_order": [],  # user-defined sidebar/rail tab order for reorderable tabs; chat/settings stay fixed
     "composer_control_order": [],  # user-defined composer footer control order; invalid/duplicate keys are ignored
     "language": "en",  # UI locale code; must match a key in static/i18n.js LOCALES
-    "bot_name": os.getenv(
+    "bot_name": os.getenv("AGY_WEBUI_BOT_NAME") or os.getenv(
         "HERMES_WEBUI_BOT_NAME", "AGY"
     ),  # display name for the assistant
     "sound_enabled": False,  # play notification sound when assistant finishes
@@ -10256,7 +10264,7 @@ try:
 except OSError:
     _settings_file_exists = False
 if _settings_file_exists:
-    if not os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE"):
+    if not (os.getenv("AGY_WEBUI_DEFAULT_WORKSPACE") or os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE")):
         DEFAULT_WORKSPACE = resolve_default_workspace(
             _startup_settings.get("default_workspace")
         )
