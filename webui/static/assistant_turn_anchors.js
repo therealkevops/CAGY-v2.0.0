@@ -1686,7 +1686,7 @@
     return registry;
   }
 
-  ROOT.HermesAssistantTurnAnchors=Object.freeze({
+  ROOT.AgyAssistantTurnAnchors=Object.freeze({
     version:'slice8-renderer-snapshot-adapter',
     activityEventKinds:ACTIVITY_EVENT_KINDS,
     stateLayers:STATE_LAYERS,
@@ -1712,4 +1712,6 @@
     reconcileAssistantTurnAnchorRendererSnapshot,
     isAssistantTurnAnchorActivityKind,
   });
+  // Backward-compat alias for extensions using the old Hermes API name.
+  ROOT.HermesAssistantTurnAnchors=ROOT.AgyAssistantTurnAnchors;
 })();

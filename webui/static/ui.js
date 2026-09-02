@@ -1955,7 +1955,7 @@ async function saveDashboardSettings(opts){
     if(opts.raiseOnError) throw err;
   }
 }
-function openHermesDashboard(event){
+function openAgyDashboard(event){
   if(event){event.preventDefault();event.stopPropagation();}
   const btn=event&&event.currentTarget?event.currentTarget:document.querySelector('[data-dashboard-link]');
   const url=(btn&&btn.dataset&&btn.dataset.dashboardUrl)||_dashboardBrowserUrl(_dashboardStatusCache);
@@ -9118,9 +9118,9 @@ function speakMessage(btn){
     _playEdgeTtsChunked(clean, btn);
     return;
   }
-  // Extension-registered TTS engine (window.registerHermesTtsEngine). Synthesize
+  // Extension-registered TTS engine (window.registerAgyTtsEngine). Synthesize
   // via the extension, then play through the shared audio-buffer path.
-  if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
+  if(typeof window._agyTtsIsRegistered==='function' && window._agyTtsIsRegistered(engine)){
     if(btn) btn.dataset.speaking='1';
     _ttsSpeaking=true;
     const _failReg=function(msg){
@@ -9133,7 +9133,7 @@ function speakMessage(btn){
       rate: parseFloat(localStorage.getItem('agy-tts-rate')),
       pitch: parseFloat(localStorage.getItem('agy-tts-pitch')),
     };
-    Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
+    Promise.resolve(window._agyTtsSynth(engine, clean, _opts))
       .then(function(buf){ return _playAudioBuf(buf, btn, 'TTS'); })
       .catch(function(e){ _failReg((e&&e.message)||'TTS engine failed'); });
     return;
@@ -9300,17 +9300,17 @@ function autoReadLastAssistant(){
     _playEdgeTtsChunked(clean, null);
     return;
   }
-  // Extension-registered TTS engine (window.registerHermesTtsEngine): synth via
+  // Extension-registered TTS engine (window.registerAgyTtsEngine): synth via
   // the extension, then play through the shared audio-buffer path. Mirrors the
   // registered-engine branch in speakMessage() so auto-read honors the selection.
-  if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
+  if(typeof window._agyTtsIsRegistered==='function' && window._agyTtsIsRegistered(engine)){
     _ttsSpeaking=true;
     const _opts={
       voice: localStorage.getItem('agy-tts-voice')||'',
       rate: parseFloat(localStorage.getItem('agy-tts-rate')),
       pitch: parseFloat(localStorage.getItem('agy-tts-pitch')),
     };
-    Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
+    Promise.resolve(window._agyTtsSynth(engine, clean, _opts))
       .then(function(buf){ return _playAudioBuf(buf, null, 'TTS'); })
       .catch(function(){ _ttsSpeaking=false; _playingEdgeAudio=null; });
     return;
@@ -10989,7 +10989,7 @@ function syncTopbar(){
     if(typeof _syncWorkspaceHeadingState==='function') _syncWorkspaceHeadingState();
     if(typeof syncModelChip==='function') syncModelChip();
     if(typeof syncTerminalButton==='function') syncTerminalButton();
-    if(typeof _syncHermesPanelSessionActions==='function') _syncHermesPanelSessionActions();
+    if(typeof _syncAgyPanelSessionActions==='function') _syncAgyPanelSessionActions();
     else {
       const sidebarName=$('sidebarWsName');
       if(sidebarName && sidebarName.textContent==='Workspace'){
@@ -11110,7 +11110,7 @@ function syncTopbar(){
   // Show Clear button only when session has messages
   const clearBtn=$('btnClearConv');
   if(clearBtn) clearBtn.style.display=(S.messages&&S.messages.filter(msg=>msg.role!=='tool').length>0)?'':'none';
-  if(typeof _syncHermesPanelSessionActions==='function') _syncHermesPanelSessionActions();
+  if(typeof _syncAgyPanelSessionActions==='function') _syncAgyPanelSessionActions();
   if(typeof syncWorkspaceDisplays==='function') syncWorkspaceDisplays();
   if(typeof syncTerminalButton==='function') syncTerminalButton();
   // modelSelect already set above
@@ -13356,7 +13356,7 @@ function isLiveAnchorActivitySceneOwner(streamId){
   return !streamId||!current||String(streamId)===current;
 }
 function _projectLiveAnchorActivitySceneForStream(streamId, mode){
-  const api=(typeof window!=='undefined')?window.HermesAssistantTurnAnchors:null;
+  const api=(typeof window!=='undefined')?window.AgyAssistantTurnAnchors:null;
   const map=(typeof window!=='undefined')?window._liveAnchorRegistries:null;
   const registry=map&&streamId?map.get(streamId):null;
   if(!api||!registry||typeof api.projectAssistantTurnAnchorActivityScene!=='function') return null;
@@ -15648,7 +15648,7 @@ function _idLinkedHistoricalTurnScene(messages, turnStart, turnEnd, options){
   const end=Math.min(list.length,Math.max(start,Number(turnEnd)||0));
   const opts=options&&typeof options==='object'?options:{};
   const sessionId=String(opts.sessionId||opts.session_id||'').trim();
-  const api=(typeof window!=='undefined')?window.HermesAssistantTurnAnchors:null;
+  const api=(typeof window!=='undefined')?window.AgyAssistantTurnAnchors:null;
   if(!sessionId||!api||typeof api.projectAssistantTurnAnchorHistoricalTranscriptScene!=='function') return null;
 
   const declarations=[];
@@ -16356,7 +16356,7 @@ function _assistantTurnAnchorSettledFinalAnswer(message, content, context){
   const sceneFinal=_assistantAnchorSceneFinalAnswerText(message);
   const effectiveContent=String(content||'').trim()?content:sceneFinal;
   try{
-    const api=(typeof window!=='undefined')?window.HermesAssistantTurnAnchors:null;
+    const api=(typeof window!=='undefined')?window.AgyAssistantTurnAnchors:null;
     if(!api||typeof api.projectAssistantTurnAnchorSettledMessageFinalAnswer!=='function') return String(sceneFinal||'').trim()?sceneFinal:null;
     const result=api.projectAssistantTurnAnchorSettledMessageFinalAnswer(message,{
       session_id:context&&context.session_id,

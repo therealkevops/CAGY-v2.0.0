@@ -319,7 +319,7 @@ async function _maybeBindFreshDefaultWorkspaceSession(prefillIntent=null){
     await newSession(false, {awaitWorkspaceLoad: true, worktree: false});
     return true;
   }catch(e){
-    console.warn('[hermes] failed to bind fresh default workspace session', e);
+    console.warn('[agy] failed to bind fresh default workspace session', e);
     return false;
   }
 }
@@ -1407,7 +1407,7 @@ window._readPersistedDefaultMessageMode=_readPersistedDefaultMessageMode;
 // the boot window honor the persisted preference instead of the raw default.
 window._defaultMessageMode=_readPersistedDefaultMessageMode();
 
-// ── Extension TTS-engine registry (registerHermesTtsEngine) ──────────────────
+// ── Extension TTS-engine registry (registerAgyTtsEngine) ─────────────────────
 // Defined at MODULE scope (not inside the voice-mode IIFE below) so the public
 // API exists even on browsers without SpeechRecognition / speechSynthesis — an
 // extension can register a TTS engine regardless of STT/browser-TTS support.
@@ -1415,17 +1415,17 @@ window._defaultMessageMode=_readPersistedDefaultMessageMode();
 // Settings -> TTS Engine dropdown and is used by BOTH playback paths (voice-mode
 // auto-read and the per-message Listen button). The extension provides an async
 // synthesize(text, opts) that returns audio bytes (ArrayBuffer or Blob); core
-// handles selection, the dropdown option, and playback. Mirrors registerHermesSkin.
+// handles selection, the dropdown option, and playback. Mirrors registerAgySkin.
 //
-//   window.registerHermesTtsEngine({
+//   window.registerAgyTtsEngine({
 //     id: 'voicevox',            // [a-z0-9_-], not a built-in (browser/edge/elevenlabs/openai)
 //     label: 'VOICEVOX (local)',
 //     synthesize(text, opts) { return Promise<ArrayBuffer|Blob>; }
 //   }) -> true on success, false if rejected
-var _HERMES_TTS_ENGINES = Object.create(null);
-var _HERMES_TTS_RESERVED = { browser:1, edge:1, elevenlabs:1, openai:1 };
-function _hermesTtsValidId(id){ return typeof id==='string' && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id); }
-function _hermesAddTtsOption(id, label){
+var _AGY_TTS_ENGINES = Object.create(null);
+var _AGY_TTS_RESERVED = { browser:1, edge:1, elevenlabs:1, openai:1 };
+function _agyTtsValidId(id){ return typeof id==='string' && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id); }
+function _agyAddTtsOption(id, label){
   var sel=document.getElementById('settingsTtsEngine');
   if(!sel) return;
   if(sel.querySelector('option[value="'+id+'"]')) return;
@@ -1434,29 +1434,29 @@ function _hermesAddTtsOption(id, label){
   opt.textContent=label;   // textContent — never innerHTML (no injection)
   sel.appendChild(opt);
 }
-window.registerHermesTtsEngine=function(desc){
+window.registerAgyTtsEngine=function(desc){
   try{
     if(!desc||typeof desc!=='object') return false;
     var id=String(desc.id||'').toLowerCase();
-    if(!_hermesTtsValidId(id)) return false;
-    if(_HERMES_TTS_RESERVED[id]) return false;          // can't shadow a built-in
+    if(!_agyTtsValidId(id)) return false;
+    if(_AGY_TTS_RESERVED[id]) return false;          // can't shadow a built-in
     if(typeof desc.synthesize!=='function') return false;
     var label=(typeof desc.label==='string' && desc.label.trim()) ? desc.label.trim().slice(0,48) : id;
-    _HERMES_TTS_ENGINES[id]={ id:id, label:label, synthesize:desc.synthesize };
-    _hermesAddTtsOption(id, label);
+    _AGY_TTS_ENGINES[id]={ id:id, label:label, synthesize:desc.synthesize };
+    _agyAddTtsOption(id, label);
     return true;
   }catch(_){ return false; }
 };
-window._hermesTtsIsRegistered=function(id){ return !!_HERMES_TTS_ENGINES[id]; };
+window._agyTtsIsRegistered=function(id){ return !!_AGY_TTS_ENGINES[id]; };
 // List registered engines (for the settings panel to re-add options on render).
-window._hermesTtsEngineOptions=function(){
-  return Object.keys(_HERMES_TTS_ENGINES).map(function(k){
-    return { id:_HERMES_TTS_ENGINES[k].id, label:_HERMES_TTS_ENGINES[k].label };
+window._agyTtsEngineOptions=function(){
+  return Object.keys(_AGY_TTS_ENGINES).map(function(k){
+    return { id:_AGY_TTS_ENGINES[k].id, label:_AGY_TTS_ENGINES[k].label };
   });
 };
 // Returns a Promise<ArrayBuffer> or null if the engine isn't registered.
-window._hermesTtsSynth=function(id, text, opts){
-  var eng=_HERMES_TTS_ENGINES[id];
+window._agyTtsSynth=function(id, text, opts){
+  var eng=_AGY_TTS_ENGINES[id];
   if(!eng) return null;
   return Promise.resolve()
     .then(function(){ return eng.synthesize(text, opts||{}); })
@@ -1468,25 +1468,33 @@ window._hermesTtsSynth=function(id, text, opts){
       throw new Error('TTS engine returned an unsupported type');
     });
 };
+// Backward-compat aliases for extensions using the old Hermes API names.
+window.registerHermesTtsEngine=window.registerAgyTtsEngine;
+window._hermesTtsIsRegistered=window._agyTtsIsRegistered;
+window._hermesTtsEngineOptions=window._agyTtsEngineOptions;
+window._hermesTtsSynth=window._agyTtsSynth;
 
 // ── Session-open hook (for extensions) ────────────────────────────────────
-var _HERMES_SESSION_OPEN_HANDLERS=[];
-window.registerHermesSessionOpenHandler=function(fn){
+var _AGY_SESSION_OPEN_HANDLERS=[];
+window.registerAgySessionOpenHandler=function(fn){
   if(typeof fn!=='function') return false;
-  if(_HERMES_SESSION_OPEN_HANDLERS.indexOf(fn)>=0) return false;
-  _HERMES_SESSION_OPEN_HANDLERS.push(fn);
+  if(_AGY_SESSION_OPEN_HANDLERS.indexOf(fn)>=0) return false;
+  _AGY_SESSION_OPEN_HANDLERS.push(fn);
   return true;
 };
-window._hermesNotifySessionOpen=function(sid, data, opts){
+window._agyNotifySessionOpen=function(sid, data, opts){
   opts=opts||{};
-  for(var i=0;i<_HERMES_SESSION_OPEN_HANDLERS.length;i++){
+  for(var i=0;i<_AGY_SESSION_OPEN_HANDLERS.length;i++){
     try{
-      var result=_HERMES_SESSION_OPEN_HANDLERS[i](sid, data, opts);
+      var result=_AGY_SESSION_OPEN_HANDLERS[i](sid, data, opts);
       if(opts.preload===true && result&&result.cancel===true) return {cancel:true};
     }catch(_){}
   }
   return {};
 };
+// Backward-compat aliases for extensions using the old Hermes session hook names.
+window.registerHermesSessionOpenHandler=window.registerAgySessionOpenHandler;
+window._hermesNotifySessionOpen=window._agyNotifySessionOpen;
 
 // ── Transcript renderer (for extensions) ───────────────────────────────────
 window.renderTranscript=function(container, messages, opts){
@@ -1770,16 +1778,16 @@ window.renderTranscript=function(container, messages, opts){
     }
     if(!clean){ _startListening(); return; }
     const engine=localStorage.getItem("agy-tts-engine")||"browser";
-    // Extension-registered TTS engine (window.registerHermesTtsEngine): synth
+    // Extension-registered TTS engine (window.registerAgyTtsEngine): synth
     // via the extension, then play through the same Audio lifecycle as edge.
-    if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
+    if(typeof window._agyTtsIsRegistered==='function' && window._agyTtsIsRegistered(engine)){
       _ttsSpeaking=true;
       const _opts={
         voice: localStorage.getItem("agy-tts-voice")||'',
         rate: parseFloat(localStorage.getItem("agy-tts-rate")),
         pitch: parseFloat(localStorage.getItem("agy-tts-pitch")),
       };
-      Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
+      Promise.resolve(window._agyTtsSynth(engine, clean, _opts))
         .then(function(buf){
           const blob=new Blob([buf]);
           const url=URL.createObjectURL(blob);
@@ -2141,7 +2149,7 @@ $('btnShareSession').onclick=async()=>{
     const href=new URL(String(res&&res.share&&res.share.url||''),location.origin).href;
     await _copyText(href);
     showToast(t('share_session_created'));
-    if(typeof _syncHermesPanelSessionActions==='function') _syncHermesPanelSessionActions();
+    if(typeof _syncAgyPanelSessionActions==='function') _syncAgyPanelSessionActions();
     window.open(href,'_blank','noopener');
   }catch(err){
     showToast(t('share_session_failed')+(err&&err.message?err.message:String(err||'')),4000,'error');
@@ -2160,7 +2168,7 @@ $('btnStopSharingSession').onclick=async()=>{
     const res=await api('/api/share/revoke',{method:'POST',body:JSON.stringify({session_id:S.session.session_id})});
     if(res&&res.session) S.session=res.session;
     showToast(t('share_session_revoked'));
-    if(typeof _syncHermesPanelSessionActions==='function') _syncHermesPanelSessionActions();
+    if(typeof _syncAgyPanelSessionActions==='function') _syncAgyPanelSessionActions();
   }catch(err){
     showToast(t('share_session_revoke_failed')+(err&&err.message?err.message:String(err||'')),4000,'error');
   }
@@ -2918,7 +2926,7 @@ function _buildSkinPicker(activeSkin){
 // ── Extension-registered skins (theme-registration capability) ───────────────
 // Lets a trusted local extension contribute a custom skin that appears in the
 // NATIVE skin picker (rather than bolting on a parallel theme switcher). An
-// extension calls window.registerHermesSkin(descriptor); core validates +
+// extension calls window.registerAgySkin(descriptor); core validates +
 // sanitizes it, injects a managed <style> rule for its CSS-variable tokens,
 // appends it to _SKINS so the picker renders it, and re-applies the persisted
 // selection if it was waiting on this (late-registered) skin.
@@ -2926,7 +2934,7 @@ function _buildSkinPicker(activeSkin){
 // Security: token values are written into CSS, so every value is sanitized
 // against a strict allowlist HERE, once, so all theme extensions inherit the
 // guard safe-by-construction. Reserved core skin keys cannot be overwritten.
-const _EXT_SKIN_STYLE_ID='hermesExtensionSkinStyles';
+const _EXT_SKIN_STYLE_ID='agyExtensionSkinStyles';
 const _EXT_SKIN_KEYS=new Set();                 // keys we registered (for idempotent re-register)
 const _RESERVED_SKIN_KEYS=new Set((_SKINS||[]).map(s=>(s.value||s.name).toLowerCase()));
 // CSS custom-property names a skin is allowed to set. Mirrors the documented
@@ -2981,7 +2989,7 @@ function _renderExtensionSkinStyles(){
 }
 
 // Public API for extensions. Returns true on success, false if rejected.
-function registerHermesSkin(descriptor){
+function registerAgySkin(descriptor){
   try{
     if(!descriptor||typeof descriptor!=='object') return false;
     const name=String(descriptor.name||'').trim();
@@ -3023,7 +3031,7 @@ function registerHermesSkin(descriptor){
     return true;
   }catch(_){ return false; }
 }
-if(typeof window!=='undefined'){ window.registerAgySkin=registerHermesSkin; window.registerHermesSkin=registerHermesSkin; }
+if(typeof window!=='undefined'){ window.registerAgySkin=registerAgySkin; window.registerHermesSkin=registerAgySkin; }
 
 function applyBotName(){
   // The saved assistant name applies to the default profile only.
@@ -3386,7 +3394,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     const lsSkin=(localStorage.getItem('agy-skin')||'').trim().toLowerCase();
     const lsAppearance=_normalizeAppearance(lsTheme||null,lsSkin||null);
     // An unknown non-default persisted skin is most likely an extension-provided
-    // skin (registerHermesSkin) whose extension script hasn't registered it yet
+    // skin (registerAgySkin) whose extension script hasn't registered it yet
     // at this point in boot. Preserve it verbatim instead of normalizing it away
     // to 'default' — the extension's registerHermesSkin() will inject the CSS and
     // re-apply it once it loads. Without this, the boot sync would clobber the
@@ -3841,7 +3849,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   // Start real-time gateway session sync if setting is enabled
   if(typeof startGatewaySSE==='function') startGatewaySSE();
 })().catch(e=>{
-  console.error('[hermes] boot failed', e);
+  console.error('[agy] boot failed', e);
   try{S._bootReady=true;}catch(_){}
   try{syncTopbar();}catch(_){}
   try{syncWorkspacePanelState();}catch(_){}

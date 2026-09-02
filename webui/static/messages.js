@@ -2732,8 +2732,8 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
   const _STREAM_FADE_MAX_MS=900;
   const _STREAM_FADE_DONE_MAX_MS=1000;
   const _STREAM_FADE_DONE_DRAIN_MAX_MS=1400;
-  const _anchorApi=(typeof window!=='undefined'&&window.HermesAssistantTurnAnchors)
-    ? window.HermesAssistantTurnAnchors
+  const _anchorApi=(typeof window!=='undefined'&&window.AgyAssistantTurnAnchors)
+    ? window.AgyAssistantTurnAnchors
     : null;
   const _anchorRegistryMap=(typeof window!=='undefined')
     ? (window._liveAnchorRegistries=window._liveAnchorRegistries||new Map())

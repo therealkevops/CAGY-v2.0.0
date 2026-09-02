@@ -4569,7 +4569,7 @@ function _syncSessionShareState(session, nextSession){
   if(S.session&&S.session.session_id===session.session_id){
     S.session.share_token=session.share_token;
     S.session.share_created_at=session.share_created_at;
-    if(typeof _syncHermesPanelSessionActions==='function') _syncHermesPanelSessionActions();
+    if(typeof _syncAgyPanelSessionActions==='function') _syncAgyPanelSessionActions();
   }
   renderSessionListFromCache();
   void renderSessionList();

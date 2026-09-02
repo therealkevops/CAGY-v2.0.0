@@ -2767,8 +2767,8 @@ let _settingsDirty = false;
 let _settingsThemeOnOpen = null; // track theme at open time for discard revert
 let _settingsSkinOnOpen = null; // track skin at open time for discard revert
 let _settingsFontSizeOnOpen = null; // track font size at open time for discard revert
-let _settingsHermesDefaultModelOnOpen = '';
-let _settingsHermesDefaultModelProviderOnOpen = null;
+let _settingsAgyDefaultModelOnOpen = '';
+let _settingsAgyDefaultModelProviderOnOpen = null;
 let _settingsSection = 'conversation';
 let _currentSettingsSection = 'conversation';
 let _settingsIndex = null;
@@ -2860,7 +2860,7 @@ function _renderDashboardVisibilityChip(container){
   var chip=document.createElement('button');
   chip.type='button';
   chip.className='tab-visibility-chip';
-  chip.setAttribute('data-tab-panel','__hermes_dashboard__');
+  chip.setAttribute('data-tab-panel','__agy_dashboard__');
   chip.setAttribute('role','switch');
   var isOn=_isDashboardChipOn();
   chip.setAttribute('aria-checked',isOn?'true':'false');
@@ -3568,11 +3568,11 @@ function _highlightSettingsField(el) {
   setTimeout(() => el.classList.remove('settings-field-highlight'), 1800);
 }
 
-function _syncHermesPanelSessionActions(){
+function _syncAgyPanelSessionActions(){
   const hasSession=!!S.session;
   const visibleMessages=hasSession?(S.messages||[]).filter(m=>m&&m.role&&m.role!=='tool').length:0;
   const title=hasSession?(S.session.title||t('untitled')):t('active_conversation_none');
-  const meta=$('hermesSessionMeta');
+  const meta=$('agySessionMeta');
   const hasShare=!!(hasSession&&S.session&&S.session.share_token);
   if(meta){
     if(!hasSession){
@@ -4177,8 +4177,8 @@ async function _autosavePreferencesSettings(payload){
       : {model:String((modelSel&&modelSel.value)||''),model_provider:null};
     const modelDirty=!!(
       modelSel&&(
-        (modelState.model||'')!==(_settingsHermesDefaultModelOnOpen||'')||
-        ((modelState.model_provider||null)!==(_settingsHermesDefaultModelProviderOnOpen||null))
+        (modelState.model||'')!==(_settingsAgyDefaultModelOnOpen||'')||
+        ((modelState.model_provider||null)!==(_settingsAgyDefaultModelProviderOnOpen||null))
       )
     );
     if(!pwDirty&&!modelDirty){
@@ -4566,17 +4566,17 @@ async function loadSettingsPanel(){
           _fetchLiveModels(models.active_provider, modelSel);
         }
       }catch(e){}
-      _settingsHermesDefaultModelOnOpen=(models&&models.default_model)||'';
-      _settingsHermesDefaultModelProviderOnOpen=(models&&models.active_provider)||null;
+      _settingsAgyDefaultModelOnOpen=(models&&models.default_model)||'';
+      _settingsAgyDefaultModelProviderOnOpen=(models&&models.active_provider)||null;
       // Use the smart matcher so a saved bare form like "anthropic/claude-opus-4.6"
       // (what the CLI's `hermes model` command writes) still selects the matching
       // `@nous:anthropic/claude-opus-4.6` option on a Nous setup. Without this, the
       // picker renders blank for any user whose default was persisted without the
       // @-prefix — CLI-first users, legacy installs, etc.
       if(typeof _applyModelToDropdown==='function'){
-        _applyModelToDropdown(_settingsHermesDefaultModelOnOpen, modelSel, (models&&models.active_provider)||window._activeProvider||null);
+        _applyModelToDropdown(_settingsAgyDefaultModelOnOpen, modelSel, (models&&models.active_provider)||window._activeProvider||null);
       }else{
-        modelSel.value=_settingsHermesDefaultModelOnOpen;
+        modelSel.value=_settingsAgyDefaultModelOnOpen;
       }
       if(typeof closeSettingsModelDropdown==='function') closeSettingsModelDropdown();
       if(typeof mountSettingsModelPicker==='function') mountSettingsModelPicker();
@@ -4841,11 +4841,11 @@ async function loadSettingsPanel(){
     // TTS engine selector
     const ttsEngineSel=$('settingsTtsEngine');
     if(ttsEngineSel){
-      // Re-add any extension-registered TTS engines (window.registerHermesTtsEngine)
+      // Re-add any extension-registered TTS engines (window.registerAgyTtsEngine)
       // as options — the <select> markup only hardcodes the built-ins, and this
       // settings panel can render after an extension registered its engine.
-      if(typeof window._hermesTtsEngineOptions==='function'){
-        window._hermesTtsEngineOptions().forEach(function(e){
+      if(typeof window._agyTtsEngineOptions==='function'){
+        window._agyTtsEngineOptions().forEach(function(e){
           if(!ttsEngineSel.querySelector('option[value="'+e.id+'"]')){
             var opt=document.createElement('option');
             opt.value=e.id; opt.textContent=e.label;
@@ -5023,7 +5023,7 @@ async function loadSettingsPanel(){
       const disableBtn=$('btnDisableAuth');
       if(disableBtn) disableBtn.style.display='none';
     }
-    _syncHermesPanelSessionActions();
+    _syncAgyPanelSessionActions();
     if(typeof loadDashboardSettings==='function') loadDashboardSettings();
     loadProvidersPanel(); // load provider cards in background
     loadPluginsPanel(); // load plugin/hook visibility in background
@@ -5088,8 +5088,8 @@ function _extensionEntryBadge(entry){
 }
 
 function _configureExtensionSettingsFromStatus(data){
-  if(!window.HermesExtensionSettings||!data||!Array.isArray(data.extensions)) return;
-  window.HermesExtensionSettings.primeFromStatus({extensions:data.extensions});
+  if(!(window.AgyExtensionSettings||window.HermesExtensionSettings)||!data||!Array.isArray(data.extensions)) return;
+  (window.AgyExtensionSettings||window.HermesExtensionSettings).primeFromStatus({extensions:data.extensions});
 }
 
 function _extensionSettingsFieldHtml(field,value){
@@ -5123,7 +5123,7 @@ function _extensionSettingsControls(entry){
   if(!storageOwned){
     return '<div class="extension-settings-empty">No extension-owned browser storage permission.</div>';
   }
-  const settingsApi=window.HermesExtensionSettings&&id?window.HermesExtensionSettings.settingsForExtension(id):null;
+  const settingsApi=(window.AgyExtensionSettings||window.HermesExtensionSettings)&&id?(window.AgyExtensionSettings||window.HermesExtensionSettings).settingsForExtension(id):null;
   if(!settingsApi||!settingsApi.trusted){
     return '<div class="extension-settings-empty">Reload WebUI after enabling or installing this extension to edit browser-local settings.</div>';
   }
@@ -5151,7 +5151,7 @@ function _extensionSettingsControls(entry){
 function _extensionConfigureButton(entry,surface){
   if(surface!=='installed'||!(entry&&entry.effective_enabled)) return '';
   const id=(entry&&entry.id)||'';
-  const runtime=window.HermesExtensionSettings;
+  const runtime=(window.AgyExtensionSettings||window.HermesExtensionSettings);
   if(!id||!runtime||typeof runtime._configureStateForExtension!=='function') return '';
   const state=runtime._configureStateForExtension(id);
   if(!state||!state.available) return '';
@@ -5492,7 +5492,7 @@ function _bindExtensionConfigureButtons(root){
 }
 
 function _syncExtensionConfigureButtonState(id){
-  const runtime=window.HermesExtensionSettings;
+  const runtime=(window.AgyExtensionSettings||window.HermesExtensionSettings);
   if(!runtime||typeof runtime._configureStateForExtension!=='function') return;
   const state=runtime._configureStateForExtension(id);
   document.querySelectorAll('[data-extension-configure-id]').forEach(btn=>{
@@ -5507,7 +5507,7 @@ function _syncExtensionConfigureButtonState(id){
 function handleExtensionConfigure(btn){
   if(!btn||btn.disabled) return;
   const id=btn.dataset.extensionConfigureId||'';
-  const runtime=window.HermesExtensionSettings;
+  const runtime=(window.AgyExtensionSettings||window.HermesExtensionSettings);
   if(!id||!runtime||typeof runtime._invokeConfigure!=='function') return;
   runtime._invokeConfigure(id,{
     opener:btn,
@@ -5582,8 +5582,8 @@ function _readExtensionSettingsForm(row){
 }
 
 function _fillExtensionSettingsForm(row,id){
-  if(!window.HermesExtensionSettings) return;
-  const values=window.HermesExtensionSettings.settingsForExtension(id).values;
+  if(!(window.AgyExtensionSettings||window.HermesExtensionSettings)) return;
+  const values=(window.AgyExtensionSettings||window.HermesExtensionSettings).settingsForExtension(id).values;
   row.querySelectorAll('[data-extension-setting-input]').forEach(input=>{
     const key=input.dataset.extensionSettingInput||'';
     const type=input.dataset.extensionSettingType||'';
@@ -5609,8 +5609,8 @@ function _bindExtensionSettingsButtons(root){
 function handleExtensionSettingsSave(btn){
   const id=btn&&btn.dataset.extensionSettingsSave;
   const row=btn&&btn.closest('[data-extension-id]');
-  if(!id||!row||!window.HermesExtensionSettings) return;
-  const api=window.HermesExtensionSettings.settingsForExtension(id);
+  if(!id||!row||!(window.AgyExtensionSettings||window.HermesExtensionSettings)) return;
+  const api=(window.AgyExtensionSettings||window.HermesExtensionSettings).settingsForExtension(id);
   const result=api.setAll(_readExtensionSettingsForm(row));
   if(!result.ok){
     showToast('Extension settings contain invalid values.');
@@ -5623,16 +5623,16 @@ function handleExtensionSettingsSave(btn){
 function handleExtensionSettingsReset(btn){
   const id=btn&&btn.dataset.extensionSettingsReset;
   const row=btn&&btn.closest('[data-extension-id]');
-  if(!id||!row||!window.HermesExtensionSettings) return;
-  window.HermesExtensionSettings.settingsForExtension(id).reset();
+  if(!id||!row||!(window.AgyExtensionSettings||window.HermesExtensionSettings)) return;
+  (window.AgyExtensionSettings||window.HermesExtensionSettings).settingsForExtension(id).reset();
   _fillExtensionSettingsForm(row,id);
   showToast('Extension settings reset in this browser.');
 }
 
 function handleExtensionStorageClear(btn){
   const id=btn&&btn.dataset.extensionStorageClear;
-  if(!id||!window.HermesExtensionSettings) return;
-  window.HermesExtensionSettings.storageForExtension(id).clear();
+  if(!id||!(window.AgyExtensionSettings||window.HermesExtensionSettings)) return;
+  (window.AgyExtensionSettings||window.HermesExtensionSettings).storageForExtension(id).clear();
   showToast('Extension storage cleared in this browser.');
 }
 
@@ -5687,8 +5687,8 @@ function _handleExtensionConfigureChange(change){
   }
 }
 
-if(window.HermesExtensionSettings&&typeof window.HermesExtensionSettings._onConfigureChange==='function'){
-  window.HermesExtensionSettings._onConfigureChange(_handleExtensionConfigureChange);
+if((window.AgyExtensionSettings||window.HermesExtensionSettings)&&typeof (window.AgyExtensionSettings||window.HermesExtensionSettings)._onConfigureChange==='function'){
+  (window.AgyExtensionSettings||window.HermesExtensionSettings)._onConfigureChange(_handleExtensionConfigureChange);
 }
 
 function _extensionSafeHttpUrl(value){
@@ -7416,8 +7416,8 @@ function _applySavedSettingsUi(saved, body, opts){
   _settingsFontSizeOnOpen=fontSize||localStorage.getItem('agy-font-size')||'default';
   const bar=$('settingsUnsavedBar');
   if(bar) bar.style.display='none';
-  _settingsHermesDefaultModelOnOpen=body.default_model||_settingsHermesDefaultModelOnOpen||'';
-  if(Object.prototype.hasOwnProperty.call(body,'default_model_provider')) _settingsHermesDefaultModelProviderOnOpen=body.default_model_provider||null;
+  _settingsAgyDefaultModelOnOpen=body.default_model||_settingsAgyDefaultModelOnOpen||'';
+  if(Object.prototype.hasOwnProperty.call(body,'default_model_provider')) _settingsAgyDefaultModelProviderOnOpen=body.default_model_provider||null;
   // Sync window._defaultModel so newSession() uses the just-saved default without a reload (#908).
   if(body.default_model) window._defaultModel=body.default_model;
   if(Object.prototype.hasOwnProperty.call(body,'default_model_provider')) window._activeProvider=body.default_model_provider||null;
@@ -7977,7 +7977,7 @@ async function saveSettings(andClose){
   const modelState=(typeof _captureModelDropdownSelection==='function'&&$('settingsModel'))
     ? (_captureModelDropdownSelection($('settingsModel'))||{model:String(model||''),model_provider:null})
     : {model:String(model||''),model_provider:null};
-  const modelChanged=(model||'')!==(_settingsHermesDefaultModelOnOpen||'')||((modelState.model_provider||null)!==(_settingsHermesDefaultModelProviderOnOpen||null));
+  const modelChanged=(model||'')!==(_settingsAgyDefaultModelOnOpen||'')||((modelState.model_provider||null)!==(_settingsAgyDefaultModelProviderOnOpen||null));
   const sendKey=($('settingsSendKey')||{}).value;
   const showTokenUsage=!!($('settingsShowTokenUsage')||{}).checked;
   const showQuotaChip=!!($('settingsShowQuotaChip')||{}).checked;
