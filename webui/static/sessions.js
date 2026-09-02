@@ -7143,7 +7143,7 @@ function _sessionDisplayTitle(s){
 
 function _sessionTitleIsDefaultWebUI(rawTitle){
   const title=String(rawTitle||'').replace(/\s+/g,' ').trim();
-  return title==='Antigravity WebUI'||title==='AGY WebUI'||title==='Hermes WebUI'||/^(Antigravity|AGY|Hermes) WebUI #\d+$/.test(title);
+  return title==='Antigravity WebUI'||title==='AGY WebUI'||/^(Antigravity|AGY) WebUI #\d+$/.test(title);
 }
 
 function _sessionTitleTags(rawTitle){

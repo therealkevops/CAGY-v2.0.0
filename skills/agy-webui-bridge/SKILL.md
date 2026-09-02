@@ -1,17 +1,17 @@
 ---
 name: agy-webui-bridge
-description: Maintains and verifies compatibility between the upstream Antigravity CLI (agy) and the local Hermes WebUI bridge. Activate this skill when the agy CLI is updated, when WebUI chat or tool execution encounters issues, or when verifying CLI flags, stream-json schemas, and model catalogs.
+description: Maintains and verifies compatibility between the upstream Antigravity CLI (agy) and the local CAGY WebUI bridge. Activate this skill when the agy CLI is updated, when WebUI chat or tool execution encounters issues, or when verifying CLI flags, stream-json schemas, and model catalogs.
 ---
 
 # Antigravity CLI <-> WebUI Bridge Guide & Maintenance
 
-This skill maintains the integration contract between upstream Antigravity (`agy`) and the Hermes WebUI.
+This skill maintains the integration contract between upstream Antigravity (`agy`) and the CAGY WebUI.
 
 ---
 
 ## 1. Upstream CLI Contract
 
-The Hermes WebUI interacts with `agy` strictly as an external subprocess:
+The CAGY WebUI interacts with `agy` strictly as an external subprocess:
 
 - **Command Line Execution** (`webui/run_agent.py`):
   ```bash

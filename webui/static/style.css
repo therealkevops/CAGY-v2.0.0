@@ -298,7 +298,7 @@
   /* Specificity boosted to beat the :root:not(.dark) .new-chat-btn rule that
      sets color:var(--accent-text) — without this, the solid-accent background
      would collide with the inherited text color, producing clay-on-clay text. */
-  /* Tool / thinking cards: mute the blue-ish Hermes highlights to neutral */
+  /* Tool / thinking cards: mute the blue-ish AGY highlights to neutral */
   /* User bubble: soft sand pill, not a saturated accent fill */
   /* Send button pop and active session indicator */
 
@@ -3513,7 +3513,7 @@ body.resizing .sidebar{transition:none!important;}
 .transparent-event-row[data-transparent-fade]{transition:opacity .22s ease;}
 .transparent-event-row[data-transparent-fade]:hover{opacity:1;}
 
-/* ── Collapsible Hermes chat name tag ───────── */
+/* ── Collapsible AGY chat name tag ─────────── */
 .assistant-turn[data-transparent-turn-collapsed="1"] .transparent-event-row,
 .assistant-turn[data-transparent-turn-collapsed="1"] .transparent-event-controls,
 .assistant-turn[data-transparent-turn-collapsed="1"] .transparent-earlier-steps{
@@ -4316,7 +4316,7 @@ main.main.showing-plugin > #mainPlugin{display:flex;}
 }
 
 /* ── Provider cards (Settings → Providers) ──
-   Matches hermes-desktop LLM Providers panel. Card uses --sidebar (surface-1),
+   Matches agy LLM Providers panel. Card uses --sidebar (surface-1),
    hover rows use --surface (surface-2). Body divider uses a subtle tint. */
 #providersList{gap:12px;}
 .provider-quota-card{
@@ -5065,7 +5065,7 @@ body code[class*="language-"],body pre[class*="language-"],body pre code[class*=
 @media (max-width: 600px) { .msg-row[data-role="user"] { max-width: 90%; } }
 /* Hide the entire "empty tool-anchor" assistant row (content='' with
    tool_calls). renderMessages keeps it in the DOM so tool cards can anchor
-   to it, but visually it adds a ghost "Hermes" header above the tool cards.
+   to it, but visually it adds a ghost "AGY" header above the tool cards.
    With the row hidden the transition from live → settled on 'done' is
    seamless. */
 .msg-row[data-role="assistant"]:has(> .msg-body:empty) { padding: 0; margin: 0; }
