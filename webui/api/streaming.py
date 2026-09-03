@@ -1557,13 +1557,13 @@ def _classify_provider_error(
         return {
             'label': 'No usable credentials',
             'type': 'credential_pool_empty',
-            'hint': 'The credential pool for this provider has no usable keys left (all entries exhausted or unconfigured). Add or refresh a key for this provider in your Hermes config / credential pool, or switch providers via `hermes model`.',
+            'hint': 'The credential pool has no usable keys left. Verify your Antigravity environment or check your model settings.',
         }
     if _is_quota:
         return {
             'label': 'Out of credits',
             'type': 'quota_exhausted',
-            'hint': 'Your provider account is out of credits or usage. Top up, wait for the plan window to reset, or switch providers via `hermes model`.',
+            'hint': 'Your account is out of credits or usage limits were reached. Check quota or try again later.',
         }
     if _is_rate_limit:
         return {
@@ -1575,13 +1575,13 @@ def _classify_provider_error(
         return {
             'label': 'Authentication failed',
             'type': 'auth_mismatch',
-            'hint': 'The selected model may not be supported by your configured provider or your API key is invalid. Run `hermes model` in your terminal to update credentials, then restart the WebUI.',
+            'hint': 'Authentication failed. Check your Antigravity credentials or model settings in your terminal, then restart the WebUI.',
         }
     if _is_not_found:
         return {
             'label': 'Model not found',
             'type': 'model_not_found',
-            'hint': 'The selected model was not found by the provider. Check the model ID in Settings or run `hermes model` to verify it exists for your provider.',
+            'hint': 'The selected model was not found. Check the model ID in Settings or verify your agy configuration.',
         }
     if _is_compression_exhausted:
         return {
@@ -1592,10 +1592,8 @@ def _classify_provider_error(
     if silent_failure:
         return {
             'label': 'No response from provider',
-            # Preserve the existing no_response event type (#373) while making
-            # the catch-all silent-failure message more specific for #1765.
             'type': 'no_response',
-            'hint': 'The provider returned no content and no error. This often means a usage/rate limit was hit silently. Check provider status, switch providers via `hermes model`, or try again in a moment.',
+            'hint': 'The provider returned no content and no error. This often means a usage/rate limit was hit silently. Check provider status or try again in a moment.',
         }
     return {'label': 'Error', 'type': 'error', 'hint': ''}
 
@@ -2466,7 +2464,7 @@ def _aiagent_import_error_detail() -> str:
     import os as _os
     import sys as _sys
 
-    lines = ["AIAgent not available -- check that hermes-agent is on sys.path"]
+    lines = ["Antigravity runner not available -- check that agy binary is installed and executable"]
     lines.append("")
     lines.append(f"  python:  {_sys.executable}")
     agent_dir = _os.environ.get("AGY_WEBUI_AGENT_DIR") or _os.environ.get("HERMES_WEBUI_AGENT_DIR")
