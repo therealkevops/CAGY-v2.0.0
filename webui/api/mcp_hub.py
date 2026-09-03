@@ -230,3 +230,70 @@ def delete_mcp_server(name: str) -> Dict[str, Any]:
         _save_agy_mcp_json(mcp_data)
         return {"ok": True, "deleted": name}
     return {"ok": False, "error": f"Server '{name}' not found"}
+
+
+def get_mcp_server(name: str) -> Optional[Dict[str, Any]]:
+    """Retrieve configuration for a specific server."""
+    mcp_data = _load_agy_mcp_json()
+    servers = mcp_data.get("mcpServers", {})
+    return servers.get(name)
+
+
+def test_mcp_server(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Test connection / probe an MCP server configuration."""
+    transport = str(body.get("transport", "stdio")).lower()
+    t_start = time.time()
+
+    if transport == "http":
+        url = str(body.get("url", "")).strip()
+        if not url:
+            return {"ok": False, "error": "URL is required for HTTP/SSE transport"}
+        try:
+            import urllib.request
+            headers = body.get("headers") or {}
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                elapsed_ms = round((time.time() - t_start) * 1000, 1)
+                return {
+                    "ok": True,
+                    "status_code": resp.status,
+                    "latency_ms": elapsed_ms,
+                    "message": f"Successfully connected to endpoint ({elapsed_ms}ms)"
+                }
+        except Exception as e:
+            elapsed_ms = round((time.time() - t_start) * 1000, 1)
+            return {"ok": False, "error": str(e), "latency_ms": elapsed_ms}
+
+    # stdio transport
+    cmd = str(body.get("command", "")).strip()
+    if not cmd:
+        return {"ok": False, "error": "Command is required for stdio transport"}
+
+    parts = cmd.split()
+    bin_name = parts[0]
+    resolved_bin = shutil.which(bin_name)
+    if not resolved_bin:
+        return {
+            "ok": False,
+            "error": f"Binary '{bin_name}' not found in PATH. Ensure Node/npx, uv/uvx, or Python is installed."
+        }
+
+    try:
+        probe_cmd = [resolved_bin, "--version"] if len(parts) == 1 else parts[:2]
+        proc = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, **(body.get("env") or {})}
+        )
+        elapsed_ms = round((time.time() - t_start) * 1000, 1)
+        return {
+            "ok": True,
+            "latency_ms": elapsed_ms,
+            "binary": resolved_bin,
+            "message": f"Binary '{bin_name}' verified executable ({elapsed_ms}ms)"
+        }
+    except Exception as e:
+        elapsed_ms = round((time.time() - t_start) * 1000, 1)
+        return {"ok": False, "error": f"Execution test failed: {e}", "latency_ms": elapsed_ms}

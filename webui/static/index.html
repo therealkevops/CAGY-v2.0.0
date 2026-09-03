@@ -713,7 +713,9 @@
                   </div>
                 </div>
                 <div class="inspector-actions">
+                  <button type="button" class="btn-copy-sm" id="btnCopySubagentPrompt" onclick="copySubagentPrompt()">Copy Prompt</button>
                   <button type="button" class="btn-copy-sm" id="btnCopySubagentId" onclick="copySubagentId()">Copy ID</button>
+                  <button type="button" class="btn-copy-sm" id="btnExportSubagent" onclick="exportSubagentTranscript()">Export JSON</button>
                 </div>
               </div>
               <div class="inspector-prompt-box">
@@ -723,6 +725,15 @@
             </div>
             <div class="inspector-timeline-wrap">
               <div class="inspector-label">Execution Trace & Transcript (<span id="inspectorStepCount">0</span> steps):</div>
+              <div class="inspector-timeline-controls">
+                <div class="timeline-filters">
+                  <button type="button" class="timeline-filter-btn active" data-filter="all" onclick="setTimelineFilter('all')">All (<span id="countFilterAll">0</span>)</button>
+                  <button type="button" class="timeline-filter-btn" data-filter="tool" onclick="setTimelineFilter('tool')">Tools (<span id="countFilterTools">0</span>)</button>
+                  <button type="button" class="timeline-filter-btn" data-filter="prompt" onclick="setTimelineFilter('prompt')">Prompts (<span id="countFilterPrompts">0</span>)</button>
+                  <button type="button" class="timeline-filter-btn" data-filter="response" onclick="setTimelineFilter('response')">Outputs (<span id="countFilterResponses">0</span>)</button>
+                </div>
+                <input type="text" class="timeline-search-input" id="subagentTimelineSearch" placeholder="Filter steps..." oninput="onTimelineSearch(this.value)">
+              </div>
               <div class="inspector-timeline" id="inspectorTimeline"></div>
             </div>
           </div>
@@ -1372,9 +1383,14 @@
     </div>
     <div class="mcp-presets-row">
       <span style="font-size:11px;color:var(--muted)">Presets:</span>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('github')">GitHub</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('memory')">Memory</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('fetch')">Fetch</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('docker')">Docker</button>
       <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('postgres')">PostgreSQL</button>
       <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('sqlite')">SQLite</button>
       <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('git')">Git</button>
+      <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('filesystem')">Filesystem</button>
       <button type="button" class="mcp-preset-pill" onclick="applyMcpPreset('remote')">Remote SSE</button>
     </div>
     <div class="mcp-form-group">
@@ -1400,7 +1416,9 @@
       <label for="mcpFormEnv">Environment Variables (JSON format, optional)</label>
       <textarea id="mcpFormEnv" rows="2" placeholder="{&quot;API_KEY&quot;: &quot;secret&quot;, &quot;DEBUG&quot;: &quot;true&quot;}"></textarea>
     </div>
+    <div id="mcpTestStatus" class="mcp-test-status"></div>
     <div class="mcp-modal-actions">
+      <button type="button" class="btn-mcp-action" id="btnTestMcpConnection" onclick="testMcpConnection()">Test Connection</button>
       <button type="button" class="btn-mcp-action" onclick="closeAddMcpServerModal()">Cancel</button>
       <button type="button" class="btn-mcp-action primary" onclick="submitMcpServerForm()">Save Server</button>
     </div>

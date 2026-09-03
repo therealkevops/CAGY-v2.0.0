@@ -13913,6 +13913,21 @@ def handle_get(handler, parsed) -> bool:
         return _handle_subagent_transcript(handler, parsed)
     if parsed.path == "/api/subagents/detail":
         return _handle_subagent_transcript(handler, parsed)
+    if parsed.path in ("/api/subagents/export",) or (parsed.path.startswith("/api/subagents/") and "export" in parsed.path):
+        from api.subagents import export_subagent_transcript
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        sub_id = qs.get("id", [None])[0] or qs.get("subagent_id", [None])[0]
+        if not sub_id and parsed.path.startswith("/api/subagents/"):
+            sub_id = parsed.path.split("/api/subagents/", 1)[1].split("/")[0]
+        data = export_subagent_transcript(sub_id or "")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Disposition", f'attachment; filename="subagent-{sub_id or "transcript"}.json"')
+        payload = data.encode("utf-8")
+        handler.send_header("Content-Length", str(len(payload)))
+        handler.end_headers()
+        handler.wfile.write(payload)
+        return True
 
     # ── Artifacts & Visual Canvas (GET) ──
     if parsed.path in ("/api/artifacts", "/api/artifacts/list"):
@@ -14133,6 +14148,17 @@ def _resolve_new_session_workspace(body, visible_prev_session_id):
     )
     return str(workspace)
 
+def _read_json_body(handler) -> dict:
+    try:
+        length = int(handler.headers.get("Content-Length", 0))
+        if length <= 0:
+            return {}
+        raw = handler.rfile.read(length).decode("utf-8")
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+
+
 def handle_post(handler, parsed) -> bool:
     """Handle all POST routes. Returns True if handled, False for 404."""
     diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
@@ -14217,6 +14243,11 @@ def handle_post(handler, parsed) -> bool:
         body = _read_json_body(handler) or {}
         name = str(body.get("name", "")).strip()
         return j(handler, delete_mcp_server(name))
+
+    if parsed.path == "/api/mcp/hub/test":
+        from api.mcp_hub import test_mcp_server
+        body = _read_json_body(handler) or {}
+        return j(handler, test_mcp_server(body))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule

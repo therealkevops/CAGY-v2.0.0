@@ -96,7 +96,7 @@ def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
                 for look_idx in range(i + 1, min(i + 4, len(lines))):
                     nxt = lines[look_idx]
                     content = str(nxt.get("content", ""))
-                    cids = re.findall(r'"conversationId":\s*"([a-f0-9\-]+)"', content)
+                    cids = re.findall(r'["\']?conversationId["\']?\s*[:=]\s*["\']([a-zA-Z0-9\-_\.]+)["\']', content)
                     if cids:
                         found_cids.extend(cids)
                         break
@@ -213,11 +213,42 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
                         except Exception:
                             pass
 
+    # Build tree hierarchy
+    sub_map = {}
+    for s in all_subagents:
+        s["children"] = []
+        cid = s.get("conversation_id")
+        if cid:
+            sub_map[cid] = s
+
+    root_children = []
+    for s in all_subagents:
+        pid = s.get("parent_id")
+        if pid and pid in sub_map and pid != s.get("conversation_id"):
+            sub_map[pid]["children"].append(s)
+        else:
+            root_children.append(s)
+
+    root_info["children"] = root_children
+
+    def _compute_subtree_stats(node):
+        cnt = len(node.get("children", []))
+        tools = node.get("tool_count", 0)
+        for ch in node.get("children", []):
+            c_cnt, c_tools = _compute_subtree_stats(ch)
+            cnt += c_cnt
+            tools += c_tools
+        node["descendant_count"] = cnt
+        node["cumulative_tool_count"] = tools
+        return cnt, tools
+
+    _compute_subtree_stats(root_info)
     active_count = sum(1 for s in all_subagents if s.get("status") == "running")
-    
+
     return {
         "root": root_info,
         "subagents": all_subagents,
+        "tree": root_info,
         "total": len(all_subagents),
         "active_count": active_count,
         "timestamp": time.time()
@@ -275,3 +306,9 @@ def get_subagent_transcript(subagent_id: str) -> Dict[str, Any]:
         "steps": steps,
         "total_steps": len(steps)
     }
+
+
+def export_subagent_transcript(subagent_id: str) -> str:
+    """Return raw JSONL or JSON transcript content for export."""
+    data = get_subagent_transcript(subagent_id)
+    return json.dumps(data, indent=2)

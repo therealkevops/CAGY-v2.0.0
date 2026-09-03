@@ -6,6 +6,8 @@
 *.key
 auth.json
 google_token.json
+mcp.json
+.gemini/mcp.json
 
 # Persistent Container State & Dynamic Data
 container_data/

@@ -6,6 +6,9 @@
 let _subagentsData = null;
 let _selectedSubagent = null;
 let _subagentPollTimer = null;
+let _currentSubagentRawSteps = [];
+let _subagentTimelineFilter = 'all';
+let _subagentTimelineSearch = '';
 
 async function loadSubagents(force = false) {
   const listEl = document.getElementById('subagentList');
@@ -32,13 +35,13 @@ async function loadSubagents(force = false) {
     const data = await res.json();
     _subagentsData = data;
     renderSubagentsView(data);
-    
+
     // If a subagent is selected, re-inspect to refresh its timeline & steps
     if (_selectedSubagent) {
       const updated = (data.subagents || []).find(s => s.conversation_id === _selectedSubagent.conversation_id && s.role === _selectedSubagent.role) || _selectedSubagent;
       inspectSubagent(updated);
     }
-    
+
     _syncSubagentsPolling();
   } catch (err) {
     if (listEl) {
@@ -77,7 +80,6 @@ function renderSubagentsView(data) {
   const activeEl = document.getElementById('swarmMetricActive');
   const toolsEl = document.getElementById('swarmMetricTools');
   const listEl = document.getElementById('subagentList');
-  const graphEl = document.getElementById('swarmGraphContainer');
 
   const subs = data.subagents || [];
   let totalTools = 0;
@@ -126,7 +128,7 @@ function renderSwarmTopology(data) {
   const graphEl = document.getElementById('swarmGraphContainer');
   if (!graphEl) return;
 
-  const root = data.root || { role: 'Lead Architect (Parent)', model: 'Gemini 3.7 Flash/Pro (AGY)' };
+  const root = data.tree || data.root || { role: 'Lead Architect (Parent)', model: 'Gemini 3.7 Flash/Pro (AGY)', children: data.subagents || [] };
   const subs = data.subagents || [];
 
   let html = `
@@ -139,6 +141,7 @@ function renderSwarmTopology(data) {
         </div>
         <div class="swarm-node-body">
           <span class="swarm-node-sub">Root Orchestration Engine · Concurrency Hub</span>
+          ${root.descendant_count ? `<span class="swarm-node-sub" style="margin-left:6px;font-weight:600;color:var(--text);">(${root.descendant_count} agents total)</span>` : ''}
         </div>
       </div>
       <div class="swarm-tree-connector ${subs.length > 0 ? 'active' : ''}"></div>
@@ -151,12 +154,23 @@ function renderSwarmTopology(data) {
       </div>
     `;
   } else {
-    html += `<div class="swarm-children-row">`;
-    subs.forEach((sub, idx) => {
-      const isRunning = sub.status === 'running';
-      const isSelected = _selectedSubagent && (_selectedSubagent.conversation_id === sub.conversation_id && _selectedSubagent.role === sub.role);
-      html += `
-        <div class="swarm-node child-node ${isSelected ? 'selected' : ''}" onclick="selectSubagentByIndex(${idx})">
+    html += _renderSubagentBranch(root.children || subs);
+  }
+
+  html += `</div>`;
+  graphEl.innerHTML = html;
+}
+
+function _renderSubagentBranch(children) {
+  if (!children || children.length === 0) return '';
+  let html = `<div class="swarm-children-row">`;
+  children.forEach((sub) => {
+    const isRunning = sub.status === 'running';
+    const isSelected = _selectedSubagent && (_selectedSubagent.conversation_id === sub.conversation_id && _selectedSubagent.role === sub.role);
+    const subChildren = sub.children || [];
+    html += `
+      <div class="swarm-branch-container" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div class="swarm-node child-node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''}" onclick="selectSubagentByConvId('${escapeHtml(sub.conversation_id || '')}', '${escapeHtml(sub.role || '')}')">
           <div class="swarm-node-header">
             <span class="swarm-status-dot ${isRunning ? 'running' : 'done'}"></span>
             <span class="swarm-node-title">${escapeHtml(sub.role || 'Subagent')}</span>
@@ -171,13 +185,15 @@ function renderSwarmTopology(data) {
             <span>Tools Run: <strong>${sub.tool_count || 0}</strong></span>
           </div>
         </div>
-      `;
-    });
-    html += `</div>`;
-  }
-
+        ${subChildren.length > 0 ? `
+          <div class="swarm-tree-connector active"></div>
+          ${_renderSubagentBranch(subChildren)}
+        ` : ''}
+      </div>
+    `;
+  });
   html += `</div>`;
-  graphEl.innerHTML = html;
+  return html;
 }
 
 function selectSubagentByIndex(idx) {
@@ -186,6 +202,16 @@ function selectSubagentByIndex(idx) {
   _selectedSubagent = sub;
   renderSubagentsView(_subagentsData);
   inspectSubagent(sub);
+}
+
+function selectSubagentByConvId(convId, role) {
+  if (!_subagentsData || !_subagentsData.subagents) return;
+  const sub = _subagentsData.subagents.find(s => (convId && s.conversation_id === convId) || s.role === role);
+  if (sub) {
+    _selectedSubagent = sub;
+    renderSubagentsView(_subagentsData);
+    inspectSubagent(sub);
+  }
 }
 
 async function inspectSubagent(sub) {
@@ -227,8 +253,9 @@ async function inspectSubagent(sub) {
       const res = await fetch(`/api/subagents/detail?id=${encodeURIComponent(sub.conversation_id)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const tData = await res.json();
-      renderSubagentTimeline(tData.steps || []);
-      if (stepCountEl) stepCountEl.textContent = String(tData.total_steps || (tData.steps ? tData.steps.length : 0));
+      _currentSubagentRawSteps = tData.steps || [];
+      renderFilteredTimeline();
+      if (stepCountEl) stepCountEl.textContent = String(tData.total_steps || (_currentSubagentRawSteps.length));
     } catch (err) {
       if (timelineEl) {
         timelineEl.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">Transcript unavailable (${escapeHtml(err.message)}).</div>`;
@@ -237,29 +264,36 @@ async function inspectSubagent(sub) {
   } else {
     // Render brief timeline from parent tool invocation
     if (stepCountEl) stepCountEl.textContent = '1';
-    if (timelineEl) {
-      timelineEl.innerHTML = `
-        <div class="timeline-step">
-          <div class="timeline-step-head">
-            <span class="timeline-step-idx">#1</span>
-            <span class="timeline-step-type">invoke_subagent</span>
-            <span class="timeline-step-time">${escapeHtml(sub.created_at || 'Recently')}</span>
-          </div>
-          <div class="timeline-step-body">
-            Subagent dispatched with task instructions.
-          </div>
-        </div>
-      `;
-    }
+    _currentSubagentRawSteps = [{
+      type: 'USER_INPUT',
+      content: sub.prompt || 'Dispatched task',
+      created_at: sub.created_at || ''
+    }];
+    renderFilteredTimeline();
   }
 }
 
-function renderSubagentTimeline(steps) {
+function setTimelineFilter(filter) {
+  _subagentTimelineFilter = filter;
+  document.querySelectorAll('.timeline-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  renderFilteredTimeline();
+}
+
+function onTimelineSearch(val) {
+  _subagentTimelineSearch = (val || '').toLowerCase().trim();
+  renderFilteredTimeline();
+}
+
+function renderFilteredTimeline() {
+  const steps = _currentSubagentRawSteps || [];
   const timelineEl = document.getElementById('inspectorTimeline');
   if (!timelineEl) return;
 
-  if (!steps || steps.length === 0) {
+  if (steps.length === 0) {
     timelineEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No execution steps recorded yet.</div>';
+    _updateFilterCounts(0, 0, 0, 0);
     return;
   }
 
@@ -313,7 +347,34 @@ function renderSubagentTimeline(steps) {
     }
   }
 
-  timelineEl.innerHTML = unified.map((entry, idx) => {
+  const countAll = unified.length;
+  const countTools = unified.filter(u => u.kind === 'tool').length;
+  const countPrompts = unified.filter(u => u.kind === 'prompt').length;
+  const countResponses = unified.filter(u => u.kind === 'response').length;
+  _updateFilterCounts(countAll, countTools, countPrompts, countResponses);
+
+  // Apply filters
+  let filtered = unified;
+  if (_subagentTimelineFilter !== 'all') {
+    filtered = filtered.filter(u => u.kind === _subagentTimelineFilter);
+  }
+
+  if (_subagentTimelineSearch) {
+    filtered = filtered.filter(u => {
+      const titleMatch = u.title && u.title.toLowerCase().includes(_subagentTimelineSearch);
+      const contentMatch = u.content && String(u.content).toLowerCase().includes(_subagentTimelineSearch);
+      const toolMatch = u.toolName && u.toolName.toLowerCase().includes(_subagentTimelineSearch);
+      const outMatch = u.output && String(u.output).toLowerCase().includes(_subagentTimelineSearch);
+      return titleMatch || contentMatch || toolMatch || outMatch;
+    });
+  }
+
+  if (filtered.length === 0) {
+    timelineEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No steps match the active filters.</div>';
+    return;
+  }
+
+  timelineEl.innerHTML = filtered.map((entry, idx) => {
     let bodyHtml = '';
     if (entry.kind === 'tool') {
       let argsFormatted = '';
@@ -361,6 +422,17 @@ function renderSubagentTimeline(steps) {
   }).join('');
 }
 
+function _updateFilterCounts(all, tools, prompts, responses) {
+  const elAll = document.getElementById('countFilterAll');
+  const elTools = document.getElementById('countFilterTools');
+  const elPrompts = document.getElementById('countFilterPrompts');
+  const elResponses = document.getElementById('countFilterResponses');
+  if (elAll) elAll.textContent = String(all);
+  if (elTools) elTools.textContent = String(tools);
+  if (elPrompts) elPrompts.textContent = String(prompts);
+  if (elResponses) elResponses.textContent = String(responses);
+}
+
 function copySubagentId() {
   if (!_selectedSubagent) return;
   const id = _selectedSubagent.conversation_id || _selectedSubagent.parent_id;
@@ -374,6 +446,26 @@ function copySubagentId() {
       }
     });
   }
+}
+
+function copySubagentPrompt() {
+  if (!_selectedSubagent) return;
+  const prompt = _selectedSubagent.prompt || '';
+  if (prompt) {
+    navigator.clipboard.writeText(prompt).then(() => {
+      const btn = document.getElementById('btnCopySubagentPrompt');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      }
+    });
+  }
+}
+
+function exportSubagentTranscript() {
+  if (!_selectedSubagent || !_selectedSubagent.conversation_id) return;
+  window.open(`/api/subagents/export?id=${encodeURIComponent(_selectedSubagent.conversation_id)}`, '_blank');
 }
 
 function escapeHtml(str) {
