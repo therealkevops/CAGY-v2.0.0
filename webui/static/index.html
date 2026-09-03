@@ -747,14 +747,6 @@
         <div class="main-view-empty-sub" data-i18n="workspaces_empty_sub">Pick a space from the sidebar to view its files and settings, or add a new one.</div>
       </div>
     </div>
-    <div id="mainPlugin" class="main-view">
-      <div class="main-view-header">
-        <div class="main-view-title" id="pluginPageTitle">Plugin</div>
-      </div>
-      <div class="main-view-body">
-        <div id="pluginPageContainer"></div>
-      </div>
-    </div>
     <div id="mainSettings" class="main-view">
       <div class="settings-main">
           <div class="settings-pane active" id="settingsPaneConversation">
@@ -767,8 +759,6 @@
             <div class="action-grid">
               <button class="settings-action-btn" id="btnDownload" title="Download as Markdown" data-i18n-title="download_transcript"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> <span data-i18n="transcript">Transcript</span></button>
               <button class="settings-action-btn" id="btnExportJSON" title="Export full session as JSON" data-i18n-title="export_session_json_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg> <span data-i18n="export_session_json">JSON</span></button>
-              <button class="settings-action-btn" id="btnShareSession" title="Create a public read-only share link" data-i18n-title="share_session_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4"/><path d="M15.4 6.5 8.6 10.5"/></svg> <span data-i18n="share_session">Share</span></button>
-              <button class="settings-action-btn danger" id="btnStopSharingSession" title="Revoke the public read-only share link for this conversation" data-i18n-title="stop_sharing_session_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-8.49 0L6 11.5"/><path d="M18 16a6 6 0 0 1-8.49 0L6 12.5"/><line x1="3" y1="3" x2="21" y2="21"/></svg> <span data-i18n="stop_sharing_session">Stop sharing</span></button>
               <button class="settings-action-btn" id="btnExportHTML" title="Export as a self-contained HTML page" data-i18n-title="export_session_html_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l-2 2 2 2"/><path d="M15 13l2 2-2 2"/></svg> <span data-i18n="export_session_html">HTML</span></button>
               <button class="settings-action-btn" id="btnImportJSON" title="Import session from JSON" data-i18n-title="import_session_json_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> <span data-i18n="import">Import</span></button>
               <button class="settings-action-btn danger" id="btnClearConvModal" onclick="clearConversation()" title="Clear all messages in this conversation" data-i18n-title="clear_conversation_btn_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 1 2 2 2v2"/></svg> <span data-i18n="clear">Clear</span></button>
@@ -1054,7 +1044,7 @@
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="dictation_append_desc">When ON, dictated text is appended to any text already in the composer (with a space if needed). When OFF, dictated text replaces the composer content.</div>
             </div>
             <div class="settings-field">
-              <label for="settingsTtsEngine" data-i18n="settings_label_tts_engine">TTS Engine</label><select id="settingsTtsEngine" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px"><option value="browser">Browser speech synthesis</option><option value="edge">Edge TTS (server)</option><option value="elevenlabs">ElevenLabs (server)</option><option value="openai">OpenAI TTS (server)</option></select><div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_tts_engine">Choose speech engine. Edge TTS uses Microsoft neural voices via the server.</div></div><div class="settings-field"><label for="settingsTtsVoice" data-i18n="settings_label_tts_voice">Voice</label>
+              <label for="settingsTtsEngine" data-i18n="settings_label_tts_engine">TTS Engine</label><select id="settingsTtsEngine" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px"><option value="browser">Browser speech synthesis</option></select><div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_tts_engine">Uses your browser's built-in speech synthesis.</div></div><div class="settings-field"><label for="settingsTtsVoice" data-i18n="settings_label_tts_voice">Voice</label>
               <select id="settingsTtsVoice" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
                 <option value="">Default system voice</option>
               </select>
@@ -1196,83 +1186,6 @@
             <button class="sm-btn" onclick="saveSettings()" style="margin-top:12px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>
             <div id="settingsPreferencesAutosaveStatus" class="settings-autosave-status" aria-live="polite"></div>
           </div>
-          <div class="settings-pane" id="settingsPaneProviders">
-            <div class="settings-section-head">
-              <div>
-                <div class="settings-section-title" data-i18n="providers_section_title">Providers</div>
-                <div class="settings-section-meta" data-i18n="providers_section_meta">Manage API keys for AI providers. Changes take effect immediately.</div>
-              </div>
-            </div>
-            <div style="background:var(--surface-subtle);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:11.5px;line-height:1.45;color:var(--muted)">
-              <strong style="color:var(--text)">Antigravity Engine Auth:</strong> CAGY is authenticated via your active Google Gemini environment and local AGY CLI credentials. Provider keys configured here are optional and used for external tool integrations.
-            </div>
-            <div id="providersList" style="display:flex;flex-direction:column;margin-top:4px">
-              <!-- Populated dynamically by loadProvidersPanel() -->
-            </div>
-            <div id="providersEmpty" style="display:none;text-align:center;padding:32px 0;color:var(--muted);font-size:13px" data-i18n="providers_empty">
-              No configurable providers found.
-            </div>
-          </div>
-          <div class="settings-pane" id="settingsPanePlugins">
-            <div class="settings-section-head">
-              <div>
-                <div class="settings-section-title">Skills & Rules</div>
-                <div class="settings-section-meta">View installed workspace skills (<code>skills/</code>) and domain rules (<code>.gemini/rules/</code>).</div>
-              </div>
-              <button type="button" class="sm-btn" onclick="openSkillOrRuleWizard()" style="padding:5px 10px;font-size:12px">New Skill / Rule</button>
-            </div>
-            <div id="pluginsList" style="display:flex;flex-direction:column;margin-top:4px">
-              <!-- Populated dynamically by loadPluginsPanel() -->
-            </div>
-            <div id="pluginsEmpty" style="display:none;text-align:center;padding:32px 0;color:var(--muted);font-size:13px">
-              No custom plugins or hooks are loaded. Use the Wizard above to scaffold new skills or rules.
-            </div>
-          </div>
-          <div class="settings-pane" id="settingsPaneExtensions">
-            <div class="settings-section-head">
-              <div>
-                <div class="settings-section-title" data-i18n="settings_tab_extensions">Extensions</div>
-                <div class="settings-section-meta">Browse, install, and manage WebUI extensions.</div>
-              </div>
-            </div>
-            <div class="extensions-tab-bar" role="tablist">
-              <button class="extensions-tab-btn extensions-tab-active" role="tab"
-                      data-extensions-tab="gallery"
-                      onclick="switchExtensionsTab('gallery')" type="button"
-                      data-i18n="settings_extensions_gallery_tab">Gallery</button>
-              <button class="extensions-tab-btn" role="tab"
-                      data-extensions-tab="installed"
-                      onclick="switchExtensionsTab('installed')" type="button"
-                      data-i18n="settings_extensions_installed_tab">Installed</button>
-              <button class="extensions-tab-btn" role="tab"
-                      data-extensions-tab="diagnostics"
-                      onclick="switchExtensionsTab('diagnostics')" type="button"
-                      data-i18n="settings_extensions_diagnostics_tab">Diagnostics</button>
-            </div>
-            <div data-extensions-pane="gallery">
-              <div id="extensionsGallery" class="extensions-gallery" aria-live="polite">
-                <div class="extensions-loading" data-i18n="settings_extensions_gallery_loading">Loading gallery…</div>
-              </div>
-            </div>
-            <div data-extensions-pane="installed" hidden>
-              <div id="extensionsInstalled" class="extensions-gallery" aria-live="polite">
-                <div class="extensions-loading">Loading installed extensions…</div>
-              </div>
-            </div>
-            <div data-extensions-pane="diagnostics" hidden>
-              <div class="settings-section-head" style="padding-top:8px">
-                <div></div>
-                <button class="sm-btn extensions-copy-diagnostics-btn" id="extensionsCopyDiagnosticsBtn" type="button" onclick="copyExtensionsDiagnostics()" disabled>Copy diagnostics</button>
-              </div>
-              <div class="settings-field extensions-trust-note" id="extensionsTrustModel">
-                <label>Trust model</label>
-                <div>Extensions run in the WebUI browser origin and can access the same authenticated APIs as this session. Settings and extension-owned storage are browser-local and not for secrets. Only load trusted local extension directories; disabling an extension takes effect after reload for already-injected assets.</div>
-              </div>
-              <div id="extensionsDiagnostics" class="extensions-diagnostics" aria-live="polite">
-                <div class="extensions-loading">Loading extension diagnostics…</div>
-              </div>
-            </div>
-          </div>
           <div class="settings-pane" id="settingsPaneSystem">
             <div class="settings-section-head">
               <div>
@@ -1320,13 +1233,6 @@
               <label data-i18n="settings_label_shutdown">Stop the WebUI server</label>
               <div style="font-size:11px;color:var(--muted);margin-bottom:8px"><span data-i18n="settings_desc_shutdown_before_cmd">Gracefully stops the local WebUI server. Useful if you launched via </span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_between_cmds"> and want to stop without switching to a terminal. You'll need to relaunch the server (</span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_after_cmd"> or the native app) before the WebUI is reachable again.</span></div>
               <button class="sm-btn" id="btnShutdownServer" onclick="shutdownServer()" style="width:100%;padding:8px;font-weight:600;color:#e74c3c;border-color:rgba(231,76,60,.3)" data-i18n="settings_btn_shutdown">Stop server</button>
-            </div>
-            <div class="settings-field" id="passkeysSettingsBlock" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label>Passkeys</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Register this browser or device for passwordless sign-in. Once at least one passkey exists, you can remove the password and sign in with passkeys only.</div>
-              <button class="sm-btn" id="btnRegisterPasskey" onclick="registerPasskey()" style="width:100%;padding:8px;font-weight:600">Add passkey</button>
-              <button class="sm-btn" id="btnGoPasswordless" onclick="goPasswordless()" style="display:none;margin-top:8px;width:100%;padding:8px;font-weight:600;color:#e8a030;border-color:rgba(232,160,48,.3)">Go passwordless</button>
-              <div id="passkeyList" style="margin-top:8px;font-size:12px;color:var(--muted)">No passkeys registered.</div>
             </div>
             <button class="sm-btn" onclick="saveSettings()" style="margin-top:16px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>
           </div>
@@ -1449,7 +1355,6 @@
 <script src="static/sessions.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/commands.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
-<script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/subagents.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/mcp_hub.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/skills_wizard.js?v=__WEBUI_VERSION__" defer></script>

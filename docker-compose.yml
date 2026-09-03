@@ -18,6 +18,7 @@ services:
       - ./container_data:/opt/data
       - ./container_data/gemini:/root/.gemini
       - ./container_data/config:/root/.config
+      - ./container_data/webui:/root/.agy/webui
       - ./container_data/webui:/root/.hermes/webui
       # Mount host project root to container workspace
       - ./:/workspace
