@@ -15,10 +15,10 @@ def channel_version_badge() -> str:
     return "AGY Bridge"
 
 
-def cached_update_status() -> dict:
+def cached_update_status(include_agent: bool = True) -> dict:
     return {
         "webui": {"update_available": False, "version": WEBUI_VERSION},
-        "agent": {"update_available": False, "version": AGENT_VERSION},
+        "agent": {"update_available": False, "version": AGENT_VERSION, "ignored": not include_agent},
         "checked_at": 0,
         "up_to_date": True,
     }

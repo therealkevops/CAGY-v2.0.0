@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies for Hermes WebUI
+# Install Python dependencies for Antigravity WebUI
 RUN pip3 install --no-cache-dir --break-system-packages pyyaml cryptography psutil
 
 # Prepare persistent configuration and workspace directories

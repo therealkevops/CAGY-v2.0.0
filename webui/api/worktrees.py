@@ -373,7 +373,7 @@ def _setup_agent_worktree(repo_root: str) -> dict:
     if emitted:
         logger.debug("AGY agent worktree helper output: %s", emitted)
     if not info:
-        raise RuntimeError("Hermes Agent failed to create a git worktree")
+        raise RuntimeError("Antigravity agent failed to create a git worktree")
     return info
 
 
@@ -383,7 +383,7 @@ def create_worktree_for_workspace(workspace: str | Path) -> dict:
     path = info.get("path")
     branch = info.get("branch")
     if not path or not branch:
-        raise RuntimeError("Hermes Agent returned incomplete worktree metadata")
+        raise RuntimeError("Antigravity agent returned incomplete worktree metadata")
     return {
         "path": str(Path(path).expanduser().resolve()),
         "branch": str(branch),

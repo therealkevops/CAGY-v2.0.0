@@ -228,7 +228,7 @@ def render_session_html(session: dict, theme: str = "dark", palette: dict | None
     """
     html_class = ' class="dark"' if str(theme).lower() != "light" else ""
     palette_css = _palette_to_css(palette or {})
-    title = (session.get("title") or "Hermes Conversation").strip()
+    title = (session.get("title") or "Antigravity Conversation").strip()
     sid = session.get("session_id", "")
     model = session.get("model", "")
     provider = session.get("model_provider", "")
@@ -291,7 +291,7 @@ def render_session_html(session: dict, theme: str = "dark", palette: dict | None
 <main>
 {''.join(blocks)}
 </main>
-<footer class="doc-foot">Exported from Hermes WebUI on {exported}</footer>
+<footer class="doc-foot">Exported from Antigravity WebUI on {exported}</footer>
 </div>
 </body>
 </html>"""

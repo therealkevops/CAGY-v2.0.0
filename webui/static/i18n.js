@@ -391,7 +391,6 @@ const LOCALES = {
     status_profile: 'Profile',
     status_agy_home: 'Antigravity home',
     status_hermes_home: 'Antigravity home',
-    status_agy_home: 'Antigravity home',
     status_started: 'Started',
     status_updated: 'Updated',
     status_tokens: 'Tokens',

@@ -224,16 +224,8 @@ def execute_agent_command(command: str) -> str:
 
 
 def _run_codex_runtime_command(arg_string: str) -> str:
-    """Execute Hermes' shared Codex runtime switch for the active profile."""
-    try:
-        from hermes_cli.codex_runtime_switch import apply, parse_args
-    except Exception as exc:
-        logger.warning("Codex runtime switch unavailable", exc_info=True)
-        raise RuntimeError("Codex runtime switch unavailable") from exc
-
-    new_value, errors = parse_args(arg_string)
-    if errors:
-        return "\n".join(str(error) for error in errors)
+    """Codex runtime switch is not applicable in Antigravity mode."""
+    return "Codex runtime switch is not applicable in Antigravity mode."
 
     with _CODEX_RUNTIME_LOCK:
         try:
@@ -350,39 +342,8 @@ def _run_reload_skills_command() -> str:
 
 
 def _run_credits_command() -> str:
-    """Render Hermes' shared credits view for the WebUI slash-command path."""
-    try:
-        from agent.account_usage import build_credits_view
-    except Exception:
-        logger.warning("Failed to import credits view runtime", exc_info=True)
-        return "Couldn't fetch credits right now."
-
-    try:
-        view = build_credits_view(markdown=True)
-    except Exception:
-        logger.warning("Failed to build /credits view", exc_info=True)
-        return "Couldn't fetch credits right now."
-
-    if not getattr(view, "logged_in", False):
-        return "Not logged into Nous. Run `hermes auth login nous` in Hermes CLI, then try /credits again."
-
-    lines = ["💳 **Nous credits**"]
-    for line in tuple(getattr(view, "balance_lines", ()) or ()):
-        if str(line).lstrip().startswith("📈"):
-            continue
-        lines.append(str(line))
-
-    identity_line = str(getattr(view, "identity_line", "") or "").strip()
-    if identity_line:
-        lines.append("")
-        lines.append(identity_line)
-
-    topup_url = str(getattr(view, "topup_url", "") or "").strip()
-    if topup_url:
-        lines.append("")
-        lines.append(f"Top up: {topup_url}")
-        lines.append("Complete your top-up in the browser; credits will appear in /credits shortly.")
-    return "\n".join(lines)
+    """Credits view is not applicable in Antigravity mode."""
+    return "Antigravity uses configured API credentials; credits balance command is not applicable."
 
 
 def _load_config_for_moa_resolution() -> dict:

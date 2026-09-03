@@ -60,7 +60,7 @@ from api.session_events import (
     unsubscribe_session_events,
 )
 from api.gateway_restart import restart_active_profile_gateway
-from api.shares import create_or_refresh_share, load_share, revoke_share
+from api.shares import load_share
 
 logger = logging.getLogger(__name__)
 
@@ -1291,11 +1291,11 @@ def _run_gateway_lifecycle_command(action: str) -> subprocess.CompletedProcess:
 
     agent_dir = getattr(api_config, "_AGENT_DIR", None)
     if not agent_dir:
-        raise FileNotFoundError("Hermes agent checkout not found")
+        raise FileNotFoundError("Antigravity agent checkout not found")
     agent_dir = Path(agent_dir).expanduser().resolve()
     main_py = agent_dir / "hermes_cli" / "main.py"
     if not main_py.exists():
-        raise FileNotFoundError("Hermes agent CLI entrypoint not found")
+        raise FileNotFoundError("Antigravity agent CLI entrypoint not found")
 
     cmd = [str(getattr(api_config, "PYTHON_EXE", sys.executable)), str(main_py)]
     profile_name = ""
@@ -11658,10 +11658,12 @@ _PLUGIN_VISIBILITY_HOOK_SET = set(_PLUGIN_VISIBILITY_HOOKS)
 
 
 def _get_plugin_manager_for_visibility():
-    """Return Hermes Agent's plugin manager for read-only WebUI visibility."""
-    from hermes_cli.plugins import get_plugin_manager
-
-    return get_plugin_manager()
+    """Return plugin manager for read-only WebUI visibility if available."""
+    try:
+        from hermes_cli.plugins import get_plugin_manager
+        return get_plugin_manager()
+    except Exception:
+        return None
 
 
 def _clean_plugin_visibility_text(value, *, limit=240) -> str:
@@ -11703,26 +11705,14 @@ def _plugin_visibility_selected_provider(category: str) -> str:
 
 
 def _plugin_visibility_payload(manager=None) -> dict:
-    """Build a sanitized plugin/hook visibility payload for Settings.
-
-    The Hermes Agent manager stores manifests and callback objects internally.
-    This endpoint intentionally exposes only safe, user-facing metadata and the
-    four lifecycle hook names called out by the Settings visibility MVP. It
-    never includes plugin source paths, callback names, callback reprs, or raw
-    load errors because those can contain private filesystem details.
-
-    Exclusive plugins (e.g. memory providers) are activated through their
-    category's ``<category>.provider`` config, not through ``plugins.enabled``.
-    Their ``loaded.enabled`` stays False by design and they register hooks
-    outside the four visibility hooks below. The payload surfaces ``kind``
-    and ``activation`` plus ``is_active_provider`` when the plugin key carries a
-    category prefix so the panel can render the selected provider distinctly
-    instead of mislabeling it as "Disabled" with no hooks (issue #2659), while
-    still showing unselected exclusive providers as disabled. Flat-key exclusive
-    plugins omit the new field so older activation-based badge semantics remain
-    intact when the category cannot be inferred.
-    """
+    """Build a sanitized plugin/hook visibility payload for Settings."""
     manager = manager or _get_plugin_manager_for_visibility()
+    if manager is None:
+        return {
+            "plugins": [],
+            "supported_hooks": list(_PLUGIN_VISIBILITY_HOOKS),
+            "unavailable": True,
+        }
     manager.discover_and_load(force=False)
 
     plugins = []
@@ -11809,7 +11799,10 @@ def _dashboard_plugin_enabled(plugin_name: str) -> bool:
 def _webui_plugin_payload() -> list[dict]:
     try:
         from api.plugins import get_plugin_metadata
-        return get_plugin_metadata()
+        meta = get_plugin_metadata()
+        if isinstance(meta, dict):
+            return list(meta.values())
+        return list(meta or [])
     except Exception:
         return []
 
@@ -11840,16 +11833,16 @@ def _handle_plugins(handler, parsed) -> bool:
 
 
 _SHELL_ERROR_HTML = """<!doctype html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>Hermes is restarting</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antigravity is restarting</title>
 </head>
-<body style=\"margin:0;padding:2rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#111827;color:#e5e7eb;\">
-  <main style=\"max-width:40rem;margin:10vh auto;line-height:1.5;\">
-    <h1 style=\"font-size:1.5rem;margin:0 0 0.75rem;\">Hermes is restarting…</h1>
-    <p style=\"margin:0;color:#cbd5e1;\">The WebUI shell could not load cleanly. Refresh in a moment if this page does not update automatically.</p>
+<body style="margin:0;padding:2rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#111827;color:#e5e7eb;">
+  <main style="max-width:40rem;margin:10vh auto;line-height:1.5;">
+    <h1 style="font-size:1.5rem;margin:0 0 0.75rem;">Antigravity is restarting…</h1>
+    <p style="margin:0;color:#cbd5e1;">The WebUI shell could not load cleanly. Refresh in a moment if this page does not update automatically.</p>
   </main>
 </body>
 </html>"""
@@ -13525,8 +13518,8 @@ def handle_get(handler, parsed) -> bool:
                         "current_sha": "abc1234",
                         "latest_sha": "def5678",
                         "branch": "master",
-                        "repo_url": "https://github.com/nesquena/hermes-webui",
-                        "compare_url": "https://github.com/nesquena/hermes-webui/compare/abc1234...def5678",
+                        "repo_url": "https://github.com/google-deepmind/antigravity",
+                        "compare_url": "https://github.com/google-deepmind/antigravity",
                     },
                     "agent": {
                         "name": "agent",
@@ -13535,8 +13528,8 @@ def handle_get(handler, parsed) -> bool:
                         "current_sha": "aaa0001",
                         "latest_sha": "bbb0002",
                         "branch": "master",
-                        "repo_url": "https://github.com/NousResearch/hermes-agent",
-                        "compare_url": "https://github.com/NousResearch/hermes-agent/compare/aaa0001...bbb0002",
+                        "repo_url": "https://github.com/google-deepmind/antigravity",
+                        "compare_url": "https://github.com/google-deepmind/antigravity",
                     },
                     "checked_at": 0,
                 },
@@ -15982,7 +15975,7 @@ def handle_post(handler, parsed) -> bool:
             from api.passkeys import registered_credentials
 
             if not _passkey_feature_flag_enabled():
-                return bad(handler, "Passkey support is disabled. Enable HERMES_WEBUI_PASSKEY before going passwordless.", 409)
+                return bad(handler, "Passkey support is disabled. Enable AGY_WEBUI_PASSKEY before going passwordless.", 409)
             if not registered_credentials():
                 return bad(handler, "Register a passkey before going passwordless.", 409)
         elif requested_clear_password:
@@ -16676,7 +16669,7 @@ def handle_post(handler, parsed) -> bool:
         from api.passkeys import PasskeyError, PasskeyRateLimitError, authentication_options
 
         if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled. Set HERMES_WEBUI_PASSKEY=1 or webui_passkey_enabled: true to enable."}, status=404)
+            return j(handler, {"error": "Passkey support is disabled. Set AGY_WEBUI_PASSKEY=1 (or HERMES_WEBUI_PASSKEY=1) or webui_passkey_enabled: true to enable."}, status=404)
         if not is_auth_enabled():
             return j(handler, {"error": "Auth not enabled"}, status=400)
         try:
@@ -17037,7 +17030,7 @@ def _handle_session_export(handler, parsed):
     handler.send_response(200)
     handler.send_header("Content-Type", content_type)
     handler.send_header(
-        "Content-Disposition", f'attachment; filename="hermes-{sid}.{ext}"'
+        "Content-Disposition", f'attachment; filename="agy-{sid}.{ext}"'
     )
     handler.send_header("Content-Length", str(len(payload.encode("utf-8"))))
     handler.send_header("Cache-Control", "no-store")
@@ -23119,10 +23112,7 @@ def _handle_chat_sync(handler, body):
                 if not _base_url:
                     _base_url = _rt.get("base_url")
             except Exception as _e:
-                print(
-                    f"[webui] WARNING: resolve_runtime_provider failed: {_e}",
-                    flush=True,
-                )
+                logger.debug("resolve_runtime_provider failed: %s", _e)
             if isinstance(_provider, str) and _provider.startswith("custom:"):
                 _cp_key, _cp_base = resolve_custom_provider_connection(_provider)
                 if not _api_key and _cp_key:
@@ -25738,7 +25728,6 @@ def _handle_session_compress(handler, body):
         ensure_agent_runtime_current()
         import api.config as _cfg
         from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-        import hermes_cli.runtime_provider as _runtime_provider
         AIAgent = require_ai_agent_class()
 
         resolved_model, resolved_provider, resolved_base_url = _cfg.resolve_model_provider(
@@ -25747,6 +25736,7 @@ def _handle_session_compress(handler, body):
 
         resolved_api_key = None
         try:
+            import hermes_cli.runtime_provider as _runtime_provider
             _rt = resolve_runtime_provider_with_anthropic_env_lock(
                 _runtime_provider.resolve_runtime_provider,
                 requested=resolved_provider,
@@ -26405,7 +26395,6 @@ def _handle_handoff_summary(handler, body):
         ensure_agent_runtime_current()
         import api.config as _cfg
         from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-        import hermes_cli.runtime_provider as _runtime_provider
         AIAgent = require_ai_agent_class()
 
         # Try to resolve model from an existing session, fall back to default.
@@ -26417,15 +26406,6 @@ def _handle_handoff_summary(handler, body):
             from api.models import get_session
             s_obj = get_session(sid)
             resolved_model = getattr(s_obj, "model", None)
-            # Carry the session's OWN selected provider into resolution. Without
-            # it, a bare resolve_model_provider(model) routes the summary through
-            # whatever main provider is active — so a session pinned to custom:A
-            # gets its handoff summary rerouted to the active custom:B when both
-            # providers list the same model id (overlapping-id misroute, sibling
-            # of the resolve_model_provider fix). model_with_provider_context
-            # encodes it as @custom:A:model so the resolver honors the session's
-            # endpoint; base_url is backfilled from that provider's own custom
-            # entry by the resolve_custom_provider_connection block below.
             session_model_provider = getattr(s_obj, "model_provider", None)
         except Exception:
             pass
@@ -26437,6 +26417,7 @@ def _handle_handoff_summary(handler, body):
 
         resolved_api_key = None
         try:
+            import hermes_cli.runtime_provider as _runtime_provider
             _rt = resolve_runtime_provider_with_anthropic_env_lock(
                 _runtime_provider.resolve_runtime_provider,
                 requested=resolved_provider,

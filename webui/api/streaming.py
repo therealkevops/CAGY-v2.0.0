@@ -8272,7 +8272,8 @@ def _build_session_db_for_stream(state_db_path):
                         flush=True,
                     )
                     time.sleep(0.05 * (2 ** _attempt) + random.uniform(0, 0.05))
-        raise _last_error or RuntimeError("SessionDB construction exhausted all attempts")
+    except (ImportError, ModuleNotFoundError):
+        return None
     except Exception as _db_err:
         print(f"[webui] WARNING: SessionDB init failed - session_search will be unavailable: {_db_err}", flush=True)
         return None
@@ -10068,8 +10069,10 @@ def _run_agent_streaming(
                     resolved_base_url = _runtime_preferred_base_url(
                         _rt, resolved_provider, configured_base_url
                     )
+                except (ImportError, ModuleNotFoundError):
+                    pass
                 except Exception as _e:
-                    print(f"[webui] WARNING: resolve_runtime_provider failed: {_e}", flush=True)
+                    logger.debug("resolve_runtime_provider failed: %s", _e)
 
                 # Named custom providers (custom:slug) may not be resolvable by
                 # hermes_cli.runtime_provider directly. Fall back to config.yaml

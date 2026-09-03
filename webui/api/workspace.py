@@ -308,7 +308,7 @@ def _workspace_access_error(candidate: Path, *, missing_label: str = "Path does 
         return (
             f"Cannot access path: {candidate}. The server process could not inspect "
             f"this directory ({exc}). On macOS, grant Full Disk Access or Files and "
-            f"Folders permission to the Hermes/WebUI app or server process, then try again."
+            f"Folders permission to the Antigravity/WebUI app or server process, then try again."
         )
     except OSError as exc:
         return f"Cannot access path: {candidate}. The server process could not inspect this path ({exc})."

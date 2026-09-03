@@ -30,6 +30,8 @@ def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
     if not session_id:
         return None
     map_candidates = [
+        Path.home() / ".agy" / "webui" / "sessions" / "agy_session_map.json",
+        Path("/root/.agy/webui/sessions/agy_session_map.json"),
         Path.home() / ".hermes" / "webui" / "sessions" / "agy_session_map.json",
         Path("/root/.hermes/webui/sessions/agy_session_map.json"),
         Path("/opt/data/webui/sessions/agy_session_map.json"),

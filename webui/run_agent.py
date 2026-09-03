@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Union
 
 def _get_map_file() -> Path:
-    default_home = Path.home() / ".agy" if not (Path.home() / ".hermes" / "webui").exists() else Path.home() / ".hermes"
+    default_home = Path.home() / ".agy" if (Path.home() / ".agy" / "webui").exists() or not (Path.home() / ".hermes" / "webui").exists() else Path.home() / ".hermes"
     state_dir = Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(default_home / "webui"))).expanduser().resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / "sessions" / "agy_session_map.json"

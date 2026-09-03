@@ -16,8 +16,8 @@ def _get_plugin_base() -> Path:
     return Path("/dev/null")
 
 
-def get_plugin_metadata() -> Dict[str, Any]:
-    return {}
+def get_plugin_metadata() -> list[dict]:
+    return []
 
 
 def serve_plugin_static(path: str, handler: Any) -> bool:
