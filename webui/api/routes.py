@@ -12030,10 +12030,10 @@ _AGY_MODELS_CACHE = None
 _AGY_MODELS_CACHE_TIME = 0.0
 
 
-def _get_agy_models_payload():
+def _get_agy_models_payload(force: bool = False):
     global _AGY_MODELS_CACHE, _AGY_MODELS_CACHE_TIME
     now = time.time()
-    if _AGY_MODELS_CACHE and (now - _AGY_MODELS_CACHE_TIME < 300.0):
+    if not force and _AGY_MODELS_CACHE and (now - _AGY_MODELS_CACHE_TIME < 300.0):
         return _AGY_MODELS_CACHE
 
     agy_bin = shutil.which("agy") or "/usr/local/bin/agy"
@@ -12056,6 +12056,7 @@ def _get_agy_models_payload():
 
     for mid, label in models_raw:
         mid_l = mid.lower()
+        lbl_l = label.lower()
         if "3.8-flash-high" in mid_l:
             desc = "Flagship hybrid reasoning model (v3.8 High)"
         elif "3.8-flash-medium" in mid_l:
@@ -12076,11 +12077,11 @@ def _get_agy_models_payload():
             desc = "Fast reasoning model (v3.6)"
         elif "3.5-flash" in mid_l:
             desc = "Lightweight reasoning model (v3.5)"
-        elif "sonnet" in mid_l:
+        elif "sonnet" in mid_l or "sonnet" in lbl_l:
             desc = "Frontier coding with extended thinking"
-        elif "opus" in mid_l:
+        elif "opus" in mid_l or "opus" in lbl_l:
             desc = "Maximum capability frontier model"
-        elif "gpt-oss" in mid_l:
+        elif "gpt-oss" in mid_l or "oss" in mid_l:
             desc = "120B open weights reasoning model"
         else:
             desc = f"Official Antigravity model: {label}"
@@ -12091,9 +12092,9 @@ def _get_agy_models_payload():
             "label": label,
             "description": desc
         }
-        if "gemini" in mid_l:
+        if "gemini" in mid_l or "gemini" in lbl_l:
             gemini_models.append(item)
-        elif "claude" in mid_l:
+        elif "claude" in mid_l or "claude" in lbl_l or "sonnet" in mid_l or "opus" in mid_l:
             claude_models.append(item)
         else:
             other_models.append(item)
@@ -12402,7 +12403,11 @@ def handle_get(handler, parsed) -> bool:
         return True
 
     if parsed.path == "/api/models":
-        return j(handler, _get_agy_models_payload())
+        force = False
+        if getattr(parsed, "query", None):
+            qs = parse_qs(parsed.query)
+            force = bool(qs.get("force") or qs.get("refresh") or qs.get("freshness"))
+        return j(handler, _get_agy_models_payload(force=force))
 
     if parsed.path == "/api/models/live":
         from api.profiles import profile_env_for_active_request
