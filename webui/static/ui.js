@@ -17439,7 +17439,7 @@ function renderMessages(options){
     }catch(e){}
     S.messages.forEach((m,rawIdx)=>{
       if(!m) return;
-      // OpenAI / Hermes CLI format: role=tool with tool_call_id
+      // OpenAI / AGY format: role=tool with tool_call_id
       if(m.role==='tool'){
         const tid=m.tool_call_id||m.tool_use_id||'';
         if(tid) resultsByTid[tid]=_cliToolResultSnippet(m.content);
@@ -17928,7 +17928,7 @@ function renderMessages(options){
       }
     }
   }
-  // Transparent mode per-turn wiring: collapsible Hermes chat name tag, old-event
+  // Transparent mode per-turn wiring: collapsible AGY chat name tag, old-event
   // fading, and the bottom-of-turn footer (elapsed · tokens · TTFT · status).
   // Runs after the per-turn duration block above so the footer can reuse the
   // computed durationText / tokens / TTFT for each settled assistant turn.

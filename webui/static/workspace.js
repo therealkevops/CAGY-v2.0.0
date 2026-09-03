@@ -420,7 +420,7 @@ function _escHtml(s){
 }
 
 const ARTIFACT_IGNORE_RE = /(^|\/)(?:\.git|\.hg|\.svn|node_modules|\.venv|venv|__pycache__|dist|build|\.next|\.cache)(?:\/|$)/;
-// Canonical Hermes mutators plus MCP filesystem aliases that can create/edit files.
+// Canonical agent mutators plus MCP filesystem aliases that can create/edit files.
 const ARTIFACT_MUTATION_TOOLS = new Set(['write_file','patch','edit_file','create_file','mcp_filesystem_write_file','mcp_filesystem_edit_file']);
 
 function _normalizeArtifactPath(path){

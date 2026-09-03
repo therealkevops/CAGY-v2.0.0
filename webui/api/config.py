@@ -781,7 +781,7 @@ def _save_yaml_config_file(config_path: Path, config_data: dict) -> None:
     try:
         import yaml as _yaml
     except ImportError as exc:
-        raise RuntimeError("PyYAML is required to write Hermes config.yaml") from exc
+        raise RuntimeError("PyYAML is required to write config.yaml") from exc
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     _paths._atomic_write_text(
@@ -853,7 +853,7 @@ def resolve_default_workspace(raw: str | Path | None = None) -> Path:
             return candidate
     raise RuntimeError(
         "Could not create or access any usable workspace directory. "
-        "Set HERMES_WEBUI_DEFAULT_WORKSPACE to a writable path."
+        "Set AGY_WEBUI_DEFAULT_WORKSPACE to a writable path."
     )
 
 

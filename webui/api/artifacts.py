@@ -26,7 +26,7 @@ def _get_brain_dirs() -> List[Path]:
     return valid
 
 def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
-    """Map Hermes/WebUI session_id to AGY conversation_id."""
+    """Map WebUI session_id to AGY conversation_id."""
     if not session_id:
         return None
     map_candidates = [

@@ -4566,7 +4566,7 @@ async function loadSettingsPanel(){
       _settingsAgyDefaultModelOnOpen=(models&&models.default_model)||'';
       _settingsAgyDefaultModelProviderOnOpen=(models&&models.active_provider)||null;
       // Use the smart matcher so a saved bare form like "anthropic/claude-opus-4.6"
-      // (what the CLI's `hermes model` command writes) still selects the matching
+      // (what the CLI's `agy model` command writes) still selects the matching
       // `@nous:anthropic/claude-opus-4.6` option on a Nous setup. Without this, the
       // picker renders blank for any user whose default was persisted without the
       // @-prefix — CLI-first users, legacy installs, etc.
@@ -4985,7 +4985,7 @@ async function loadSettingsPanel(){
     // Password field: always blank (we don't send hash back)
     const pwField=$('settingsPassword');
     if(pwField){pwField.value='';pwField.addEventListener('input',_markSettingsDirty,{once:false});}
-    // #1560: when HERMES_WEBUI_PASSWORD env var is set, the settings password
+    // #1560: when AGY_WEBUI_PASSWORD / HERMES_WEBUI_PASSWORD env var is set, the settings password
     // field silently no-ops. Disable it + reveal the lock banner so the UI
     // tells the truth before a user tries (and the backend now also returns
     // 409 as defense-in-depth).

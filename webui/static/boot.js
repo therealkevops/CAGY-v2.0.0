@@ -684,7 +684,7 @@ function _micToastKeyForRecognitionError(error){
   // Persist SR failure across reloads (e.g. Tailscale/network error)
   const _micForceMediaRecorderKey='mic_force_mediarecorder';
   const _micForceMediaRecorderStored=localStorage.getItem(_micForceMediaRecorderKey);
-  // Prefer Hermes server-side STT (MediaRecorder -> /api/transcribe) only
+  // Prefer Antigravity server-side STT (MediaRecorder -> /api/transcribe) only
   // after the server confirms an STT provider is available. No stored key must
   // keep browser SpeechRecognition as the first-click default until then; that
   // avoids dropping the first dictation on installs without server STT.
@@ -2255,7 +2255,7 @@ $('modelSelect').onchange=async()=>{
   // re-reverts a cross-family pick (the #3737 bug, Codex catch). send() clears it
   // after reading a matching pending pick. (#3739/#3737)
   _applySessionContextMetadataUpdate(data);
-  // Warn if selected model belongs to a different provider than what Hermes is configured for
+  // Warn if selected model belongs to a different provider than what Antigravity is configured for
   if(typeof _checkProviderMismatch==='function'){
     const warn=_checkProviderMismatch(selectedModel);
     if(warn&&typeof showToast==='function') showToast(warn,4000);

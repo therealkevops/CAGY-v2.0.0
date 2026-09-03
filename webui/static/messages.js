@@ -5110,7 +5110,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     _streamFadeLastTickMs=now;
 
     // OpenWebUI fades the actual arriving tokens, so long/fast responses naturally
-    // appear to accelerate. Hermes has a playout buffer, so track incoming word
+    // appear to accelerate. The WebUI has a playout buffer, so track incoming word
     // velocity and play out faster than it instead of using a metronomic cadence.
     // LLM telemetry is usually tokens/sec, but the UI reveals words. A fixed word
     // cadence can look stuck even when token throughput is high, so combine:

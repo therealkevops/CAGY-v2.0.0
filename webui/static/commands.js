@@ -1347,7 +1347,7 @@ async function cmdInterrupt(args){
  * next iteration — same pathway as the CLI's /steer command.
  *
  * Leaves the active stream alone when the agent isn't running, isn't cached,
- * or doesn't support steer (older hermes-agent versions). The failed steer text
+ * or doesn't support steer (older agent versions). The failed steer text
  * is restored to the composer so the user can choose Queue or Interrupt
  * explicitly instead of WebUI silently cancelling the current run.
  */
@@ -1833,8 +1833,7 @@ function cmdStatus(){
 function cmdReasoning(args){
   const arg=(args||'').trim().toLowerCase();
   const BRAIN='\uD83E\uDDE0';
-  // Matches hermes_constants.VALID_REASONING_EFFORTS + 'none' (CLI parity).
-  // Keep this WebUI effort list in sync with hermes-agent#29248.
+  // Matches valid reasoning efforts + 'none' (CLI parity).
   const EFFORTS=['none','minimal','low','medium','high','xhigh','max'];
   // Shared status renderer used by the no-args branch and as a fallback.
   function _fmtStatus(st){

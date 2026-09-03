@@ -1,4 +1,4 @@
-"""Hermes Web UI -- Session model and in-memory session store."""
+"""Antigravity Web UI -- Session model and in-memory session store."""
 import collections
 import copy
 import datetime
