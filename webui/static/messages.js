@@ -7368,7 +7368,7 @@ let _approvalResponding = null;
 let _approvalClearedOwner = null;
 let _approvalDisplayedOwner = null;
 
-const _DISMISSED_APPROVALS_KEY = 'hermes_dismissed_approvals';
+const _DISMISSED_APPROVALS_KEY = 'agy_dismissed_approvals';
 
 // Dismissed approvals are namespaced by session so that two sessions carrying
 // the SAME approval_id (e.g. a gateway/run source that reuses externally
@@ -8102,7 +8102,7 @@ function startSessionStream(sid) {
   // Capture the active session id into a dedicated var BEFORE closing, because
   // stopSessionStream() nulls _sessionStreamSessionId — so the reopen path can't
   // rely on it (that was the bug: the stream never reopened on tab re-show).
-  if (typeof document !== 'undefined' && !document._hermesSessionStreamVisibilityHook) {
+  if (typeof document !== 'undefined' && !document._agySessionStreamVisibilityHook) {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         _sessionStreamHiddenSid = _sessionStreamSessionId;
@@ -8119,7 +8119,7 @@ function startSessionStream(sid) {
         void startSessionStream(resumeSid);
       }
     });
-    document._hermesSessionStreamVisibilityHook = true;
+    document._agySessionStreamVisibilityHook = true;
   }
   // Don't open when tab is hidden — saves connection pool slots. Preserve the
   // pending session id so the visibility handler reopens it on re-show (a session

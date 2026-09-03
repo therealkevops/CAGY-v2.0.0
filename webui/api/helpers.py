@@ -1276,7 +1276,8 @@ def read_body(handler) -> dict:
 
 # ── Profile cookie helpers (issue #798) ─────────────────────────────────────
 
-PROFILE_COOKIE_NAME = 'hermes_profile'
+PROFILE_COOKIE_NAME = 'agy_profile'
+LEGACY_PROFILE_COOKIE_NAME = 'hermes_profile'
 _PROFILE_COOKIE_ENV = 'AGY_WEBUI_PROFILE_COOKIE_NAME'
 _PROFILE_COOKIE_ENV_LEGACY = 'HERMES_WEBUI_PROFILE_COOKIE_NAME'
 _LEGACY_PROFILE_COOKIE_ENV = 'WEBUI_PROFILE_COOKIE_NAME'
@@ -1329,7 +1330,7 @@ def get_profile_cookie(handler) -> str | None:
     except _hc.CookieError:
         return None
     cookie_name = get_profile_cookie_name()
-    morsel = cookie.get(cookie_name)
+    morsel = cookie.get(cookie_name) or cookie.get(LEGACY_PROFILE_COOKIE_NAME)
     if not (morsel and morsel.value):
         return None
 

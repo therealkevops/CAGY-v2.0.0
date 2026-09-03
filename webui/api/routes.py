@@ -5634,7 +5634,7 @@ def _csrf_exempt_path(path: str) -> bool:
     }
 
 
-_CSRF_FAILURE_ATTR = "_hermes_csrf_failure_reason"
+_CSRF_FAILURE_ATTR = "_agy_csrf_failure_reason"
 
 
 def _set_csrf_failure_reason(handler, reason: str) -> bool:
@@ -5765,6 +5765,7 @@ def _extension_sidecar_proxy_request_headers(handler) -> dict[str, str]:
             lower in blocked_headers
             or lower in {"authorization", "cookie", "content-length", "host", "origin", "referer"}
             or lower.startswith("x-csrf")
+            or lower.startswith("x-agy-")
             or lower.startswith("x-hermes-")
         ):
             continue
@@ -5782,6 +5783,7 @@ def _send_extension_sidecar_proxy_response(handler, status: int, body: bytes, he
             if (
                 lower in blocked_headers
                 or lower in {"content-length", "set-cookie"}
+                or lower.startswith("x-agy-")
                 or lower.startswith("x-hermes-")
             ):
                 continue

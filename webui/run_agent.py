@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Union
 
 def _get_map_file() -> Path:
-    state_dir = Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser().resolve()
+    default_home = Path.home() / ".agy" if not (Path.home() / ".hermes" / "webui").exists() else Path.home() / ".hermes"
+    state_dir = Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(default_home / "webui"))).expanduser().resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / "sessions" / "agy_session_map.json"
 
@@ -141,7 +142,7 @@ class AIAgent:
             rules_dir.mkdir(parents=True, exist_ok=True)
             
             # Sync Soul
-            for sp in [Path.home() / ".hermes" / "SOUL.md", self.workspace / "SOUL.md"]:
+            for sp in [Path.home() / ".agy" / "SOUL.md", Path.home() / ".hermes" / "SOUL.md", self.workspace / "SOUL.md"]:
                 if sp.exists():
                     c = sp.read_text(encoding="utf-8").strip()
                     if c:
@@ -149,7 +150,7 @@ class AIAgent:
                         break
 
             # Sync User Profile
-            for up in [Path.home() / ".hermes" / "memories" / "USER.md", self.workspace / "USER.md"]:
+            for up in [Path.home() / ".agy" / "memories" / "USER.md", Path.home() / ".hermes" / "memories" / "USER.md", self.workspace / "USER.md"]:
                 if up.exists():
                     c = up.read_text(encoding="utf-8").strip()
                     if c:
@@ -157,7 +158,7 @@ class AIAgent:
                         break
 
             # Sync Memory / Project Context
-            for mp in [self.workspace / "MEMORY.md", Path.home() / ".hermes" / "memories" / "MEMORY.md"]:
+            for mp in [self.workspace / "MEMORY.md", Path.home() / ".agy" / "memories" / "MEMORY.md", Path.home() / ".hermes" / "memories" / "MEMORY.md"]:
                 if mp.exists():
                     c = mp.read_text(encoding="utf-8").strip()
                     if c:
@@ -195,7 +196,7 @@ class AIAgent:
                             ext = "png"
                             if "/" in header:
                                 ext = header.split("/")[1].split(";")[0]
-                            img_dir = self.workspace / ".hermes_uploads"
+                            img_dir = self.workspace / ".agy_uploads"
                             img_dir.mkdir(parents=True, exist_ok=True)
                             img_path = img_dir / f"screenshot_{int(time.time()*1000)}.{ext}"
                             img_path.write_bytes(base64.b64decode(b64data))

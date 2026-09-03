@@ -288,36 +288,14 @@ def _hermes_home_has_webui_state(base: Path) -> bool:
 
 
 def _platform_default_agy_home() -> Path:
-    """Return the platform-aware default Hermes home when HERMES_HOME is unset.
-
-    Native Windows Hermes Agent installs default to %LOCALAPPDATA%\\hermes,
-    while POSIX installs use ~/.hermes.
-
-    Windows migration safety (#2905): v0.51.134 moved the Windows default from
-    ``%USERPROFILE%\\.hermes`` to ``%LOCALAPPDATA%\\hermes`` to match the agent.
-    Upgrading users whose WebUI state still lives at the old location saw an
-    empty app (sessions/pins/settings "lost" — actually just at an address the
-    new build no longer reads).  To avoid stranding that data, prefer the
-    legacy ``%USERPROFILE%\\.hermes`` ONLY when it is populated AND the new
-    ``%LOCALAPPDATA%\\hermes`` location is not yet established.  This is a
-    non-destructive, self-healing fallback: no files are moved, and once the
-    new location has state (fresh installs, or users who set HERMES_HOME) the
-    legacy path is never preferred.  Explicit HERMES_HOME / HERMES_WEBUI_STATE_DIR
-    overrides take precedence upstream and are unaffected.
-    """
-    if os.name == "nt":
-        local_app_data = os.getenv("LOCALAPPDATA", "").strip()
-        if local_app_data:
-            new_home = Path(local_app_data) / "hermes"
-            legacy_home = HOME / ".hermes"
-            # Only fall back to the legacy home if it actually holds state and
-            # the new location has not been established yet — the exact
-            # post-upgrade fingerprint from #2905.
-            if (
-                legacy_home != new_home
-                and not _hermes_home_has_webui_state(new_home)
-                and _hermes_home_has_webui_state(legacy_home)
-            ):
-                return legacy_home
-            return new_home
-    return HOME / ".hermes"
+    """Return the default Antigravity home directory (~/.agy), with legacy ~/.hermes fallback."""
+    agy_env = (os.getenv("AGY_HOME") or os.getenv("HERMES_HOME", "")).strip()
+    if agy_env:
+        return Path(agy_env).expanduser()
+    agy_home = HOME / ".agy"
+    if agy_home.exists():
+        return agy_home
+    hermes_home = HOME / ".hermes"
+    if hermes_home.exists():
+        return hermes_home
+    return agy_home

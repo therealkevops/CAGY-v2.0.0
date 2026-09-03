@@ -58,7 +58,8 @@ PUBLIC_PATHS = frozenset({
     '/session/manifest.json', '/session/manifest.webmanifest',
 })
 
-COOKIE_NAME = 'hermes_session'
+COOKIE_NAME = 'agy_session'
+LEGACY_COOKIE_NAME = 'hermes_session'
 CSRF_HEADER_NAME = 'X-Agy-CSRF-Token'
 LEGACY_CSRF_HEADER_NAME = 'X-Hermes-CSRF-Token'
 
@@ -1035,7 +1036,7 @@ def parse_cookie(handler) -> str | None:
         cookie.load(cookie_header)
     except http.cookies.CookieError:
         return None
-    morsel = cookie.get(_resolve_cookie_name())
+    morsel = cookie.get(_resolve_cookie_name()) or cookie.get(LEGACY_COOKIE_NAME)
     return morsel.value if morsel else None
 
 

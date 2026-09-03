@@ -73,7 +73,7 @@ if (os.environ.get("AGY_WEBUI_TEST_NETWORK_BLOCK") or os.environ.get("HERMES_WEB
         if _addr_is_local(host):
             return _REAL_CREATE_CONN(address, *a, **kw)
         raise OSError(
-            f"hermes test network isolation (server.py): outbound to {address!r} blocked"
+            f"antigravity test network isolation (server.py): outbound to {address!r} blocked"
         )
 
     def _blocked_socket_connect(self, address):
@@ -84,7 +84,7 @@ if (os.environ.get("AGY_WEBUI_TEST_NETWORK_BLOCK") or os.environ.get("HERMES_WEB
         if _addr_is_local(host):
             return _REAL_SOCK_CONNECT(self, address)
         raise OSError(
-            f"hermes test network isolation (server.py): socket.connect to {address!r} blocked"
+            f"antigravity test network isolation (server.py): socket.connect to {address!r} blocked"
         )
 
     socket.create_connection = _blocked_create_connection

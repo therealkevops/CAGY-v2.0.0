@@ -60,7 +60,7 @@ import re
 import threading
 from pathlib import Path
 
-logger = logging.getLogger("hermes.webui")
+logger = logging.getLogger("agy.webui")
 
 # Strict whole-string shape.  ``\\Z`` (not ``$``) so a terminal newline cannot
 # sneak past the gate; ``fullmatch`` is used at call sites.
@@ -122,8 +122,8 @@ def _allowed_roots_for_capture() -> list[Path]:
     """Roots capture is permitted in — same shape as ``/api/media``'s list."""
     roots: list[Path] = []
     home = Path(os.path.expanduser("~"))
-    hermes_home = Path(os.getenv("HERMES_HOME", str(home / ".hermes"))).expanduser()
-    for candidate in (hermes_home, Path("/tmp"), home / ".hermes"):
+    agy_home = Path(os.getenv("AGY_HOME") or os.getenv("HERMES_HOME", str(home / ".agy"))).expanduser()
+    for candidate in (agy_home, Path("/tmp"), home / ".agy", home / ".hermes"):
         try:
             resolved = candidate.resolve()
         except OSError:

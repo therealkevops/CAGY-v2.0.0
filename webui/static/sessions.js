@@ -5920,15 +5920,15 @@ function ensureActiveSessionExternalRefreshPoll(){
   _activeSessionExternalRefreshTimer = setInterval(() => {
     void refreshActiveSessionIfExternallyUpdated('poll');
   }, _activeSessionExternalRefreshMs);
-  if(typeof document !== 'undefined' && !document._hermesExternalRefreshVisibilityHook){
+  if(typeof document !== 'undefined' && !document._agyExternalRefreshVisibilityHook){
     document.addEventListener('visibilitychange', () => {
       if(!document.hidden) void refreshActiveSessionIfExternallyUpdated('visible');
     });
-    document._hermesExternalRefreshVisibilityHook = true;
+    document._agyExternalRefreshVisibilityHook = true;
   }
-  if(typeof window !== 'undefined' && !window._hermesExternalRefreshFocusHook){
+  if(typeof window !== 'undefined' && !window._agyExternalRefreshFocusHook){
     window.addEventListener('focus', () => { void refreshActiveSessionIfExternallyUpdated('focus'); });
-    window._hermesExternalRefreshFocusHook = true;
+    window._agyExternalRefreshFocusHook = true;
   }
 }
 
@@ -6009,8 +6009,8 @@ const _SIDEBAR_SSE_BLUR_CLOSE_MS = 1000;
 
 function _installSidebarSseFocusHook(){
   if(typeof window === 'undefined' || typeof document === 'undefined') return;
-  if(document._hermesSidebarSseFocusHook) return;
-  document._hermesSidebarSseFocusHook = true;
+  if(document._agySidebarSseFocusHook) return;
+  document._agySidebarSseFocusHook = true;
   window.addEventListener('blur', () => {
     if(_sidebarSseBlurCloseTimer) return;
     _sidebarSseBlurCloseTimer = setTimeout(() => {
@@ -6047,7 +6047,7 @@ function _closeSessionEventsSSE(){
 }
 
 function ensureSessionEventsSSE(){
-  if(typeof document !== 'undefined' && !document._hermesSessionEventsVisibilityHook){
+  if(typeof document !== 'undefined' && !document._agySessionEventsVisibilityHook){
     document.addEventListener('visibilitychange', () => {
       if(document.hidden){
         _closeSessionEventsSSE();
@@ -6056,7 +6056,7 @@ function ensureSessionEventsSSE(){
         void _refreshSessionListAfterSidebarResume('visible');
       }
     });
-    document._hermesSessionEventsVisibilityHook = true;
+    document._agySessionEventsVisibilityHook = true;
   }
   _installSidebarSseFocusHook();
   if(typeof EventSource==='undefined') return;
@@ -6199,7 +6199,7 @@ function startGatewaySSE(){
   stopGatewaySSE();
   if(!window._showCliSessions) return;
   // Visibility hook (install once) — mirror ensureSessionEventsSSE() pattern
-  if(typeof document !== 'undefined' && !document._hermesGatewaySSEVisibilityHook){
+  if(typeof document !== 'undefined' && !document._agyGatewaySSEVisibilityHook){
     document.addEventListener('visibilitychange', () => {
       if(document.hidden){
         stopGatewaySSE();
@@ -6207,7 +6207,7 @@ function startGatewaySSE(){
         void startGatewaySSE();
       }
     });
-    document._hermesGatewaySSEVisibilityHook = true;
+    document._agyGatewaySSEVisibilityHook = true;
   }
   _installSidebarSseFocusHook();
   // Don't open when tab is hidden OR the window has lost focus (PWA blur) —

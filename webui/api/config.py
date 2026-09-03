@@ -77,7 +77,7 @@ TLS_ENABLED = TLS_CERT is not None and TLS_KEY is not None
 
 # ── State directory (env-overridable, never inside repo) ──────────────────────
 _DEFAULT_AGY_HOME = _platform_default_agy_home()
-_DEFAULT_STATE_HOME = Path(os.getenv("HERMES_HOME") or _DEFAULT_AGY_HOME).expanduser()
+_DEFAULT_STATE_HOME = Path(os.getenv("AGY_HOME") or os.getenv("HERMES_HOME") or _DEFAULT_AGY_HOME).expanduser()
 
 STATE_DIR = (
     Path(os.getenv("AGY_WEBUI_STATE_DIR") or os.getenv("HERMES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
