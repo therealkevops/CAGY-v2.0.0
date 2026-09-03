@@ -63,6 +63,9 @@ Because macOS uses Keychain while Linux uses secure file-based token storage, ru
 ```
 Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 
+> [!TIP]
+> **Optional Password Protection**: By default, the WebUI runs without a password for fast local development. If running on a shared network or server, set `AGY_WEBUI_PASSWORD=your_password` in `.env` to require password login (`agy_session` cookie).
+
 ---
 
 ## WebUI Overview & Navigation
