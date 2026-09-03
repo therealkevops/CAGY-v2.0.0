@@ -98,7 +98,7 @@ case "$COMMAND" in
             echo "Checking and updating Antigravity CLI inside running container..."
             $COMPOSE_CMD exec agy-unified agy update
             echo "Restarting WebUI inside container..."
-            $COMPOSE_CMD exec agy-unified supervisorctl restart hermes-webui
+            $COMPOSE_CMD exec agy-unified supervisorctl restart agy-webui >/dev/null 2>&1 || $COMPOSE_CMD exec agy-unified supervisorctl restart hermes-webui
             echo "✓ AGY CLI and WebUI updated successfully!"
         else
             echo "Container is not running. Performing full update & rebuild..."
