@@ -12029,7 +12029,7 @@ def _get_agy_models_payload(force: bool = False):
     if not force and _AGY_MODELS_CACHE and (now - _AGY_MODELS_CACHE_TIME < 300.0):
         return _AGY_MODELS_CACHE
 
-    agy_bin = shutil.which("agy") or "/usr/local/bin/agy"
+    agy_bin = os.environ.get("AGY_CLI_PATH") or shutil.which("agy") or "/usr/local/bin/agy"
     models_raw = []
     try:
         proc = subprocess.run([agy_bin, "models"], capture_output=True, text=True, timeout=8)

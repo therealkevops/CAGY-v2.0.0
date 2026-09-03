@@ -99,6 +99,21 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 ./agy-container.sh down
 ```
 
+### Running Automated Tests
+
+CAGY includes a comprehensive automated test suite covering syntax compilation, the `run_agent.py` CLI streaming bridge, dynamic model discovery, session persistence, and core REST API endpoints:
+
+```bash
+# Run hermetic test suite locally on host
+./run-tests.sh
+
+# Run test suite inside the running Docker container
+./run-tests.sh --container
+
+# Run live single-turn compatibility probe against Google Antigravity
+./run-tests.sh --compatibility
+```
+
 ### Updating Antigravity CLI
 
 We provide two update pathways:

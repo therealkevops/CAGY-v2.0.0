@@ -110,6 +110,7 @@ class AIAgent:
 
     def _find_agy_bin(self) -> str:
         candidates = [
+            os.environ.get("AGY_CLI_PATH"),
             "/usr/local/bin/agy",
             "/usr/bin/agy",
             shutil.which("agy"),
@@ -428,6 +429,14 @@ class AIAgent:
                             self.stream_delta_callback(assistant_text)
                 except Exception:
                     pass
+
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+                if proc.stderr:
+                    proc.stderr.close()
+            except Exception:
+                pass
 
         except Exception as e:
             assistant_text += f"\n[Error: {e}]"
