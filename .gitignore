@@ -11,8 +11,11 @@ google_token.json
 container_data/
 workspace/*
 !workspace/.gitkeep
+.agy_uploads/
 .hermes_uploads/
 .memory/
+*.snap
+state.db*
 
 # OS & Editor Artifacts
 .DS_Store

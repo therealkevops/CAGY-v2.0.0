@@ -2,7 +2,15 @@ container_data
 .git
 .gemini
 .memory
+.agy_uploads
 .hermes_uploads
+.env
+.env.*
+*.pem
+*.crt
+*.key
+workspace/*
+!workspace/.gitkeep
 node_modules
 __pycache__
 *.pyc
