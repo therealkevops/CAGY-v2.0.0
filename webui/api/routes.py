@@ -12026,6 +12026,122 @@ def _render_index_shell_base() -> str:
     return base
 
 
+_AGY_MODELS_CACHE = None
+_AGY_MODELS_CACHE_TIME = 0.0
+
+
+def _get_agy_models_payload():
+    global _AGY_MODELS_CACHE, _AGY_MODELS_CACHE_TIME
+    now = time.time()
+    if _AGY_MODELS_CACHE and (now - _AGY_MODELS_CACHE_TIME < 300.0):
+        return _AGY_MODELS_CACHE
+
+    agy_bin = shutil.which("agy") or "/usr/local/bin/agy"
+    models_raw = []
+    try:
+        proc = subprocess.run([agy_bin, "models"], capture_output=True, text=True, timeout=8)
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("Fetching"):
+                continue
+            if "\t" in line:
+                mid, label = line.split("\t", 1)
+                models_raw.append((mid.strip(), label.strip()))
+    except Exception:
+        pass
+
+    gemini_models = []
+    claude_models = []
+    other_models = []
+
+    for mid, label in models_raw:
+        mid_l = mid.lower()
+        if "3.8-flash-high" in mid_l:
+            desc = "Flagship hybrid reasoning model (v3.8 High)"
+        elif "3.8-flash-medium" in mid_l:
+            desc = "Balanced latency and reasoning depth (v3.8 Medium)"
+        elif "3.8-flash-low" in mid_l:
+            desc = "High-throughput rapid execution (v3.8 Low)"
+        elif "3.7-flash-high" in mid_l:
+            desc = "Flagship hybrid reasoning model (v3.7 High)"
+        elif "3.7-flash-medium" in mid_l:
+            desc = "Balanced latency and reasoning depth (v3.7 Medium)"
+        elif "3.7-flash-low" in mid_l:
+            desc = "High-throughput rapid execution (v3.7 Low)"
+        elif "3.1-pro-high" in mid_l:
+            desc = "Deep frontier reasoning and complex code architecture (v3.1 High)"
+        elif "3.1-pro-low" in mid_l:
+            desc = "Direct pro-tier code generation (v3.1 Low)"
+        elif "3.6-flash" in mid_l:
+            desc = "Fast reasoning model (v3.6)"
+        elif "3.5-flash" in mid_l:
+            desc = "Lightweight reasoning model (v3.5)"
+        elif "sonnet" in mid_l:
+            desc = "Frontier coding with extended thinking"
+        elif "opus" in mid_l:
+            desc = "Maximum capability frontier model"
+        elif "gpt-oss" in mid_l:
+            desc = "120B open weights reasoning model"
+        else:
+            desc = f"Official Antigravity model: {label}"
+
+        item = {
+            "id": label,
+            "cli_id": mid,
+            "label": label,
+            "description": desc
+        }
+        if "gemini" in mid_l:
+            gemini_models.append(item)
+        elif "claude" in mid_l:
+            claude_models.append(item)
+        else:
+            other_models.append(item)
+
+    if not gemini_models:
+        gemini_models = [
+            {"id": "Gemini 3.8 Flash (High)", "cli_id": "gemini-3.8-flash-high", "label": "Gemini 3.8 Flash (High)", "description": "Flagship hybrid reasoning model (v3.8 High)"},
+            {"id": "Gemini 3.8 Flash (Medium)", "cli_id": "gemini-3.8-flash-medium", "label": "Gemini 3.8 Flash (Medium)", "description": "Balanced latency and reasoning depth (v3.8 Medium)"},
+            {"id": "Gemini 3.8 Flash (Low)", "cli_id": "gemini-3.8-flash-low", "label": "Gemini 3.8 Flash (Low)", "description": "High-throughput rapid execution (v3.8 Low)"},
+            {"id": "Gemini 3.7 Flash (High)", "cli_id": "gemini-3.7-flash-high", "label": "Gemini 3.7 Flash (High)", "description": "Flagship hybrid reasoning model (v3.7 High)"},
+            {"id": "Gemini 3.7 Flash (Medium)", "cli_id": "gemini-3.7-flash-medium", "label": "Gemini 3.7 Flash (Medium)", "description": "Balanced latency and reasoning depth (v3.7 Medium)"},
+            {"id": "Gemini 3.7 Flash (Low)", "cli_id": "gemini-3.7-flash-low", "label": "Gemini 3.7 Flash (Low)", "description": "High-throughput rapid execution (v3.7 Low)"},
+            {"id": "Gemini 3.1 Pro (High)", "cli_id": "gemini-3.1-pro-high", "label": "Gemini 3.1 Pro (High)", "description": "Deep frontier reasoning and complex code architecture (v3.1 High)"},
+            {"id": "Gemini 3.1 Pro (Low)", "cli_id": "gemini-3.1-pro-low", "label": "Gemini 3.1 Pro (Low)", "description": "Direct pro-tier code generation (v3.1 Low)"},
+            {"id": "Gemini 3.6 Flash (High)", "cli_id": "gemini-3.6-flash-high", "label": "Gemini 3.6 Flash (High)", "description": "Fast reasoning model (v3.6)"},
+            {"id": "Gemini 3.5 Flash (High)", "cli_id": "gemini-3.5-flash-high", "label": "Gemini 3.5 Flash (High)", "description": "Lightweight reasoning model (v3.5)"},
+        ]
+        claude_models = [
+            {"id": "Claude Sonnet 4.6 (Thinking)", "cli_id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (Thinking)", "description": "Frontier coding with extended thinking"},
+            {"id": "Claude Opus 4.6 (Thinking)", "cli_id": "claude-opus-4-6-thinking", "label": "Claude Opus 4.6 (Thinking)", "description": "Maximum capability frontier model"},
+        ]
+        other_models = [
+            {"id": "GPT-OSS 120B (Medium)", "cli_id": "gpt-oss-120b-medium", "label": "GPT-OSS 120B (Medium)", "description": "120B open weights reasoning model"},
+        ]
+
+    payload = {
+        "active_provider": "antigravity",
+        "default_model": "Gemini 3.8 Flash (High)",
+        "configured_model_badges": {},
+        "groups": [
+            {"provider": "Google Gemini", "provider_id": "antigravity", "models": gemini_models},
+            {"provider": "Anthropic Claude", "provider_id": "antigravity", "models": claude_models},
+            {"provider": "Open Source & Local", "provider_id": "antigravity", "models": other_models},
+        ],
+        "aliases": {
+            "flash": "Gemini 3.8 Flash (High)",
+            "flash38": "Gemini 3.8 Flash (High)",
+            "flash37": "Gemini 3.7 Flash (High)",
+            "pro": "Gemini 3.1 Pro (High)",
+            "sonnet": "Claude Sonnet 4.6 (Thinking)",
+            "opus": "Claude Opus 4.6 (Thinking)"
+        }
+    }
+    _AGY_MODELS_CACHE = payload
+    _AGY_MODELS_CACHE_TIME = now
+    return payload
+
+
 def handle_get(handler, parsed) -> bool:
     """Handle all GET routes. Returns True if handled, False for 404."""
     proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
@@ -12286,87 +12402,7 @@ def handle_get(handler, parsed) -> bool:
         return True
 
     if parsed.path == "/api/models":
-        return j(handler, {
-            "active_provider": "antigravity",
-            "default_model": "Gemini 3.7 Flash (High)",
-            "configured_model_badges": {},
-            "groups": [
-                {
-                    "provider": "Google Gemini",
-                    "provider_id": "antigravity",
-                    "models": [
-                        {
-                            "id": "Gemini 3.7 Flash (High)",
-                            "label": "Gemini 3.7 Flash (High Reasoning)",
-                            "description": "Flagship hybrid reasoning model with deep thinking"
-                        },
-                        {
-                            "id": "Gemini 3.7 Flash (Medium)",
-                            "label": "Gemini 3.7 Flash (Medium Reasoning)",
-                            "description": "Balanced latency and reasoning depth"
-                        },
-                        {
-                            "id": "Gemini 3.7 Flash (Low)",
-                            "label": "Gemini 3.7 Flash (Fast / Low Reasoning)",
-                            "description": "High-throughput rapid execution"
-                        },
-                        {
-                            "id": "Gemini 3.1 Pro (High)",
-                            "label": "Gemini 3.1 Pro (High Reasoning)",
-                            "description": "Deep frontier reasoning and complex code architecture"
-                        },
-                        {
-                            "id": "Gemini 3.1 Pro (Low)",
-                            "label": "Gemini 3.1 Pro (Low Reasoning)",
-                            "description": "Direct pro-tier code generation"
-                        },
-                        {
-                            "id": "Gemini 3.6 Flash (High)",
-                            "label": "Gemini 3.6 Flash (High Reasoning)",
-                            "description": "Fast reasoning model"
-                        },
-                        {
-                            "id": "Gemini 3.5 Flash (High)",
-                            "label": "Gemini 3.5 Flash (High Reasoning)",
-                            "description": "Lightweight reasoning model"
-                        }
-                    ]
-                },
-                {
-                    "provider": "Anthropic Claude",
-                    "provider_id": "antigravity",
-                    "models": [
-                        {
-                            "id": "Claude Sonnet 4.6 (Thinking)",
-                            "label": "Claude Sonnet 4.6 (Thinking)",
-                            "description": "Frontier coding with extended thinking"
-                        },
-                        {
-                            "id": "Claude Opus 4.6 (Thinking)",
-                            "label": "Claude Opus 4.6 (Thinking)",
-                            "description": "Maximum capability frontier model"
-                        }
-                    ]
-                },
-                {
-                    "provider": "Open Source & Local",
-                    "provider_id": "antigravity",
-                    "models": [
-                        {
-                            "id": "GPT-OSS 120B (Medium)",
-                            "label": "GPT-OSS 120B (Medium)",
-                            "description": "120B open weights reasoning model"
-                        }
-                    ]
-                }
-            ],
-            "aliases": {
-                "flash": "Gemini 3.7 Flash (High)",
-                "pro": "Gemini 3.1 Pro (High)",
-                "sonnet": "Claude Sonnet 4.6 (Thinking)",
-                "opus": "Claude Opus 4.6 (Thinking)"
-            }
-        })
+        return j(handler, _get_agy_models_payload())
 
     if parsed.path == "/api/models/live":
         from api.profiles import profile_env_for_active_request

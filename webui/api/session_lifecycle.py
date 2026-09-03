@@ -249,7 +249,8 @@ def commit_session_memory(session_id: str, agent=None, *, wait: bool = False, ti
         entry["in_flight"] = True
 
     try:
-        effective_agent.commit_memory_session()
+        if hasattr(effective_agent, "commit_memory_session"):
+            effective_agent.commit_memory_session()
     except Exception:
         logger.exception("commit_memory_session() failed for session %s", session_id)
         with _condition:

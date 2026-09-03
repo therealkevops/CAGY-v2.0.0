@@ -47,7 +47,7 @@ def main():
         "--output-format", "stream-json",
         "--dangerously-skip-permissions",
         "--add-dir", str(Path.cwd()),
-        "--model", "Gemini 3.7 Flash (High)"
+        "--model", "Gemini 3.8 Flash (High)"
     ]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
