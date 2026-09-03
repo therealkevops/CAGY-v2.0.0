@@ -740,22 +740,22 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
         state = "agent_unavailable"
         note_key = "onboarding_notice_system_unavailable"
         note = (
-            "Hermes is not fully importable from the Web UI yet. Finish bootstrap or fix the "
+            "Antigravity is not fully importable from the Web UI yet. Finish bootstrap or fix the "
             "agent install before provider setup will work."
         )
     elif chat_ready:
         state = "ready"
         note_key = "onboarding_notice_system_ready"
         provider_name = _PROVIDER_DISPLAY.get(
-            provider, provider.title() if provider else "Hermes"
+            provider, provider.title() if provider else "Antigravity"
         )
-        note = f"Hermes is minimally configured and ready to chat via {provider_name}."
+        note = f"Antigravity is minimally configured and ready to chat via {provider_name}."
     elif provider_configured:
         state = "provider_incomplete"
         if provider == "custom" and not base_url:
             note_key = "onboarding_notice_custom_base_url_required"
             note = (
-                "Hermes has a saved provider/model selection, but the custom "
+                "Antigravity has a saved provider/model selection, but the custom "
                 "provider still needs a base URL. Add the API key too if that "
                 "server requires one."
             )
@@ -765,19 +765,19 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
             # OAuth / unsupported provider: avoid misleading "API key" wording.
             note = (
                 f"Provider '{provider}' is configured but not yet authenticated. "
-                "Run 'hermes auth' or 'hermes model' in a terminal to complete "
+                "Run 'agy auth' or 'agy model' in a terminal to complete "
                 "setup, then reload the Web UI."
             )
         else:
             note_key = "onboarding_notice_provider_api_key_required"
             note = (
-                "Hermes has a saved provider/model selection but still needs the "
+                "Antigravity has a saved provider/model selection but still needs the "
                 "API key required to chat."
             )
     else:
         state = "needs_provider"
         note_key = "onboarding_notice_provider_choice_required"
-        note = "Hermes is installed, but you still need to choose a provider and save working credentials."
+        note = "Antigravity is installed, but you still need to choose a provider and save working credentials."
 
     return {
         "provider_configured": provider_configured,
@@ -930,9 +930,10 @@ def get_onboarding_status() -> dict:
             "default_workspace": settings.get("default_workspace")
             or str(DEFAULT_WORKSPACE),
             "password_enabled": is_auth_enabled(),
-            "bot_name": settings.get("bot_name") or "Hermes",
+            "bot_name": settings.get("bot_name") or "AGY",
         },
         "system": {
+            "agy_found": bool(_AGY_FOUND),
             "hermes_found": bool(_AGY_FOUND),
             "imports_ok": bool(imports_ok),
             "missing_modules": missing,

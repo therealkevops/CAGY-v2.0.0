@@ -629,12 +629,17 @@
     clearStorageForExtension(id){return storageForExtension(id).clear();},
   };
 
+  window.AgyExtensionSettings=api;
   window.HermesExtensionSettings=api;
-  window.hermesExt=window.hermesExt||{};
-  window.hermesExt.settings=window.hermesExt.settings||{};
-  window.hermesExt.storage=window.hermesExt.storage||{};
-  window.hermesExt.settings.forExtension=settingsForExtension;
-  window.hermesExt.storage.forExtension=storageForExtension;
+  window.agyExt=window.agyExt||{};
+  window.hermesExt=window.hermesExt||window.agyExt;
+  window.agyExt.settings=window.agyExt.settings||{};
+  window.agyExt.storage=window.agyExt.storage||{};
+  window.agyExt.settings.forExtension=settingsForExtension;
+  window.agyExt.storage.forExtension=storageForExtension;
+  window.agyExt.register=registerExtension;
+  window.hermesExt.settings=window.agyExt.settings;
+  window.hermesExt.storage=window.agyExt.storage;
   window.hermesExt.register=registerExtension;
-  primeFromStatus(window.__HERMES_EXTENSION_CONFIG__||{});
+  primeFromStatus(window.__AGY_EXTENSION_CONFIG__||window.__HERMES_EXTENSION_CONFIG__||{});
 })();

@@ -59,7 +59,7 @@ function _isDocumentVisibleAndFocused() {
 let _desktopBackgroundedForNotifications=false;
 // Desktop shells can background a visible document; keep that signal notification-only.
 if(typeof window!=='undefined'){
-  window.__hermesSetBackgrounded=(value)=>{
+  window.__agySetBackgrounded=window.__hermesSetBackgrounded=(value)=>{
     _desktopBackgroundedForNotifications=!!value;
     if(_desktopBackgroundedForNotifications){
       for(const k in _STREAM_NOTIFICATION_BACKGROUND){
@@ -2113,14 +2113,14 @@ function closeOtherLiveStreams(activeSid){
 }
 
 function _dispatchExtensionTurnLifecycle(type,sessionId,streamId,details={}){
-  const runtime=typeof window!=='undefined'&&window.HermesExtensionSettings;
+  const runtime=typeof window!=='undefined'&&(window.AgyExtensionSettings||window.HermesExtensionSettings);
   const dispatch=runtime&&runtime._dispatchTurnLifecycle;
   if(typeof dispatch!=='function') return false;
   try{
     return dispatch(type,{sessionId,streamId,...details});
   }catch(error){
     if(typeof console!=='undefined'&&typeof console.error==='function'){
-      try{console.error('[Hermes extensions] lifecycle dispatch failed:',error);}catch(_loggingError){ }
+      try{console.error('[AGY extensions] lifecycle dispatch failed:',error);}catch(_loggingError){ }
     }
     return false;
   }
@@ -6885,7 +6885,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
                 ? _isMessageReaderUnpinned()
                 : (typeof _messageUserUnpinned!=='undefined' && _messageUserUnpinned));
             clearLiveToolCards();if(!assistantText)removeThinking();
-            const cancelAgentName=(assistantDisplayName()+'').trim()||'Hermes';
+            const cancelAgentName=(assistantDisplayName()+'').trim()||'Antigravity';
             S.messages.push({role:'assistant',content:`**Task cancelled:** Task cancelled.\n\n*The run was cancelled by the user before ${cancelAgentName} finished. No provider failure occurred.*`,provider_details:'Task cancelled.',provider_details_label:'Cancellation details',_error:true});
             _attachProjectedAnchorSceneToLastAssistant(S.messages);
             renderMessages({preserveScroll:true});
@@ -7182,7 +7182,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
 }
 
 function transcript(){
-  const lines=[`# Hermes session ${S.session?.session_id||''}`,``,
+  const lines=[`# Antigravity session ${S.session?.session_id||''}`,``,
     `Workspace: ${S.session?.workspace||''}`,`Model: ${S.session?.model||''}`,``];
   for(const m of S.messages){
     if(!m||m.role==='tool')continue;

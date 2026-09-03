@@ -25,14 +25,22 @@ _GATEWAY_RESTART_LOCK = threading.Lock()
 
 def _resolve_hermes_command() -> str:
     """Resolve the CLI path used for active-profile gateway restarts."""
-    hermes_cmd = shutil.which("hermes")
-    if hermes_cmd:
-        return hermes_cmd
+    for name in ("agy", "hermes"):
+        cmd = shutil.which(name)
+        if cmd:
+            return cmd
 
-    sibling = Path(sys.executable).parent / "hermes"
-    if sibling.exists():
-        return str(sibling)
-    return "hermes"
+    for name in ("agy", "hermes"):
+        sibling = Path(sys.executable).parent / name
+        if sibling.exists() and os.access(sibling, os.X_OK):
+            return str(sibling)
+
+    for name in ("agy", "hermes"):
+        custom = Path.home() / ".local" / "bin" / name
+        if custom.exists() and os.access(custom, os.X_OK):
+            return str(custom)
+
+    return "agy"
 
 
 def _consume_stream(stream) -> None:

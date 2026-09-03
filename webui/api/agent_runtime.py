@@ -19,8 +19,8 @@ from api.config import _AGENT_DIR  # noqa: F401
 from api.subprocess_utils import windows_hide_flags
 
 _RESTART_MESSAGE = (
-    "Hermes Agent was updated while Hermes WebUI was running. "
-    "Restart Hermes WebUI before retrying this action."
+    "Antigravity Agent was updated while Antigravity WebUI was running. "
+    "Restart Antigravity WebUI before retrying this action."
 )
 
 

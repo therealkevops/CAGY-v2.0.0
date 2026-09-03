@@ -1572,8 +1572,9 @@ async function loadSession(sid){
   // Extension pre-open hook — fires once per sidebar click, not on every call.
   // _openSidebarSession passes _preloadNotified:true so the hook isn't re-fired
   // when loadSession runs the actual navigation inside it.
-  if(!opts.skipExtHooks && !opts._preloadNotified && typeof _hermesNotifySessionOpen==='function'){
-    var _preResult=_hermesNotifySessionOpen(sid, null, {preload:true, opts:opts});
+  const _notifyOpenFn=(typeof _agyNotifySessionOpen==='function'?_agyNotifySessionOpen:(typeof _hermesNotifySessionOpen==='function'?_hermesNotifySessionOpen:null));
+  if(!opts.skipExtHooks && !opts._preloadNotified && _notifyOpenFn){
+    var _preResult=_notifyOpenFn(sid, null, {preload:true, opts:opts});
     if(_preResult&&_preResult.cancel===true){
       return;
     }
@@ -2287,8 +2288,9 @@ async function loadSession(sid){
     _hideHandoffHint();
   }
   // Extension post-load hook
-  if(!opts.skipExtHooks && typeof _hermesNotifySessionOpen==='function'){
-    try{ _hermesNotifySessionOpen(sid, S.session, {loaded:true, opts:opts}); }catch(_){}
+  const _postNotifyOpenFn=(typeof _agyNotifySessionOpen==='function'?_agyNotifySessionOpen:(typeof _hermesNotifySessionOpen==='function'?_hermesNotifySessionOpen:null));
+  if(!opts.skipExtHooks && _postNotifyOpenFn){
+    try{ _postNotifyOpenFn(sid, S.session, {loaded:true, opts:opts}); }catch(_){}
   }
 }
 
@@ -2373,10 +2375,9 @@ async function _ensureSidebarSessionProfile(session){
 
 async function _openSidebarSession(session, loadOpts={}){
   if(!session||!session.session_id) return;
-  // Extension pre-open hook — before any side-effects (external import, profile switching).
-  // Handler returns {cancel:true} to prevent the open.
-  if(!loadOpts.skipExtHooks && typeof _hermesNotifySessionOpen==='function'){
-    var _preResult=_hermesNotifySessionOpen(session.session_id, null, {preload:true, opts:loadOpts});
+  const _sidebarNotifyOpenFn=(typeof _agyNotifySessionOpen==='function'?_agyNotifySessionOpen:(typeof _hermesNotifySessionOpen==='function'?_hermesNotifySessionOpen:null));
+  if(!loadOpts.skipExtHooks && _sidebarNotifyOpenFn){
+    var _preResult=_sidebarNotifyOpenFn(session.session_id, null, {preload:true, opts:loadOpts});
     if(_preResult&&_preResult.cancel===true) return;
   }
   // #5409: close mobile sidebar AFTER veto guard passes — only close if open proceeds.

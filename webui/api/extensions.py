@@ -333,7 +333,10 @@ def _extension_state_dir() -> Path:
 
         return Path(STATE_DIR)
     except Exception:
-        return Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser()
+        return Path(
+            os.getenv("AGY_WEBUI_STATE_DIR")
+            or os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))
+        ).expanduser()
 
 
 def _extension_state_file() -> Path:

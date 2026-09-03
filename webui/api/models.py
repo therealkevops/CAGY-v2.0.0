@@ -5910,10 +5910,12 @@ def agent_session_row_exists(session_id: str, *, profile=None) -> bool:
 
 def _sidebar_title_is_generic_webui(title: str | None) -> bool:
     text = ' '.join(str(title or '').split())
-    if text == 'Hermes WebUI':
+    if text in ('Antigravity WebUI', 'AGY WebUI', 'Hermes WebUI'):
         return True
-    prefix = 'Hermes WebUI #'
-    return text.startswith(prefix) and text[len(prefix):].isdigit()
+    for prefix in ('Antigravity WebUI #', 'AGY WebUI #', 'Hermes WebUI #'):
+        if text.startswith(prefix) and text[len(prefix):].isdigit():
+            return True
+    return False
 
 
 def _read_state_db_sidebar_overrides(

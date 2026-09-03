@@ -226,7 +226,7 @@ function _renderOnboardingProviderOAuthField(provider){
     <div class="onboarding-oauth-icon">🔑</div>
     <div style="flex:1">
       <strong>Use Claude Code OAuth instead</strong>
-      <p style="margin-top:6px;color:var(--muted);font-size:13px"><strong>Claude Code subscription credentials are not the same as an Anthropic API key.</strong> Use this path only when you want Hermes to use Claude Code credentials already available on the server, or start a short polling flow while you complete <code>claude setup-token</code> on the host.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:13px"><strong>Claude Code subscription credentials are not the same as an Anthropic API key.</strong> Use this path only when you want Antigravity to use Claude Code credentials already available on the server, or start a short polling flow while you complete <code>claude setup-token</code> on the host.</p>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="sm-btn" id="anthropicOAuthBtn" onclick="startAnthropicOAuth()" type="button">Login with Claude Code</button></div>
       <div id="anthropicOAuthFlow" style="display:none;margin-top:12px"></div>
     </div>
@@ -262,7 +262,7 @@ function _renderOnboardingBody(){
   if(nextBtn) nextBtn.textContent=key==='finish'?t('onboarding_open'):t('onboarding_continue');
 
   if(key==='system'){
-    const hermesOk=system.hermes_found&&system.imports_ok;
+    const hermesOk=(system.agy_found??system.hermes_found)&&system.imports_ok;
     const setupOk=!!system.chat_ready;
     const providerNote=_localizedOnboardingProviderNote(system);
     _setOnboardingNotice(providerNote|| (setupOk?t('onboarding_notice_system_ready'):t('onboarding_notice_system_unavailable')),setupOk?'success':(hermesOk?'info':'warn'));
@@ -648,7 +648,7 @@ async function _pollCodexOAuth(){
     _codexOAuthFlowId=null;
     _setCodexOAuthButton(true);
     if(status==='success'){
-      _renderCodexOAuthTerminal('success','Credentials saved to the Hermes credential pool. Refreshing provider status…');
+      _renderCodexOAuthTerminal('success','Credentials saved to the Antigravity credential pool. Refreshing provider status…');
       showToast(t('oauth_codex_success'));
       try{await loadOnboardingWizard();}catch(e){}
     }else if(status==='expired'){

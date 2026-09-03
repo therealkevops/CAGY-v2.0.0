@@ -700,7 +700,7 @@ def _skill_category_from_path(
     if ".gemini" in path_str:
         return "Antigravity"
     if ".hermes" in path_str:
-        return "Hermes"
+        return "Antigravity (Global)"
     return "Custom"
 
 
@@ -12911,7 +12911,7 @@ def handle_get(handler, parsed) -> bool:
 
     if parsed.path == "/login":
         _settings = load_settings()
-        _bn = _html.escape(_settings.get("bot_name") or "Hermes")
+        _bn = _html.escape(_settings.get("bot_name") or "AGY")
         _lang = _settings.get("language", "en")
         _login_strings = _LOGIN_LOCALE[
             _resolve_login_locale_key(_lang)
@@ -13535,7 +13535,7 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/session":
         import time as _time
         _t0 = _time.monotonic()
-        _debug_slow = os.environ.get("HERMES_DEBUG_SLOW", "")
+        _debug_slow = os.environ.get("AGY_DEBUG_SLOW") or os.environ.get("HERMES_DEBUG_SLOW", "")
         # perf(webui/session-load-latency) tier2c: per-stage breakdown via
         # RequestDiagnostics. maybe_start() returns None for paths not in
         # the allowlist, in which case the existing _tN-driven [SLOW] log
@@ -16881,7 +16881,7 @@ def handle_post(handler, parsed) -> bool:
         )
 
         if "bot_name" in body:
-            body["bot_name"] = (str(body["bot_name"]) or "").strip() or "Hermes"
+            body["bot_name"] = (str(body["bot_name"]) or "").strip() or "AGY"
 
         auth_enabled_before = is_auth_enabled()
         password_auth_enabled_before = auth_enabled_before and get_password_hash() is not None

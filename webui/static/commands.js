@@ -42,7 +42,7 @@ const DESKTOP_COMPANION_LOCAL_APP_LABEL='Desktop Companion app';
 
 function _getDesktopCompanionStatusGlobal(){
   if(typeof window==='undefined') return null;
-  return window.__HERMES_WEBUI_DESKTOP_COMPANION_STATUS__||null;
+  return window.__AGY_WEBUI_DESKTOP_COMPANION_STATUS__||window.__HERMES_WEBUI_DESKTOP_COMPANION_STATUS__||null;
 }
 
 function _getDesktopCompanionExtensionStatus(status){
@@ -128,7 +128,7 @@ async function handlePetSlashCommand(rawCommandText,meta){
   if(companionStatus.connected!==true){
     return {handled:false,message:_desktopCompanionConnectMessage()};
   }
-  const hook=typeof window!=='undefined'&&window.__hermesHandlePetSlashCommand;
+  const hook=typeof window!=='undefined'&&(window.__agyHandlePetSlashCommand||window.__hermesHandlePetSlashCommand);
   if(typeof hook==='function'){
     try{
       const result=await hook({
@@ -147,7 +147,7 @@ async function handlePetSlashCommand(rawCommandText,meta){
       }
     }catch(_e){
       if(typeof console!=='undefined'&&console.error){
-        console.error('[hermes] Desktop Companion /pet hook error:',_e);
+        console.error('[AGY] Desktop Companion /pet hook error:',_e);
       }
       return {handled:false,message:_desktopCompanionHookErrorMessage()};
     }
@@ -357,9 +357,9 @@ function cliOnlyCommandResponse(cmdName, meta){
   const detail=desc?`\n\n${desc}`:'';
   let extra='';
   if(name==='browser'){
-    extra='\n\nBrowser tools in WebUI must be configured server-side with the agent/browser environment. Once configured, ask the model to use browser tools directly; `/browser` itself only works in `hermes chat`.';
+    extra='\n\nBrowser tools in WebUI must be configured server-side with the agent/browser environment. Once configured, ask the model to use browser tools directly; `/browser` itself only works in `agy chat`.';
   }
-  return `\`/${name}\` is a Hermes CLI-only command and cannot run inside the WebUI.${detail}${extra}`;
+  return `\`/${name}\` is an Antigravity CLI-only command and cannot run inside the WebUI.${detail}${extra}`;
 }
 
 async function executeAgentCommand(text,_meta){
