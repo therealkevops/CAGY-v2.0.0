@@ -6286,6 +6286,91 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   margin-right: 4px;
 }
 
+/* ── Vault Top Toolbar & Compile Rules Button ── */
+#mainVault .main-view-header {
+  padding: 8px 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+#mainVault .main-view-title {
+  font-size: 15.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 1;
+}
+
+#mainVault .main-view-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.vault-sync-rules-btn,
+#btnSyncVaultRules {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: max-content !important;
+  height: 28px !important;
+  padding: 0 12px !important;
+  gap: 6px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-family: inherit !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  border-radius: var(--radius-sm, 6px) !important;
+  background: var(--accent, #0288a8) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--accent, #0288a8) !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+.vault-sync-rules-btn:hover,
+#btnSyncVaultRules:hover {
+  background: var(--accent-hover, #0299bd) !important;
+  border-color: var(--accent-hover, #0299bd) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(2, 136, 168, 0.3) !important;
+}
+
+.vault-sync-rules-btn:disabled,
+#btnSyncVaultRules:disabled {
+  opacity: 0.65 !important;
+  cursor: wait !important;
+}
+
+.vault-sync-rules-btn svg,
+#btnSyncVaultRules svg {
+  width: 13px !important;
+  height: 13px !important;
+  display: block !important;
+  flex-shrink: 0 !important;
+  color: #ffffff !important;
+}
+
+.panel-head-btn.has-text {
+  width: auto !important;
+  padding: 0 10px !important;
+  gap: 5px !important;
+  font-size: 11.5px !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 960px) {
+  #mainVault #vaultHeaderStats {
+    display: none;
+  }
+}
+
 /* Vault Sidebar */
 .vault-sidebar-content {
   display: flex;

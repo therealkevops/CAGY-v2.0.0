@@ -758,20 +758,28 @@ async function saveNewNote(path, content) {
  */
 async function syncVaultRules() {
   const btn = document.getElementById('btnSyncVaultRules');
-  if (btn) btn.disabled = true;
+  let origHtml = '';
+  if (btn) {
+    origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Compiling...`;
+  }
 
   try {
     const res = await fetch('/api/vault/sync', { method: 'POST' });
     const data = await res.json();
     if (data.ok) {
-      showToast(`Synced ${data.total_compiled_notes} notes to native Antigravity rules!`, 3000, 'success');
+      showToast(`Compiled ${data.total_compiled_notes} notes to native Antigravity rules!`, 3000, 'success');
     } else {
       showToast(data.error || 'Sync failed', 3000, 'error');
     }
   } catch (err) {
     showToast(err.message, 3000, 'error');
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.innerHTML = origHtml;
+      btn.disabled = false;
+    }
   }
 }
 
