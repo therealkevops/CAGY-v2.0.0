@@ -19645,20 +19645,21 @@ def _handle_file_raw(handler, parsed):
 
 def _handle_file_read(handler, parsed):
     qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session_for_file_ops(sid)
-    except KeyError:
-        return bad(handler, "Session not found", 404)
     rel = qs.get("path", [""])[0]
     if not rel:
         return bad(handler, "path is required")
+    sid = qs.get("session_id", [""])[0]
+    ws_path = Path("/workspace")
+    if sid:
+        try:
+            s = get_session_for_file_ops(sid)
+            if s and hasattr(s, "workspace") and s.workspace:
+                cand = Path(s.workspace)
+                if cand.exists():
+                    ws_path = cand
+        except KeyError:
+            return bad(handler, "Session not found", 404)
     try:
-        ws_path = Path(s.workspace) if s and hasattr(s, "workspace") and s.workspace else Path("/workspace")
-        if not ws_path.exists():
-            ws_path = Path("/workspace")
         return j(handler, read_file_content(ws_path, rel))
     except ImportError as e:
         return bad(handler, str(e), 503)
@@ -24078,16 +24079,21 @@ def _handle_file_delete(handler, body):
 
 
 def _handle_file_save(handler, body):
+    rel = body.get("path")
+    if not rel:
+        return bad(handler, "path is required")
+    sid = body.get("session_id", "")
+    ws_root = Path("/workspace")
+    if sid:
+        try:
+            s = get_session_for_file_ops(sid)
+            if s and hasattr(s, "workspace") and s.workspace:
+                cand = Path(s.workspace)
+                if cand.exists():
+                    ws_root = cand
+        except KeyError:
+            return bad(handler, "Session not found", 404)
     try:
-        require(body, "session_id", "path")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session_for_file_ops(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        ws_root = Path(s.workspace)
         target = safe_resolve(ws_root, body["path"])
         if (ws_root / body["path"]).is_symlink():
             return bad(handler, "Cannot save to a symlinked entry")

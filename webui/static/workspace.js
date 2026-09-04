@@ -259,11 +259,11 @@ function _workspaceRouteForPath(path, kind, opts={}){
 }
 
 function _workspaceRouteForPathRel(path, kind, opts={}){
-  if(!S.session) return '';
   const normalizedPath = _normalizeWorkspaceRelPath(path);
   const grant = _workspaceEscapeGrantForPath(normalizedPath);
-  const sessionId = encodeURIComponent(S.session.session_id);
-  const params = new URLSearchParams({session_id:S.session.session_id, path:normalizedPath || '.'});
+  const sessionId = S && S.session ? encodeURIComponent(S.session.session_id) : '';
+  const params = new URLSearchParams({path: normalizedPath || '.'});
+  if(sessionId) params.set('session_id', S.session.session_id);
   if(grant){
     params.set('token', grant.token);
     if(kind === 'raw' && opts.download) params.set('download', '1');
@@ -272,15 +272,14 @@ function _workspaceRouteForPathRel(path, kind, opts={}){
     if(kind === 'read') return `/api/escape/file/read?${params.toString()}`;
     if(kind === 'raw') return `/api/escape/file/raw?${params.toString()}`;
   }
-  if(kind === 'list') return `/api/list?session_id=${sessionId}&path=${encodeURIComponent(normalizedPath || '.')}`;
-  if(kind === 'read') return `/api/file?session_id=${sessionId}&path=${encodeURIComponent(normalizedPath || '.')}`;
+  if(kind === 'list') return `/api/list?${params.toString()}`;
+  if(kind === 'read') return `/api/file?${params.toString()}`;
   if(kind === 'raw'){
     const extra = [];
     if(opts.download) extra.push('download=1');
-    // Inline previews intentionally preserve a literal &inline=1 marker in this file.
     if(opts.inline) extra.push('inline=1');
     const suffix = extra.length ? `&${extra.join('&')}` : '';
-    return `/api/file/raw?session_id=${sessionId}&path=${encodeURIComponent(normalizedPath || '.')}${suffix}`;
+    return `/api/file/raw?${params.toString()}${suffix}`;
   }
   return '';
 }
@@ -1052,6 +1051,11 @@ function updateEditBtn(){
   btn.title = editing ? t('save_title') : t('edit_title');
   btn.style.color = editing ? 'var(--blue)' : '';
   if(_previewDirty) btn.innerHTML = '&#128190; Save*';
+
+  const cancelBtn=$('btnCancelEdit');
+  if(cancelBtn){
+    cancelBtn.style.display = editing ? 'inline-flex' : 'none';
+  }
 }
 
 async function toggleEditMode(){
@@ -1116,6 +1120,7 @@ async function toggleEditMode(){
     $('previewEditArea').onkeydown=e=>{
       if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
     };
+    $('previewEditArea').focus();
   }
   updateEditBtn();
 }
@@ -1148,27 +1153,36 @@ const _PRISM_LANG_MAP={
   json:'json',yaml:'yaml',yml:'yaml',toml:'toml',xml:'xml',
   html:'markup',htm:'markup',svg:'markup',vue:'markup',
   css:'css',scss:'scss',sass:'sass',less:'less',
-  md:'markdown',markdown:'markdown',
-  dockerfile:'docker',makefile:'makefile',cmake:'cmake',
-  ini:'ini',cfg:'ini',conf:'ini',properties:'properties',
+  dockerfile:'docker',docker:'docker',
   diff:'diff',patch:'diff',
-  txt:'',log:'',csv:'',tsv:'',
+  md:'markdown',markdown:'markdown',
+  ini:'ini',cfg:'ini',conf:'ini',properties:'ini',
+  nginx:'nginx',apache:'apacheconf',
+  txt:'plaintext',log:'plaintext',text:'plaintext',
 };
-const _PRISM_BASENAME_LANG_MAP={
-  'dockerfile':'docker','makefile':'makefile','gnumakefile':'makefile',
-  'cmakelists.txt':'cmake',
-  '.gitignore':'ignore','.dockerignore':'ignore',
-};
-function _prismLanguageForPath(path){
-  const base=String(path||'').split(/[\\/]/).pop().toLowerCase();
-  if(base.startsWith('dockerfile.')) return 'docker';
-  if(_PRISM_BASENAME_LANG_MAP[base]!==undefined) return _PRISM_BASENAME_LANG_MAP[base];
+
+function prismLangForPath(path){
+  const name=path.split('/').pop().toLowerCase();
+  if(name==='dockerfile'||name.startsWith('dockerfile.')) return 'docker';
+  if(name==='makefile'||name==='gnumakefile') return 'makefile';
+  if(name==='.env'||name.startsWith('.env.')) return 'ini';
+  if(name==='.gitignore'||name==='.dockerignore') return 'gitignore';
   const ext=fileExt(path).replace(/^\./,'');
   return _PRISM_LANG_MAP[ext]!==undefined?_PRISM_LANG_MAP[ext]:'plaintext';
 }
 
+function _prismLanguageForPath(path){
+  return prismLangForPath(path);
+}
+
 async function openFile(path, opts={}){
-  if(!S.session)return;
+  if(typeof _setWorkspacePanelMode === 'function'){
+    _setWorkspacePanelMode('preview');
+  } else if(typeof openWorkspacePanel === 'function'){
+    openWorkspacePanel('preview');
+  } else if(typeof toggleWorkspacePanel === 'function'){
+    toggleWorkspacePanel(true);
+  }
   const ext=fileExt(path);
   const bustCache=!!(opts&&opts.bustCache);
   const forceRichMarkdown=!!(opts&&opts.forceRichMarkdown);
@@ -1181,7 +1195,7 @@ async function openFile(path, opts={}){
   }
 
   _previewServerEditable = null;
-  _previewSaveRoute = '/api/file/save';
+  _previewSaveRoute = path.startsWith('knowledge/') ? '/api/vault/note' : '/api/file/save';
   _previewOfficeFormat = '';
   _previewPreviewKind = '';
 
@@ -1256,6 +1270,17 @@ async function openFile(path, opts={}){
         showPreview('code');
         $('previewCode').textContent=data.content || '';
       }
+      if(opts && opts.editMode){
+        $('previewEditArea').value = data.content || '';
+        $('previewEditArea').style.display = '';
+        if($('previewCode')) $('previewCode').style.display = 'none';
+        if($('previewMd')) $('previewMd').style.display = 'none';
+        $('previewEditArea').focus();
+        $('previewEditArea').onkeydown=e=>{
+          if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
+        };
+        updateEditBtn();
+      }
     }catch(e){
       console.error("Failed to load markdown file:", e);
       setStatus(t('file_open_failed'));
@@ -1306,6 +1331,17 @@ async function openFile(path, opts={}){
         _previewSaveRoute = data.preview_kind==='office' ? '/api/file/office-save' : '/api/file/save';
       }
       renderCodePreviewContent(path, data.content);
+      if(opts && opts.editMode){
+        $('previewEditArea').value = data.content || '';
+        $('previewEditArea').style.display = '';
+        if($('previewCode')) $('previewCode').style.display = 'none';
+        if($('previewMd')) $('previewMd').style.display = 'none';
+        $('previewEditArea').focus();
+        $('previewEditArea').onkeydown=e=>{
+          if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
+        };
+        updateEditBtn();
+      }
   }catch(e){
       const grant = _workspaceEscapeGrantForPath(path);
       if(grant && e && e.status===403){

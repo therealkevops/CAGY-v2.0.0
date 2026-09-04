@@ -106,7 +106,7 @@ function filterVaultNotes(val) {
 /**
  * Open a note into the Right Sidebar Preview/Editor and highlight it in the 2D Graph.
  */
-async function loadVaultNote(relPath, openSidebar = true) {
+async function loadVaultNote(relPath, openSidebar = true, openInEditor = true) {
   if (!relPath) return;
 
   let clean = relPath.trim().replace(/^knowledge\//, '');
@@ -122,7 +122,7 @@ async function loadVaultNote(relPath, openSidebar = true) {
     highlightVaultGraphNode(clean);
 
     if (openSidebar) {
-      openVaultNoteInRightSidebar(note);
+      openVaultNoteInRightSidebar(note, openInEditor);
     }
   } catch (err) {
     showToast(`Could not load note: ${err.message}`, 3000, 'error');
@@ -132,22 +132,18 @@ async function loadVaultNote(relPath, openSidebar = true) {
 /**
  * Delegate viewing & editing to the existing Right Sidebar.
  */
-function openVaultNoteInRightSidebar(note) {
+function openVaultNoteInRightSidebar(note, openInEditor = true) {
   if (!note) return;
-
-  // 1. Expand right sidebar if collapsed
-  if (typeof toggleWorkspacePanel === 'function') {
-    toggleWorkspacePanel(true);
-  }
 
   const fullPath = 'knowledge/' + (note.path.replace(/^knowledge\//, ''));
 
-  // 2. Set preview state
+  // 1. Set preview state
   _previewCurrentPath = fullPath;
   _previewRawContent = note.content || '';
   _previewRawContentPath = fullPath;
   _previewSaveRoute = '/api/vault/note';
   _previewCurrentMode = 'md';
+  _previewDirty = false;
 
   const previewPathText = document.getElementById('previewPathText');
   if (previewPathText) previewPathText.textContent = fullPath;
@@ -158,26 +154,57 @@ function openVaultNoteInRightSidebar(note) {
   const fileTree = document.getElementById('fileTree');
   if (fileTree) fileTree.style.display = 'none';
 
-  // 3. Render rich Markdown preview in right panel
+  // 2. Expand right sidebar in preview mode
+  if (typeof _setWorkspacePanelMode === 'function') {
+    _setWorkspacePanelMode('preview');
+  } else if (typeof openWorkspacePanel === 'function') {
+    openWorkspacePanel('preview');
+  } else if (typeof toggleWorkspacePanel === 'function') {
+    toggleWorkspacePanel(true);
+  }
+
+  // 3. Render rich Markdown preview in right panel (cached for when returning from edit)
   if (typeof renderMarkdownPreviewContent === 'function') {
     renderMarkdownPreviewContent({ content: note.content || '' });
   } else if (typeof renderMd === 'function') {
     const mdEl = document.getElementById('previewMd');
     if (mdEl) {
       mdEl.innerHTML = renderMd(note.content || '');
-      mdEl.style.display = '';
     }
   }
 
-  if (typeof showPreview === 'function') {
-    showPreview('md');
+  // 4. Open in editor directly
+  const editArea = document.getElementById('previewEditArea');
+  const mdEl = document.getElementById('previewMd');
+  const codeEl = document.getElementById('previewCode');
+
+  if (openInEditor && editArea) {
+    editArea.value = note.content || '';
+    editArea.style.display = '';
+    if (mdEl) mdEl.style.display = 'none';
+    if (codeEl) codeEl.style.display = 'none';
+    editArea.onkeydown = e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (typeof cancelEditMode === 'function') cancelEditMode();
+      }
+    };
+    editArea.focus();
+  } else {
+    if (typeof showPreview === 'function') {
+      showPreview('md');
+    }
   }
 
-  // Ensure Edit button is available
-  const btnEdit = document.getElementById('btnEditFile');
-  if (btnEdit) btnEdit.style.display = 'inline-flex';
+  // 5. Update edit/save toolbar buttons
+  if (typeof updateEditBtn === 'function') {
+    updateEditBtn();
+  } else {
+    const btnEdit = document.getElementById('btnEditFile');
+    if (btnEdit) btnEdit.style.display = 'inline-flex';
+  }
 
-  // 4. Render Linked References (Backlinks) tray in the right panel
+  // 6. Render Linked References (Backlinks) tray in the right panel
   renderVaultRelationsInPreview(note);
 }
 

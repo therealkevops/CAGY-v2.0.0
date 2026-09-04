@@ -263,17 +263,13 @@ function _setWorkspacePanelMode(mode){
 }
 
 function syncWorkspacePanelState(){
-  const hasPreview=_hasWorkspacePreviewVisible();
+  const hasPreview=_hasWorkspacePreviewVisible() || !!(typeof _previewCurrentPath !== 'undefined' && _previewCurrentPath);
   if(hasPreview){
     if(_workspacePanelMode==='closed') _setWorkspacePanelMode('preview');
     else syncWorkspacePanelUI();
     return;
   }
   if(!S.session){
-    // No active session — if the panel was explicitly opened (browse mode), keep it
-    // open so the workspace pane doesn't vanish on a fresh-page or empty-session boot.
-    // The file tree will show the "no workspace" placeholder naturally via renderFileTree().
-    // Only force-close if the mode is 'preview' (file preview without a session is invalid).
     if(_workspacePanelMode==='preview') _setWorkspacePanelMode('closed');
     else syncWorkspacePanelUI();
     return;
@@ -283,10 +279,6 @@ function syncWorkspacePanelState(){
 
 function openWorkspacePanel(mode='browse'){
   if(mode==='browse'&&!S.session&&!_hasWorkspacePreviewVisible()&&!S._profileDefaultWorkspace)return;
-  if(mode==='preview'&&_workspacePanelMode==='browse'){
-    syncWorkspacePanelUI();
-    return;
-  }
   _setWorkspacePanelMode(mode);
 }
 
@@ -611,8 +603,8 @@ function toggleWorkspacePanel(force){
     closeWorkspacePanel();
     return;
   }
-  const nextMode=_hasWorkspacePreviewVisible()?'preview':'browse';
-  openWorkspacePanel(nextMode);
+  const nextMode=(_hasWorkspacePreviewVisible() || !!(typeof _previewCurrentPath !== 'undefined' && _previewCurrentPath))?'preview':'browse';
+  _setWorkspacePanelMode(nextMode);
 }
 function mobileSwitchPanel(name){
   switchPanel(name);
