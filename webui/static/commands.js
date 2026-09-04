@@ -8,6 +8,8 @@ const COMMANDS=[
   {name:'goal',      desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
   {name:'grill-me',  desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
   {name:'learn',     desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
+  {name:'memorize',  desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
+  {name:'vault',     desc:'Antigravity: Open Knowledge Vault & Graph memory panel',                         fn:cmdVault, noEcho:true},
   {name:'schedule',  desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
   // Antigravity (AGY) Settings & Diagnostics
   {name:'quota',     desc:'Antigravity: View live Gemini & model quota balances and reset timers', fn:cmdQuota, noEcho:true},
@@ -392,6 +394,12 @@ function cmdClear(){
   renderMessages();
   $('emptyState').style.display='';
   showToast(t('conversation_cleared'));
+}
+
+function cmdVault(){
+  if(typeof switchPanel==='function'){
+    switchPanel('vault', {fromRailClick:true});
+  }
 }
 
 async function cmdQuota(){

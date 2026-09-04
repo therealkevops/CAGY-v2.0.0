@@ -230,7 +230,7 @@ def get_note(vault_path: Path, rel_path: str) -> Dict[str, Any]:
         "ok": True
     }
 
-def save_note(vault_path: Path, rel_path: str, content: str) -> Dict[str, Any]:
+def save_note(vault_path: Path, rel_path: str, content: str, workspace_path: Optional[Path] = None) -> Dict[str, Any]:
     """Write markdown note to disk, ensuring directory structure."""
     if not rel_path:
         return {"error": "rel_path is required", "ok": False}
@@ -249,8 +249,8 @@ def save_note(vault_path: Path, rel_path: str, content: str) -> Dict[str, Any]:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content or "", encoding="utf-8")
         # Auto-sync rules when saving core profile/conventions notes
-        workspace_path = vault_path.parent
-        sync_vault_to_rules(vault_path, workspace_path)
+        ws = workspace_path if workspace_path is not None else vault_path.parent
+        sync_vault_to_rules(vault_path, ws)
         return {
             "ok": True,
             "path": clean_rel,
@@ -355,3 +355,141 @@ def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None)
         "bytes_written": len(rule_content.encode("utf-8")),
         "timestamp": time.time()
     }
+
+def memorize_insight(
+    vault_path: Path,
+    text: str,
+    category: Optional[str] = None,
+    title: Optional[str] = None,
+    workspace_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Extract, auto-categorize, interlink, and save an insight, decision, or convention
+    into the Knowledge Vault, and immediately re-compile rules.
+    """
+    text = (text or "").strip()
+    if not text:
+        return {"error": "No content provided to memorize", "ok": False}
+
+    vault_path.mkdir(parents=True, exist_ok=True)
+    if workspace_path is None:
+        workspace_path = vault_path.parent
+
+    lower_text = text.lower()
+
+    # 1. Categorization heuristics
+    cat = (category or "").strip().lower()
+    if not cat:
+        if any(k in lower_text for k in ["decid", "adr", "trade-off", "tradeoff", "chose", "chosen", "choice", "migrate from", "deprecated", "forked"]):
+            cat = "decisions"
+        elif any(k in lower_text for k in ["user profile", "preference", "i prefer", "convention", "coding standard", "style guide", "my role", "infrastructure engineer", "cloud architect"]):
+            cat = "user"
+        elif any(k in lower_text for k in ["architecture", "container", "infrastructure", "microservice", "cluster", "nutanix", "docker", "unified", "pipeline", "supervisor"]):
+            cat = "architecture"
+        else:
+            cat = "user" if any(k in lower_text for k in ["rule", "guideline", "always", "never"]) else "notes"
+
+    # 2. Title derivation
+    derived_title = (title or "").strip()
+    if not derived_title:
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("# ") and not line.startswith("## "):
+                derived_title = line[2:].strip()
+                break
+        if not derived_title:
+            first_line = text.splitlines()[0].strip().lstrip("#").strip()
+            m = re.split(r'[.:;\n]', first_line)
+            clean_chunk = m[0].strip() if m else first_line
+            if len(clean_chunk) > 60:
+                clean_chunk = clean_chunk[:60].rsplit(" ", 1)[0]
+            derived_title = clean_chunk or "Memorized Insight"
+
+    # 3. Slug & Filename
+    raw_slug = re.sub(r'[^a-zA-Z0-9_\-]+', '_', derived_title.lower()).strip('_')
+    if not raw_slug:
+        raw_slug = f"insight_{int(time.time())}"
+
+    if cat == "decisions":
+        decisions_dir = vault_path / "decisions"
+        decisions_dir.mkdir(parents=True, exist_ok=True)
+        existing_adrs = list(decisions_dir.glob("adr_*.md"))
+        max_num = 0
+        for adr in existing_adrs:
+            m = re.match(r'adr_(\d+)', adr.name)
+            if m:
+                try:
+                    max_num = max(max_num, int(m.group(1)))
+                except ValueError:
+                    pass
+        next_num = max_num + 1
+        clean_slug = re.sub(r'^adr_\d+_?', '', raw_slug).strip('_')
+        if not clean_slug:
+            clean_slug = "decision"
+        filename = f"adr_{next_num:03d}_{clean_slug}.md"
+        clean_title_core = re.sub(r'^(?:adr\s*\d*[:\-]?\s*)', '', derived_title, flags=re.IGNORECASE).strip()
+        note_title = f"ADR {next_num:03d}: {clean_title_core or 'Architectural Decision'}"
+    else:
+        filename = f"{raw_slug}.md"
+        note_title = derived_title
+
+    # 4. Wikilink Cross-Referencing
+    scan = scan_vault(vault_path)
+    existing_nodes = scan.get("nodes", [])
+    discovered_links = []
+    target_rel = f"{cat}/{filename}"
+
+    for n in existing_nodes:
+        nid = n["id"]
+        if n["path"] == target_rel:
+            continue
+        n_title = n.get("title", "").strip()
+        n_base = nid.split("/")[-1].replace("_", " ")
+        if (n_title and len(n_title) > 3 and n_title.lower() in lower_text) or \
+           (n_base and len(n_base) > 4 and n_base.lower() in lower_text):
+            if f"[[{nid}" not in text and f"[[{n_title}" not in text and f"[[{nid.split('/')[-1]}" not in text:
+                discovered_links.append(nid)
+
+    # 5. Format Content
+    has_h1 = any(l.strip().startswith("# ") for l in text.splitlines())
+    today = time.strftime("%Y-%m-%d")
+
+    content_parts = []
+    if not has_h1:
+        content_parts.append(f"# {note_title}\n")
+        if cat == "decisions":
+            content_parts.append(f"- **Date**: {today}\n- **Status**: Accepted\n")
+            content_parts.append("## Context & Decision\n")
+        elif cat == "user":
+            content_parts.append(f"- **Date**: {today}\n- **Category**: User Preferences & Conventions\n")
+        elif cat == "architecture":
+            content_parts.append(f"- **Date**: {today}\n- **Category**: Architecture & Infrastructure\n")
+
+    content_parts.append(text)
+
+    if discovered_links:
+        content_parts.append("\n## Related References")
+        for dlink in sorted(set(discovered_links)):
+            content_parts.append(f"- [[{dlink}]]")
+
+    final_content = "\n".join(content_parts).strip() + "\n"
+
+    # 6. Save note and sync rules
+    save_res = save_note(vault_path, target_rel, final_content, workspace_path=workspace_path)
+    if not save_res.get("ok"):
+        return save_res
+
+    sync_res = sync_vault_to_rules(vault_path, workspace_path)
+
+    return {
+        "ok": True,
+        "path": f"knowledge/{target_rel}",
+        "rel_path": target_rel,
+        "title": note_title,
+        "category": cat,
+        "links_discovered": len(discovered_links),
+        "references": discovered_links,
+        "rules_synced": sync_res.get("ok", False),
+        "timestamp": time.time()
+    }
+

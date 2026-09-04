@@ -8922,6 +8922,52 @@ function copyMsg(btn){
     setTimeout(()=>{btn.innerHTML=orig;btn.style.color='';},1500);
   }).catch(()=>showToast(t('copy_failed')));
 }
+
+async function memorizeMessage(btn){
+  if(!btn) return;
+  const row=btn.closest('[data-raw-text]');
+  let text=row?row.dataset.rawText:'';
+  if(!text){
+    const msgRow=btn.closest('.msg-row');
+    const body=msgRow?msgRow.querySelector('.msg-body'):null;
+    text=body?body.innerText:'';
+  }
+  text=(text||'').trim();
+  if(!text){
+    showToast('No message content to memorize', 2500, 'warning');
+    return;
+  }
+  const orig=btn.innerHTML;
+  btn.innerHTML=li('loader',13);
+  btn.classList.add('loading');
+  try {
+    const res=await fetch('/api/vault/memorize', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text})
+    });
+    const data=await res.json();
+    if(data.ok){
+      btn.innerHTML=li('check',13);
+      btn.style.color='var(--accent, #10b981)';
+      showToast(`🧠 Memorized: ${data.title||data.rel_path}`, 4000, 'success');
+      if(typeof loadVault==='function'){
+        loadVault().catch(()=>{});
+      }
+      setTimeout(()=>{
+        btn.innerHTML=orig;
+        btn.style.color='';
+        btn.classList.remove('loading');
+      }, 2000);
+    } else {
+      throw new Error(data.error||'Failed to memorize note');
+    }
+  } catch(err){
+    btn.innerHTML=orig;
+    btn.classList.remove('loading');
+    showToast(`⚠️ Memorize error: ${err.message}`, 4000, 'error');
+  }
+}
 function _copyThinkingText(btn){
   const card=btn&&btn.closest?btn.closest('.thinking-card'):null;
   if(!card)return;
@@ -17038,6 +17084,7 @@ function renderMessages(options){
       : false;
     const forkBtn  = (readOnlySession&&!branchableReadOnlySession) ? '' : `<button class="msg-action-btn" title="${t('fork_from_here')}" onclick="forkFromMessage(${rawIdx+1})">${li('git-branch',13)}</button>`;
     const ttsBtn   = !isUser ? `<button class="msg-action-btn msg-tts-btn" title="${t('tts_listen')||'Listen'}" onclick="speakMessage(this)">${li('volume-2',13)}</button>` : '';
+    const memorizeBtn = (!isUser&&!m._live) ? `<button class="msg-action-btn msg-memorize-btn" title="Memorize to Knowledge Vault" onclick="memorizeMessage(this)">${li('bookmark',13)}</button>` : '';
     const tsVal=m._ts||m.timestamp;
     // _formatInServerTz handles fractional-hour offsets (India +0530 etc.)
     // correctly via offset arithmetic; bare toLocaleString is the browser-tz fallback.
@@ -17054,7 +17101,7 @@ function renderMessages(options){
     const questionJumpBtn = (_qJumpTarget!==undefined&&_qJumpTarget!==null)
       ? _questionJumpButtonHtml(_qJumpTarget, assistantRawIdxByQuestionRawIdx.get(_qJumpTarget)??rawIdx)
       : '';
-    const footHtml = `<div class="msg-foot">${timeHtml}<span class="msg-actions">${editBtn}${ttsBtn}${forkBtn}${copyBtn}${retryBtn}</span>${questionJumpBtn}</div>`;
+    const footHtml = `<div class="msg-foot">${timeHtml}<span class="msg-actions">${editBtn}${ttsBtn}${forkBtn}${memorizeBtn}${copyBtn}${retryBtn}</span>${questionJumpBtn}</div>`;
 
     if(_isContextCompactionMessage(m)){
       continue;

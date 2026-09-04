@@ -121,6 +121,55 @@ class TestVaultEngine(unittest.TestCase):
         self.assertIn("User Profile", content)
         self.assertIn("Unified Architecture", content)
 
+    def test_memorize_insight_user_preference(self):
+        res = vault.memorize_insight(
+            self.vault_dir,
+            "I prefer concise, direct answers and Python 3.11 with hermetic unittests.",
+            workspace_path=Path(self.temp_dir)
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["category"], "user")
+        self.assertTrue(res["rules_synced"])
+        self.assertTrue((self.vault_dir / res["rel_path"]).exists())
+        content = (self.vault_dir / res["rel_path"]).read_text(encoding="utf-8")
+        self.assertIn("Python 3.11", content)
+
+    def test_memorize_insight_decision_adr(self):
+        res = vault.memorize_insight(
+            self.vault_dir,
+            "We decided to adopt Nutanix NC2 on AWS as the primary cloud architecture.",
+            workspace_path=Path(self.temp_dir)
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["category"], "decisions")
+        self.assertTrue(res["rel_path"].startswith("decisions/adr_"))
+        self.assertTrue((self.vault_dir / res["rel_path"]).exists())
+        content = (self.vault_dir / res["rel_path"]).read_text(encoding="utf-8")
+        self.assertIn("Nutanix NC2", content)
+        self.assertIn("Status**: Accepted", content)
+
+    def test_memorize_insight_wikilink_synthesis(self):
+        res = vault.memorize_insight(
+            self.vault_dir,
+            "All unified container services must adhere to user conventions and profile requirements.",
+            workspace_path=Path(self.temp_dir)
+        )
+        self.assertTrue(res["ok"])
+        self.assertGreaterEqual(res["links_discovered"], 1)
+        content = (self.vault_dir / res["rel_path"]).read_text(encoding="utf-8")
+        self.assertTrue("[[user/conventions]]" in content or "[[user/profile]]" in content or "[[architecture/cagy_unified]]" in content)
+
+    def test_agent_pre_turn_syncs_vault(self):
+        from run_agent import AIAgent
+        agent = AIAgent(workspace=self.temp_dir)
+        rule_file = Path(self.temp_dir) / ".gemini" / "rules" / "knowledge_vault.md"
+        if rule_file.exists():
+            rule_file.unlink()
+        agent._sync_agy_memory()
+        self.assertTrue(rule_file.exists())
+        content = rule_file.read_text(encoding="utf-8")
+        self.assertIn("# Antigravity Knowledge Vault & Long-Term Memory", content)
+
 
 class TestVaultApiEndpoints(unittest.TestCase):
     """Test HTTP API endpoints for Knowledge Vault and Graph."""
@@ -222,6 +271,16 @@ class TestVaultApiEndpoints(unittest.TestCase):
         })
         self.assertEqual(status, 200)
         self.assertTrue(del_res["ok"])
+
+    def test_memorize_endpoint(self):
+        status, res = self._post("/api/vault/memorize", {
+            "text": "We chose Docker buildx with multi-arch amd64 and arm64 targets for deployment."
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["category"], "decisions")
+        self.assertTrue(res["rules_synced"])
+        self.assertTrue(res["rel_path"].startswith("decisions/adr_"))
 
 
 if __name__ == "__main__":

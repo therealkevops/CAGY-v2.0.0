@@ -141,6 +141,15 @@ class AIAgent:
         try:
             rules_dir = self.workspace / ".gemini" / "rules"
             rules_dir.mkdir(parents=True, exist_ok=True)
+
+            # Sync Knowledge Vault & Long-Term Memory
+            try:
+                from api.vault import sync_vault_to_rules, get_vault_dir
+                vdir = get_vault_dir(self.workspace)
+                if vdir.exists():
+                    sync_vault_to_rules(vdir, self.workspace)
+            except Exception:
+                pass
             
             # Sync Soul
             for sp in [Path.home() / ".agy" / "SOUL.md", Path.home() / ".hermes" / "SOUL.md", self.workspace / "SOUL.md"]:

@@ -58,6 +58,15 @@ const AGY_SLASH_COMMANDS = [
     paramPlaceholder: 'e.g. Always use standard Workbench design tokens'
   },
   {
+    cmd: '/memorize',
+    title: 'Memorize to Knowledge Vault',
+    category: 'Memory',
+    desc: 'Extract and persist user preferences, conventions, or architectural decisions into the Knowledge Vault.',
+    icon: 'bookmark',
+    hasParams: true,
+    paramPlaceholder: 'e.g. Always deploy Nutanix NC2 VPC subnets with /24 CIDRs'
+  },
+  {
     cmd: '/quota',
     title: 'Rate Limits & Quota Summary',
     category: 'Diagnostics',
@@ -107,6 +116,16 @@ const AGY_SLASH_COMMANDS = [
     action: () => {
       if (typeof openWorkspacePanel === 'function') openWorkspacePanel('browse');
       if (typeof switchWorkspacePanelTab === 'function') switchWorkspacePanelTab('artifacts');
+    }
+  },
+  {
+    cmd: '/vault',
+    title: 'Knowledge Vault & Graph',
+    category: 'Navigation',
+    desc: 'Open the Obsidian-style Knowledge Vault and 2D interactive force-directed graph.',
+    icon: 'share-2',
+    action: () => {
+      if (typeof switchPanel === 'function') switchPanel('vault', { fromRailClick: true });
     }
   }
 ];
