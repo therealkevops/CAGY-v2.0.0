@@ -345,23 +345,14 @@ function _workspaceTodosHash(items){
 }
 
 function _workspaceTodosTabIsActive(){
-  if(typeof window==='undefined'||window._workspaceTodosTab!==true) return false;
-  if(typeof document==='undefined') return false;
-  const rightPanel=document.querySelector('.rightpanel');
-  if(!rightPanel||!rightPanel.dataset||rightPanel.dataset.activeTab!=='todos') return false;
-  const tab=document.getElementById('workspaceTodosTab');
-  const panel=document.getElementById('workspaceTodosPanel');
-  return !!(tab&&panel&&!tab.hidden&&!panel.hidden);
+  return false;
 }
 
 function _resetWorkspaceTodosRenderCache(){
   _workspaceTodosLastRenderedHash=null;
 }
 
-function _refreshWorkspacePanelTodos(){
-  if(!_workspaceTodosTabIsActive()) return;
-  _loadWorkspacePanelTodos();
-}
+function _refreshWorkspacePanelTodos(){}
 
 if(typeof document !== 'undefined'){
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _setWorkspacePanelTabDataset, {once:true});
@@ -369,11 +360,10 @@ if(typeof document !== 'undefined'){
 }
 
 function switchWorkspacePanelTab(tab){
-  _workspacePanelActiveTab = tab === 'artifacts' ? 'artifacts' : tab === 'todos' ? 'todos' : 'files';
+  _workspacePanelActiveTab = tab === 'artifacts' ? 'artifacts' : 'files';
   _setWorkspacePanelTabDataset();
   const filesTab = $('workspaceFilesTab');
   const artifactsTab = $('workspaceArtifactsTab');
-  const todosTab = $('workspaceTodosTab');
   if(filesTab){
     filesTab.classList.toggle('active', _workspacePanelActiveTab === 'files');
     filesTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'files' ? 'true' : 'false');
@@ -382,37 +372,12 @@ function switchWorkspacePanelTab(tab){
     artifactsTab.classList.toggle('active', _workspacePanelActiveTab === 'artifacts');
     artifactsTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'artifacts' ? 'true' : 'false');
   }
-  if(todosTab){
-    todosTab.classList.toggle('active', _workspacePanelActiveTab === 'todos');
-    todosTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'todos' ? 'true' : 'false');
-  }
   const artifacts = $('workspaceArtifacts');
   if(artifacts) artifacts.hidden = _workspacePanelActiveTab !== 'artifacts';
-  const todosPanel = $('workspaceTodosPanel');
-  if(todosPanel) todosPanel.hidden = _workspacePanelActiveTab !== 'todos';
   if(_workspacePanelActiveTab === 'artifacts') renderSessionArtifacts();
-  if(_workspacePanelActiveTab === 'todos') _loadWorkspacePanelTodos();
 }
 
-function _loadWorkspacePanelTodos(){
-  const panel = $('workspaceTodosPanel');
-  if(!panel) return;
-  let todos = [];
-  try{
-    if(S && Array.isArray(S.todos)){
-      todos = S.todos;
-    } else if(S && S.session && S.session.todo_state && Array.isArray(S.session.todo_state.todos)){
-      todos = S.session.todo_state.todos;
-    } else if(typeof _legacyTodosFromMessages === 'function'){
-      todos = _legacyTodosFromMessages() || [];
-    }
-  }catch(e){ todos = []; }
-  if(!todos.length){
-    panel.innerHTML = renderTodoEmptyState({centered:true});
-    return;
-  }
-  panel.innerHTML = renderTodoRows(todos, {metadata:true});
-}
+function _loadWorkspacePanelTodos(){}
 
 function _escHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

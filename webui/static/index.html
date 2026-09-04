@@ -326,13 +326,21 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
             <span data-i18n="settings_tab_appearance">Appearance & Themes</span>
           </button>
+          <button type="button" class="side-menu-item" data-settings-section="preferences" onclick="switchSettingsSection('preferences',{fromSidebarItem:true})">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span data-i18n="settings_tab_preferences">Preferences</span>
+          </button>
           <button type="button" class="side-menu-item" data-settings-section="conversation" onclick="switchSettingsSection('conversation',{fromSidebarItem:true})">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span data-i18n="settings_tab_conversation">Chat Preferences</span>
+            <span data-i18n="settings_tab_conversation">Session & Data</span>
           </button>
           <button type="button" class="side-menu-item" data-settings-section="system" onclick="switchSettingsSection('system',{fromSidebarItem:true})">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg>
             <span data-i18n="settings_tab_system">System & AGY Status</span>
+          </button>
+          <button type="button" class="side-menu-item" data-settings-section="help" onclick="switchSettingsSection('help',{fromSidebarItem:true})">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span data-i18n="settings_tab_help">Help & Guides</span>
           </button>
         </div>
       </div>
@@ -639,10 +647,6 @@
               <span class="composer-model-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
               <span class="composer-mobile-config-copy"><span class="composer-mobile-config-kicker" data-i18n="composer_mobile_model">Model</span><span class="composer-mobile-config-value" id="composerMobileModelLabel"></span></span>
             </button>
-            <button class="composer-mobile-config-action" id="composerMobileQuotaAction" type="button" onclick="switchPanel('settings');switchSettingsSection('providers')" title="Provider quota" style="display:none">
-              <span class="composer-model-icon" aria-hidden="true"><span class="provider-quota-chip-dot" style="box-shadow:none"></span></span>
-              <span class="composer-mobile-config-copy"><span class="composer-mobile-config-kicker" data-i18n="composer_mobile_quota">Quota</span><span class="composer-mobile-config-value" id="composerMobileQuotaLabel"></span></span>
-            </button>
             <button class="composer-mobile-config-action" id="composerMobileReasoningAction" type="button" onclick="toggleReasoningDropdown()" title="Reasoning effort level" style="display:none">
               <span class="composer-reasoning-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg></span>
               <span class="composer-mobile-config-copy"><span class="composer-mobile-config-kicker" data-i18n="composer_mobile_reasoning">Reasoning</span><span class="composer-mobile-config-value" id="composerMobileReasoningLabel"></span></span>
@@ -659,27 +663,6 @@
             </div>
           </div>
           <div class="ws-dropdown ws-dropdown-footer" id="composerWsDropdown" hidden aria-hidden="true" inert></div>
-          <div class="composer-reasoning-dropdown" id="composerReasoningDropdown">
-            <div class="reasoning-option" data-effort="">Default</div>
-            <div class="reasoning-option" data-effort="none">None</div>
-            <div class="reasoning-option" data-effort="minimal">Minimal</div>
-            <div class="reasoning-option" data-effort="low">Low</div>
-            <div class="reasoning-option" data-effort="medium">Medium</div>
-            <div class="reasoning-option" data-effort="high">High</div>
-            <div class="reasoning-option" data-effort="xhigh">Extra High</div>
-            <div class="reasoning-option" data-effort="max">Max</div>
-          </div>
-          <div class="composer-toolsets-dropdown" id="composerToolsetsDropdown">
-            <div class="toolsets-dropdown-desc" id="toolsetsDropdownDesc"></div>
-            <div class="toolsets-dropdown-state" id="toolsetsDropdownState"></div>
-            <div class="toolsets-dropdown-input-row">
-              <input type="text" id="toolsetsInput" class="toolsets-input" placeholder="" autocomplete="off">
-            </div>
-            <div class="toolsets-dropdown-actions">
-              <button type="button" class="toolsets-action-btn toolsets-apply-btn" id="toolsetsApplyBtn">Apply</button>
-              <button type="button" class="toolsets-action-btn toolsets-clear-btn" id="toolsetsClearBtn">Clear (global)</button>
-            </div>
-          </div>
           <div class="model-dropdown" id="composerModelDropdown"></div>
         </div>
         <div class="upload-bar-wrap" id="uploadBarWrap"><div class="upload-bar" id="uploadBar"></div></div>
@@ -1059,15 +1042,6 @@
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_model">Used for new conversations. Existing conversations keep their selected model.</div>
             </div>
             <div class="settings-field">
-              <label data-i18n="settings_label_auxiliary_models">Auxiliary Models</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_auxiliary_models">Side-task routing for vision, compression, title generation, etc. "Auto" uses your main chat model.</div>
-              <div id="auxModelsContainer"></div>
-              <div style="margin-top:8px;display:flex;gap:8px">
-                <button type="button" id="btnResetAuxModels" class="settings-btn" style="font-size:12px;padding:4px 12px;border-radius:6px" data-i18n="settings_btn_reset_aux_models">Reset all to auto</button>
-                <button type="button" id="btnApplyAuxModels" class="settings-btn" style="font-size:12px;padding:4px 12px;border-radius:6px;display:none" data-i18n="settings_btn_apply_aux_models">Apply changes</button>
-              </div>
-            </div>
-            <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                 <input type="checkbox" id="settingsHideSuggestions" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_hide_suggestions">Hide new-chat suggestions</span>
@@ -1198,13 +1172,6 @@
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input type="checkbox" id="settingsShowQuotaChip" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_quota_chip">Show provider quota chip in composer</span>
-              </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_quota_chip">Displays an ambient remaining-quota indicator (e.g. OpenRouter credit balance) in the composer footer. Default off. Only visible on wide displays (≥1400px) when enabled, to keep the composer uncluttered on laptop and standard desktop widths.</div>
-            </div>
-            <div class="settings-field">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                 <input type="checkbox" id="settingsShowConversationOutline" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_conversation_outline">Show conversation outline</span>
               </label>
@@ -1261,14 +1228,13 @@
               </select>
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_auto_title_refresh">Automatically re-generates the session title based on the latest exchange, keeping it relevant as the conversation evolves. Requires an LLM title generation model to be configured.</div>
             </div>
-          <div class="settings-field" data-settings-search="busy input mode message default while running queue interrupt steer">
+          <div class="settings-field" data-settings-search="busy input mode message default while running queue interrupt">
               <label for="settingsDefaultMessageMode" data-i18n="settings_label_default_message_mode">Default message mode</label>
               <select id="settingsDefaultMessageMode" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
                 <option value="queue" data-i18n="settings_default_message_mode_queue">Queue follow-up</option>
                 <option value="interrupt" data-i18n="settings_default_message_mode_interrupt">Interrupt current turn</option>
-                <option value="steer" data-i18n="settings_default_message_mode_steer">Steer (mid-turn correction)</option>
               </select>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_default_message_mode">Controls what happens when you send a message while the agent is running. Queue waits for the current task; Interrupt cancels and starts fresh; Steer injects a mid-turn correction without interrupting. If Steer is unavailable, the draft is restored so you can choose the next action.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_default_message_mode">Controls what happens when you send a message while the agent is running. Queue waits for the current task; Interrupt cancels and starts fresh.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -1337,7 +1303,7 @@
 
             <div class="settings-field" id="shutdownServerBlock" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
               <label data-i18n="settings_label_shutdown">Stop the WebUI server</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px"><span data-i18n="settings_desc_shutdown_before_cmd">Gracefully stops the local WebUI server. Useful if you launched via </span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_between_cmds"> and want to stop without switching to a terminal. You'll need to relaunch the server (</span><code>./ctl.sh start</code><span data-i18n="settings_desc_shutdown_after_cmd"> or the native app) before the WebUI is reachable again.</span></div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Gracefully stops the WebUI server process. In containerized environments managed by supervisor, run <code>./agy-container.sh down</code> on the host to stop the entire container stack.</div>
               <button class="sm-btn" id="btnShutdownServer" onclick="shutdownServer()" style="width:100%;padding:8px;font-weight:600;color:#e74c3c;border-color:rgba(231,76,60,.3)" data-i18n="settings_btn_shutdown">Stop server</button>
             </div>
             <button class="sm-btn" onclick="saveSettings()" style="margin-top:16px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">Save Settings</button>

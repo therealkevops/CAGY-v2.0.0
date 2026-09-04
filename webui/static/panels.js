@@ -4960,8 +4960,8 @@ async function loadSettingsPanel(){
     // Default message mode
     const defaultMessageModeSel=$('settingsDefaultMessageMode');
     if(defaultMessageModeSel){
-      const val=String(settings.default_message_mode||settings.busy_input_mode||'steer');
-      defaultMessageModeSel.value=['queue','interrupt','steer'].includes(val)?val:'steer';
+      const val=String(settings.default_message_mode||settings.busy_input_mode||'queue');
+      defaultMessageModeSel.value=['queue','interrupt'].includes(val)?val:'queue';
       // #5170 mirror write on panel load, under the #5145 rename.
       window._defaultMessageMode=(typeof _persistDefaultMessageMode==='function')?_persistDefaultMessageMode(defaultMessageModeSel.value):defaultMessageModeSel.value;
       defaultMessageModeSel.addEventListener('change',_schedulePreferencesAutosave,{once:false});
@@ -5047,15 +5047,9 @@ function _setSettingsAuthButtonsVisible(active){
   if(signOutBtn) signOutBtn.style.display=active?'':'none';
   const disableBtn=$('btnDisableAuth');
   if(disableBtn) disableBtn.style.display=active?'':'none';
-  const passkeyBtn=$('btnRegisterPasskey');
-  if(passkeyBtn) passkeyBtn.disabled=!active||!window.PublicKeyCredential||!navigator.credentials;
 }
 function _syncPasswordlessButton(authStatus){
-  const btn=$('btnGoPasswordless');
-  if(!btn) return;
-  const can=!!(authStatus&&authStatus.auth_enabled&&authStatus.password_auth_enabled&&authStatus.passkeys_count>0&&!_settingsPasswordEnvLocked);
-  btn.style.display=can?'':'none';
-  btn.disabled=!can;
+  // Legacy passkey button query removed
 }
 
 function _renderSettingsAuthStatus(authStatus){
@@ -5765,12 +5759,6 @@ async function saveSettings(andClose){
   const showConversationOutline=!!($('settingsShowConversationOutline')||{}).checked;
   const showTps=!!($('settingsShowTps')||{}).checked;
   const fadeTextEffect=!!($('settingsFadeTextEffect')||{}).checked;
-  const showCliSessions=!!($('settingsShowCliSessions')||{}).checked;
-  const showClaudeCodeSessions=!!($('settingsShowClaudeCodeSessions')||{}).checked;
-  const showCronSessions=!!($('settingsShowCronSessions')||{}).checked;
-  const showWebhookSessions=!!($('settingsShowWebhookSessions')||{}).checked;
-  const showKanbanSessions=!!($('settingsShowKanbanSessions')||{}).checked;
-  const showPreviousMessagingSessions=!!($('settingsShowPreviousMessagingSessions')||{}).checked;
   const pinnedSessionsLimit=parseInt(($('settingsPinnedSessionsLimit')||{}).value,10)||3;
   const pw=($('settingsPassword')||{}).value;
   const theme=($('settingsTheme')||{}).value||'dark';
@@ -5778,7 +5766,7 @@ async function saveSettings(andClose){
   const fontSize=($('settingsFontSize')||{}).value||localStorage.getItem('agy-font-size')||'default';
   const language=($('settingsLanguage')||{}).value||'en';
   const sidebarDensity=($('settingsSidebarDensity')||{}).value==='detailed'?'detailed':'compact';
-  const defaultMessageMode=($('settingsDefaultMessageMode')||{}).value||'steer';
+  const defaultMessageMode=($('settingsDefaultMessageMode')||{}).value||'queue';
   const showBusyPlaceholderHint=!!($('settingsShowBusyPlaceholderHint')||{}).checked;
   const body={};
   Object.assign(body,_speechPreferencesPayloadFromUi());
@@ -5819,15 +5807,6 @@ async function saveSettings(andClose){
   body.terminal_auto_expand_on_output=!!($('settingsTerminalAutoExpand')||{}).checked;
   body.workspace_todos_tab=!!window._workspaceTodosTab;
   body.api_redact_enabled=!!($('settingsApiRedact')||{}).checked;
-  body.show_cli_sessions=showCliSessions;
-  // Persist the opt-out child independently; the read path applies the parent gate.
-  body.show_claude_code_sessions=showClaudeCodeSessions;
-  // Cron and webhook sessions are gated on CLI sessions (server short-circuits otherwise);
-  // mirror the autosave path so the explicit Save Settings button persists them too. (#3514)
-  body.show_cron_sessions=showCliSessions&&showCronSessions;
-  body.show_webhook_sessions=showCliSessions&&showWebhookSessions;
-  body.show_kanban_sessions=showCliSessions&&showKanbanSessions;
-  body.show_previous_messaging_sessions=showPreviousMessagingSessions;
   body.pinned_sessions_limit=pinnedSessionsLimit;
   body.sync_to_insights=!!($('settingsSyncInsights')||{}).checked;
   body.check_for_updates=!!($('settingsCheckUpdates')||{}).checked;
@@ -6288,7 +6267,7 @@ const _origSwitchSettings=switchSettingsSection;
 switchSettingsSection=function(name, opts){
   _origSwitchSettings(name, opts);
   if(name==='preferences') updateNotificationPermissionStatus();
-  if(name==='system'){loadMcpServers();loadMcpTools();loadGatewayStatus();}
+  if(name==='system'){loadMcpServers();loadMcpTools();}
 };
 
 // ── Checkpoints / Rollback ──────────────────────────────────────────────────
