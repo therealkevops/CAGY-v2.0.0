@@ -265,13 +265,33 @@
         </div>
       </div>
       <div class="vault-sidebar-content">
-        <div class="vault-metrics-card">
-          <div class="vault-metric-item"><span class="vault-metric-val" id="vaultMetricNotes">0</span><span class="vault-metric-label">Notes</span></div>
-          <div class="vault-metric-item"><span class="vault-metric-val" id="vaultMetricEdges">0</span><span class="vault-metric-label">Links</span></div>
+        <div class="vault-metrics-card four-col">
+          <div class="vault-metric-item" onclick="setVaultHealthFilter('all')" title="Total Notes in Vault" style="cursor:pointer">
+            <span class="vault-metric-val" id="vaultMetricNotes">0</span>
+            <span class="vault-metric-label">Notes</span>
+          </div>
+          <div class="vault-metric-item" onclick="setVaultHealthFilter('all')" title="Total Wikilink Connections" style="cursor:pointer">
+            <span class="vault-metric-val" id="vaultMetricEdges">0</span>
+            <span class="vault-metric-label">Links</span>
+          </div>
+          <div class="vault-metric-item vault-metric-clickable" id="vaultMetricOrphansWrap" onclick="setVaultHealthFilter('orphans')" title="Filter Orphan Notes (0 connections)" style="cursor:pointer">
+            <span class="vault-metric-val" id="vaultMetricOrphans">0</span>
+            <span class="vault-metric-label">Orphans</span>
+          </div>
+          <div class="vault-metric-item vault-metric-clickable" id="vaultMetricUnresolvedWrap" onclick="setVaultHealthFilter('unresolved')" title="Filter Unresolved / Broken Links" style="cursor:pointer">
+            <span class="vault-metric-val" id="vaultMetricUnresolved">0</span>
+            <span class="vault-metric-label">Missing</span>
+          </div>
         </div>
-        <div class="vault-search sidebar-search">
-          <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input id="vaultSearchInput" type="search" placeholder="Search notes or #tags..." oninput="filterVaultNotes(this.value)" autocomplete="off">
+        <div class="vault-search-toolbar">
+          <div class="vault-search sidebar-search" style="flex:1;border-bottom:none;padding:0">
+            <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input id="vaultSearchInput" type="search" placeholder="Search notes or #tags..." oninput="onVaultSearchInput(this.value)" autocomplete="off">
+          </div>
+          <div class="vault-search-modes">
+            <button type="button" class="vault-search-mode-btn active" id="vaultSearchModeName" onclick="setVaultSearchMode('name')" title="Filter by note title or tag">Title</button>
+            <button type="button" class="vault-search-mode-btn" id="vaultSearchModeContent" onclick="setVaultSearchMode('content')" title="Full-text vault body search">Body</button>
+          </div>
         </div>
         <div class="vault-tag-filter" id="vaultTagFilter" style="display:none"></div>
         <div class="vault-note-list" id="vaultNoteList">
@@ -812,6 +832,7 @@
           <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="zoomGraph(1.25)" data-tooltip="Zoom In (+)" aria-label="Zoom In"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="zoomGraph(0.8)" data-tooltip="Zoom Out (-)" aria-label="Zoom Out"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="resetGraphView()" data-tooltip="Reset Zoom & Pan" aria-label="Reset Zoom & Pan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+          <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="exportGraphImage()" data-tooltip="Export Graph as PNG" aria-label="Export Graph as PNG"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
           <button type="button" id="btnSyncVaultRules" class="panel-head-btn primary has-tooltip has-tooltip--bottom" onclick="syncVaultRules()" data-tooltip="Compile Vault to Antigravity Rules" aria-label="Compile Vault to Rules"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sync Rules</button>
         </div>
       </div>
@@ -819,10 +840,10 @@
         <div class="vault-graph-panel full-canvas" id="vaultGraphBox">
           <canvas id="vaultGraphCanvas"></canvas>
           <div class="vault-graph-legend">
-            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#3b82f6"></span> User</span>
-            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</span>
-            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</span>
-            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Journal</span>
+            <button type="button" class="vault-legend-btn" data-folder="user" onclick="toggleVaultLegendFolder('user')"><span class="vault-legend-dot" style="background:#3b82f6"></span> User</button>
+            <button type="button" class="vault-legend-btn" data-folder="architecture" onclick="toggleVaultLegendFolder('architecture')"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</button>
+            <button type="button" class="vault-legend-btn" data-folder="decisions" onclick="toggleVaultLegendFolder('decisions')"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</button>
+            <button type="button" class="vault-legend-btn" data-folder="notes" onclick="toggleVaultLegendFolder('notes')"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Notes</button>
           </div>
         </div>
       </div>
@@ -1527,6 +1548,39 @@
       aria-label="Close outline">&#215;</button>
   </div>
   <div id="outlinePanel"></div>
+</div>
+
+<!-- Knowledge Vault New Note Modal -->
+<div class="mcp-modal-overlay" id="vaultNewNoteModal" style="display:none" onclick="if(event.target===this)closeVaultNewNoteModal()">
+  <div class="mcp-modal-card">
+    <div class="mcp-modal-header">
+      <span>New Vault Note</span>
+      <button type="button" class="btn-icon" onclick="closeVaultNewNoteModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="mcp-presets-row">
+      <span style="font-size:11px;color:var(--muted)">Category:</span>
+      <button type="button" class="mcp-preset-pill active" id="vaultCatDecisions" onclick="selectVaultCategory('decisions')">Architecture Decision (ADR)</button>
+      <button type="button" class="mcp-preset-pill" id="vaultCatArch" onclick="selectVaultCategory('architecture')">Architecture</button>
+      <button type="button" class="mcp-preset-pill" id="vaultCatUser" onclick="selectVaultCategory('user')">User Profile</button>
+      <button type="button" class="mcp-preset-pill" id="vaultCatNotes" onclick="selectVaultCategory('notes')">General Note</button>
+    </div>
+    <div class="mcp-form-group">
+      <label for="vaultNewNoteTitle">Note Title / Topic</label>
+      <input type="text" id="vaultNewNoteTitle" placeholder="e.g. Memory Graph Spacing or User Coding Standards" oninput="updateVaultNotePathPreview()" required autocomplete="off">
+    </div>
+    <div class="mcp-form-group">
+      <label for="vaultNewNotePathPreview">Calculated Target File Path</label>
+      <input type="text" id="vaultNewNotePathPreview" readonly style="opacity:0.75;font-family:var(--font-mono);font-size:12px">
+    </div>
+    <div class="mcp-form-group">
+      <label for="vaultNewNoteTags">Tags (optional, comma or space separated)</label>
+      <input type="text" id="vaultNewNoteTags" placeholder="e.g. #architecture, #memory" autocomplete="off">
+    </div>
+    <div class="mcp-modal-actions">
+      <button type="button" class="btn-mcp-action" onclick="closeVaultNewNoteModal()">Cancel</button>
+      <button type="button" class="btn-mcp-action primary" id="btnSubmitVaultNewNote" onclick="submitVaultNewNote()">Create Note</button>
+    </div>
+  </div>
 </div>
 
 <!-- Fullscreen Artifact Canvas Modal -->

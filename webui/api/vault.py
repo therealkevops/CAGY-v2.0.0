@@ -173,6 +173,8 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             "mtime": info["mtime"],
             "links_count": links_count,
             "backlinks_count": backlinks_count,
+            "in_degree": backlinks_count,
+            "out_degree": links_count,
             "total_connections": links_count + backlinks_count,
             "outgoing_links": info["links"],
             "backlinks": bl,
@@ -191,6 +193,18 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
     # Sort nodes by total connections descending
     nodes.sort(key=lambda n: n["total_connections"], reverse=True)
 
+    # Health analysis: orphans & unresolved links
+    node_ids = {n["id"] for n in nodes}
+    orphans = [n["id"] for n in nodes if n["total_connections"] == 0]
+    unresolved_map: Dict[str, List[str]] = {}
+    for edge in edges:
+        if not edge.get("exists", False) or edge["target"] not in node_ids:
+            unresolved_map.setdefault(edge["target"], []).append(edge["source"])
+    unresolved_links = [
+        {"target": target, "sources": sorted(sources), "occurrences": len(sources)}
+        for target, sources in sorted(unresolved_map.items(), key=lambda x: len(x[1]), reverse=True)
+    ]
+
     all_tags = sorted({t for n in nodes for t in n.get("tags", [])})
 
     return {
@@ -199,6 +213,10 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
         "stats": {
             "total_notes": len(nodes),
             "total_edges": len(edges),
+            "orphan_count": len(orphans),
+            "orphans": orphans,
+            "unresolved_count": len(unresolved_links),
+            "unresolved_links": unresolved_links,
             "all_tags": all_tags,
             "vault_path": str(vault_path),
             "timestamp": time.time()
@@ -518,4 +536,296 @@ def memorize_insight(
         "rules_synced": sync_res.get("ok", False),
         "timestamp": time.time()
     }
+
+
+def get_next_adr_number(vault_path: Path) -> int:
+    """Derive the next sequential ADR number (e.g. 3 for adr_003_...)."""
+    decisions_dir = vault_path / "decisions"
+    if not decisions_dir.exists():
+        return 1
+    existing = list(decisions_dir.glob("adr_*.md"))
+    max_num = 0
+    for adr in existing:
+        m = re.match(r'adr_(\d+)', adr.name)
+        if m:
+            try:
+                max_num = max(max_num, int(m.group(1)))
+            except ValueError:
+                pass
+    return max_num + 1
+
+
+def get_note_template(category: str, title: str, next_adr: Optional[int] = None) -> Dict[str, str]:
+    """Generate path, suggested filename, and starter template for a category."""
+    clean_cat = (category or "notes").strip().lower()
+    clean_title = (title or "Untitled Note").strip()
+    raw_slug = re.sub(r'[^a-zA-Z0-9_\-]+', '_', clean_title.lower()).strip('_') or "note"
+    today = time.strftime("%Y-%m-%d")
+
+    if clean_cat == "decisions":
+        num = next_adr if next_adr is not None else 1
+        clean_slug = re.sub(r'^adr_\d+_?', '', raw_slug).strip('_') or "decision"
+        filename = f"adr_{num:03d}_{clean_slug}.md"
+        rel_path = f"decisions/{filename}"
+        header_title = f"ADR {num:03d}: {clean_title.replace('_', ' ').title()}"
+        content = f"""# {header_title}
+
+- **Date**: {today}
+- **Status**: Proposed
+- **Deciders**: Antigravity Core Team
+
+## Context & Problem Statement
+What is the context, architectural challenge, or motivation driving this decision?
+
+## Decision Drivers
+- Need for modularity and maintainability
+- Performance and resource efficiency
+
+## Considered Options
+- **Option 1**: Description
+- **Option 2**: Description
+
+## Decision Outcome
+Chosen option: **Option 1**, because ...
+
+### Positive Consequences
+- Streamlined architecture
+
+### Negative Consequences / Trade-offs
+- Implementation overhead
+
+## References
+- [[architecture/knowledge_vault_and_graph]]
+"""
+    elif clean_cat == "architecture":
+        filename = f"{raw_slug}.md"
+        rel_path = f"architecture/{filename}"
+        content = f"""# {clean_title}
+
+- **Category**: Architecture & System Design
+- **Last Updated**: {today}
+- **Status**: Active
+
+## System Overview
+High-level overview of the component, runtime model, or subsystem.
+
+## Architecture & Data Flow
+Describe data flow, boundaries, and container execution environment.
+
+## Key Components & Interactions
+- Component A: Description
+- Component B: Description
+
+## Related Notes & Decisions
+- [[user/conventions]]
+"""
+    elif clean_cat == "user":
+        filename = f"{raw_slug}.md"
+        rel_path = f"user/{filename}"
+        content = f"""# {clean_title}
+
+- **Category**: User Preferences & Conventions
+- **Last Updated**: {today}
+
+## Principles & Preferences
+Document tone, workflow patterns, and toolchain defaults.
+
+## Coding Standards
+- Standard 1
+- Standard 2
+
+## References
+- [[architecture/knowledge_vault_and_graph]]
+"""
+    else:
+        clean_cat = "notes"
+        filename = f"{raw_slug}.md"
+        rel_path = f"notes/{filename}"
+        content = f"""# {clean_title}
+
+- **Created**: {today}
+- **Tags**: #notes
+
+## Overview
+Summary of research, guide, or notes.
+
+## Key Takeaways
+- 
+
+## Related Concepts
+- 
+"""
+
+    return {
+        "ok": True,
+        "category": clean_cat,
+        "title": clean_title,
+        "filename": filename,
+        "rel_path": rel_path,
+        "full_rel_path": f"knowledge/{rel_path}",
+        "template": content.strip() + "\n",
+        "template_content": content.strip() + "\n",
+        "next_adr": next_adr
+    }
+
+
+def search_vault(
+    vault_path: Path,
+    query: str,
+    folder: Optional[str] = None,
+    tag: Optional[str] = None,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Full-text keyword and snippet search across all vault markdown notes.
+    Returns matched notes with highlighted excerpt snippets, line numbers, and match scores.
+    """
+    if not vault_path.exists():
+        return {"query": query, "results": [], "total_matches": 0, "ok": True}
+
+    q = (query or "").strip().lower()
+    terms = [t for t in q.split() if t]
+    filter_folder = (folder or "").strip().lower()
+    filter_tag = (tag or "").strip().lower().lstrip("#")
+
+    results = []
+    md_files = list(vault_path.rglob("*.md"))
+
+    for p in md_files:
+        rel = p.relative_to(vault_path).as_posix()
+        note_folder = p.parent.relative_to(vault_path).as_posix()
+        if note_folder == ".":
+            note_folder = "root"
+
+        if filter_folder and filter_folder != "all" and note_folder != filter_folder:
+            continue
+
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        tags = extract_tags(content)
+        if filter_tag and not any(filter_tag in t.lower() for t in tags):
+            continue
+
+        title = _extract_title(content, p.stem)
+        lower_content = content.lower()
+        lower_title = title.lower()
+
+        # If query is non-empty, all terms must match somewhere in title, tags, or content
+        if terms:
+            matches_all = True
+            for term in terms:
+                if (term not in lower_title) and (not any(term in t.lower() for t in tags)) and (term not in lower_content):
+                    matches_all = False
+                    break
+            if not matches_all:
+                continue
+
+        # Extract snippets and calculate score
+        score = 0
+        snippets = []
+        lines = content.splitlines()
+
+        for idx, line in enumerate(lines, start=1):
+            lower_line = line.lower()
+            hit = any(t in lower_line for t in terms) if terms else False
+            if hit:
+                score += 1
+                # Format snippet with <mark> highlighting
+                highlighted = line.strip()
+                if len(highlighted) > 160:
+                    first_idx = len(highlighted)
+                    for t in terms:
+                        pos = highlighted.lower().find(t)
+                        if pos != -1 and pos < first_idx:
+                            first_idx = pos
+                    start_char = max(0, first_idx - 40)
+                    end_char = min(len(highlighted), first_idx + 120)
+                    prefix = "..." if start_char > 0 else ""
+                    suffix = "..." if end_char < len(highlighted) else ""
+                    highlighted = prefix + highlighted[start_char:end_char] + suffix
+
+                for t in terms:
+                    pattern = re.compile(re.escape(t), re.IGNORECASE)
+                    highlighted = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", highlighted)
+
+                if len(snippets) < 4:
+                    snippets.append({
+                        "line": idx,
+                        "text": line.strip(),
+                        "highlighted": highlighted
+                    })
+
+        # Boost score for title or tag matches
+        for t in terms:
+            if t in lower_title:
+                score += 10
+            for tag_item in tags:
+                if t in tag_item.lower():
+                    score += 5
+
+        if not terms:
+            score = 1
+
+        results.append({
+            "id": rel[:-3] if rel.endswith(".md") else rel,
+            "title": title,
+            "path": rel,
+            "folder": note_folder,
+            "tags": tags,
+            "score": score,
+            "snippets": snippets,
+            "total_snippets": score if terms else 0
+        })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+    if limit > 0:
+        results = results[:limit]
+
+    return {
+        "ok": True,
+        "query": query,
+        "results": results,
+        "total_matches": len(results),
+        "folder_filter": filter_folder or None,
+        "tag_filter": filter_tag or None,
+        "timestamp": time.time()
+    }
+
+
+def get_vault_health(vault_path: Path) -> Dict[str, Any]:
+    """Analyze vault graph health: orphan notes, unresolved links, and central hub statistics."""
+    scan = scan_vault(vault_path)
+    nodes = scan.get("nodes", [])
+    edges = scan.get("edges", [])
+
+    node_ids = {n["id"] for n in nodes}
+    orphans = [n for n in nodes if n["total_connections"] == 0]
+
+    unresolved_map: Dict[str, List[str]] = {}
+    for edge in edges:
+        if not edge.get("exists", False) or edge["target"] not in node_ids:
+            unresolved_map.setdefault(edge["target"], []).append(edge["source"])
+
+    unresolved_links = [
+        {"target": target, "sources": sorted(sources), "occurrences": len(sources)}
+        for target, sources in sorted(unresolved_map.items(), key=lambda x: len(x[1]), reverse=True)
+    ]
+
+    hubs = sorted(nodes, key=lambda n: n["total_connections"], reverse=True)[:5]
+
+    return {
+        "ok": True,
+        "total_notes": len(nodes),
+        "total_edges": len(edges),
+        "orphan_count": len(orphans),
+        "orphans": [{"id": o["id"], "title": o["title"], "path": o["path"], "folder": o["folder"]} for o in orphans],
+        "unresolved_count": len(unresolved_links),
+        "unresolved_links": unresolved_links,
+        "top_hubs": [{"id": h["id"], "title": h["title"], "total_connections": h["total_connections"]} for h in hubs],
+        "timestamp": time.time()
+    }
+
 

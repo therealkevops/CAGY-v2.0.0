@@ -13954,6 +13954,28 @@ def handle_get(handler, parsed) -> bool:
         if path.startswith("knowledge/"):
             path = path[len("knowledge/"):]
         return j(handler, get_note(get_vault_dir(), path))
+    if parsed.path == "/api/vault/search":
+        from api.vault import search_vault, get_vault_dir
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        q = qs.get("q", [""])[0]
+        folder = qs.get("folder", [None])[0]
+        tag = qs.get("tag", [None])[0]
+        try:
+            limit = int(qs.get("limit", ["50"])[0])
+        except ValueError:
+            limit = 50
+        return j(handler, search_vault(get_vault_dir(), query=q, folder=folder, tag=tag, limit=limit))
+    if parsed.path == "/api/vault/health":
+        from api.vault import get_vault_health, get_vault_dir
+        return j(handler, get_vault_health(get_vault_dir()))
+    if parsed.path == "/api/vault/template":
+        from api.vault import get_note_template, get_next_adr_number, get_vault_dir
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        category = qs.get("category", ["notes"])[0]
+        title = qs.get("title", [""])[0]
+        vdir = get_vault_dir()
+        next_adr = get_next_adr_number(vdir) if category == "decisions" else None
+        return j(handler, get_note_template(category=category, title=title, next_adr=next_adr))
 
     # ── Token Economics & Memory Analytics (GET) ──
     if parsed.path == "/api/analytics/efficiency":

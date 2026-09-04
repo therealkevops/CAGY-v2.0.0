@@ -6301,6 +6301,23 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   background: var(--surface-subtle);
   border-bottom: 1px solid var(--border);
 }
+.vault-metrics-card.four-col {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 8px 10px;
+}
+.vault-metric-clickable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vault-metric-clickable:hover {
+  background: var(--surface-subtle);
+  border-color: var(--accent);
+}
+.vault-metric-item.active {
+  background: var(--accent-bg, rgba(2, 136, 168, 0.15));
+  border-color: var(--accent);
+}
 .vault-metric-item {
   display: flex;
   flex-direction: column;
@@ -6317,12 +6334,52 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   color: var(--accent);
   font-family: var(--font-mono);
 }
+.vault-metric-val.warn {
+  color: #f59e0b;
+}
+.vault-metric-val.alert {
+  color: #ef4444;
+}
 .vault-metric-label {
   font-size: 10px;
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
   margin-top: 2px;
+}
+.vault-search-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.vault-search-modes {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+}
+.vault-search-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vault-search-mode-btn:hover {
+  color: var(--text);
+}
+.vault-search-mode-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
 }
 .vault-search {
   padding: 8px 12px;
@@ -6420,16 +6477,37 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   left: 16px;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  background: rgba(18, 18, 20, 0.82);
+  gap: 8px;
+  background: rgba(18, 18, 20, 0.88);
   backdrop-filter: blur(8px);
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   font-size: 11px;
   color: var(--muted);
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 5;
+}
+.vault-legend-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: auto;
+  transition: all 0.15s ease;
+}
+.vault-legend-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.vault-legend-btn.disabled {
+  opacity: 0.35;
+  text-decoration: line-through;
 }
 .vault-legend-item {
   display: inline-flex;
@@ -6586,6 +6664,110 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 .vault-item-tag:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* ── Vault Full-Text Search Results & Snippets ── */
+.vault-search-score {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: var(--accent-bg, rgba(2, 136, 168, 0.15));
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  margin-left: auto;
+}
+.vault-search-snippets {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  padding-left: 16px;
+}
+.vault-search-snippet {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+}
+.vault-snippet-line {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 4px;
+}
+.vault-search-snippet mark {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ── Vault Health Filter Banners & Missing Targets ── */
+.vault-health-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  color: #f59e0b;
+  margin-bottom: 6px;
+}
+.vault-clear-filter-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.vault-clear-filter-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+.vault-unresolved-item {
+  border-left: 2px solid #ef4444;
+}
+.vault-create-missing-btn {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.15s ease;
+}
+.vault-create-missing-btn:hover {
+  background: #10b981;
+  color: #ffffff;
+}
+
+/* ── Markdown Preview Interactive Wikilinks ── */
+.vault-wikilink-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(2, 136, 168, 0.4);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 1px 3px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+.vault-wikilink-link:hover {
+  background: var(--accent-bg, rgba(2, 136, 168, 0.15));
+  text-decoration-color: var(--accent);
+  color: #ffffff;
 }
 
 /* ── Wikilink Autocomplete Dropdown in Right-Sidebar Editor ── */

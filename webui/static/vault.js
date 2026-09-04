@@ -23,6 +23,13 @@ let _hoverNode = null;
 let _lastMousePos = { x: 0, y: 0 };
 let _vaultResizeObserver = null;
 
+let _vaultSearchMode = 'name'; // 'name' | 'content'
+let _vaultSearchDebounceTimer = null;
+let _vaultHealthFilter = 'all'; // 'all' | 'orphans' | 'unresolved'
+let _disabledLegendFolders = new Set();
+let _selectedVaultCategory = 'decisions';
+let _nextAdrNumber = 1;
+
 let _currentGraphSpacing = 'spacious';
 try {
   const savedSpacing = localStorage.getItem('agy-vault-spacing');
@@ -65,6 +72,7 @@ const FOLDER_COLORS = {
   user: '#3b82f6',         // Blue
   architecture: '#10b981', // Emerald green
   decisions: '#f59e0b',    // Amber gold
+  notes: '#8b5cf6',        // Purple
   journal: '#8b5cf6',      // Purple
   root: '#0288a8',         // Cyan / accent
   other: '#6b7280'         // Gray
@@ -109,13 +117,202 @@ async function loadVault(force = false) {
 function updateVaultMetrics(stats) {
   const mNotes = document.getElementById('vaultMetricNotes');
   const mEdges = document.getElementById('vaultMetricEdges');
+  const mOrphans = document.getElementById('vaultMetricOrphans');
+  const mUnresolved = document.getElementById('vaultMetricUnresolved');
   const hStats = document.getElementById('vaultHeaderStats');
+
   const notes = stats.total_notes || 0;
   const edges = stats.total_edges || 0;
+  const orphans = (typeof stats.orphan_count === 'number')
+    ? stats.orphan_count
+    : (Array.isArray(stats.orphans) ? stats.orphans.length : 0);
+  const unresolved = (typeof stats.unresolved_count === 'number')
+    ? stats.unresolved_count
+    : (Array.isArray(stats.unresolved_links) ? stats.unresolved_links.length : 0);
+
   if (mNotes) mNotes.textContent = String(notes);
   if (mEdges) mEdges.textContent = String(edges);
+  if (mOrphans) {
+    mOrphans.textContent = String(orphans);
+    mOrphans.classList.toggle('warn', orphans > 0);
+  }
+  if (mUnresolved) {
+    mUnresolved.textContent = String(unresolved);
+    mUnresolved.classList.toggle('alert', unresolved > 0);
+  }
   if (hStats && _currentGraphDepth === 'all') {
     hStats.textContent = `${notes} notes · ${edges} links`;
+  }
+}
+
+function setVaultSearchMode(mode) {
+  _vaultSearchMode = mode;
+  const btnName = document.getElementById('vaultSearchModeName');
+  const btnContent = document.getElementById('vaultSearchModeContent');
+  if (btnName) btnName.classList.toggle('active', mode === 'name');
+  if (btnContent) btnContent.classList.toggle('active', mode === 'content');
+
+  const input = document.getElementById('vaultSearchInput');
+  if (input) {
+    input.placeholder = mode === 'content' ? 'Search full text body...' : 'Search notes or #tags...';
+    onVaultSearchInput(input.value);
+  }
+}
+
+function onVaultSearchInput(val) {
+  if (_vaultSearchMode === 'name') {
+    renderVaultSidebarList(_vaultData.nodes || [], val);
+    return;
+  }
+
+  // Full-text body search with debounce
+  clearTimeout(_vaultSearchDebounceTimer);
+  const q = (val || '').trim();
+  if (!q) {
+    renderVaultSidebarList(_vaultData.nodes || [], '');
+    return;
+  }
+
+  const listEl = document.getElementById('vaultNoteList');
+  if (listEl) {
+    listEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">Searching vault body...</div>';
+  }
+
+  _vaultSearchDebounceTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/vault/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      renderVaultSearchResults(data.results || [], q);
+    } catch (err) {
+      if (listEl) {
+        listEl.innerHTML = `<div style="padding:12px;color:#ef4444;font-size:12px">Search failed: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+  }, 220);
+}
+
+function renderVaultSearchResults(results, query) {
+  const listEl = document.getElementById('vaultNoteList');
+  if (!listEl) return;
+
+  if (!results.length) {
+    listEl.innerHTML = `<div class="vault-empty-list">No notes containing &ldquo;${escapeHtml(query)}&rdquo;</div>`;
+    return;
+  }
+
+  listEl.innerHTML = results.map(r => {
+    const isSel = _activeVaultNote && (_activeVaultNote.path === r.path || _activeVaultNote.path === ('knowledge/' + r.path));
+    const color = FOLDER_COLORS[r.folder] || FOLDER_COLORS.other;
+    const snippetsHtml = (r.snippets && r.snippets.length)
+      ? `<div class="vault-search-snippets">${r.snippets.slice(0, 2).map(s => `
+          <div class="vault-search-snippet">
+            <span class="vault-snippet-line">L${s.line}:</span> ${s.text}
+          </div>
+        `).join('')}</div>`
+      : '';
+
+    return `
+      <div class="vault-sidebar-item ${isSel ? 'selected' : ''}" onclick="loadVaultNote('${escapeAttr(r.path)}', true, false)">
+        <div class="vault-item-top">
+          <span class="vault-folder-dot" style="background:${color}"></span>
+          <span class="vault-item-title">${escapeHtml(r.title)}</span>
+          <span class="vault-search-score" title="Relevance match score">${r.score}</span>
+        </div>
+        <div class="vault-item-meta">
+          <span class="vault-folder-tag">${escapeHtml(r.folder)}</span>
+          <span>${r.matches_count} hit${r.matches_count === 1 ? '' : 's'}</span>
+        </div>
+        ${snippetsHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+async function setVaultHealthFilter(filter) {
+  if (_vaultHealthFilter === filter) {
+    _vaultHealthFilter = 'all';
+  } else {
+    _vaultHealthFilter = filter;
+  }
+
+  const elOrphans = document.getElementById('vaultMetricOrphansWrap');
+  const elUnresolved = document.getElementById('vaultMetricUnresolvedWrap');
+  if (elOrphans) elOrphans.classList.toggle('active', _vaultHealthFilter === 'orphans');
+  if (elUnresolved) elUnresolved.classList.toggle('active', _vaultHealthFilter === 'unresolved');
+
+  const listEl = document.getElementById('vaultNoteList');
+  if (!listEl) return;
+
+  if (_vaultHealthFilter === 'orphans') {
+    const orphans = (_vaultData.nodes || []).filter(n => (n.total_connections || 0) === 0 || ((n.in_degree || 0) === 0 && (n.out_degree || 0) === 0));
+    if (!orphans.length) {
+      listEl.innerHTML = '<div class="vault-empty-list" style="color:var(--accent)">✨ No orphan notes found! All notes are connected.</div>';
+      return;
+    }
+    listEl.innerHTML = `
+      <div class="vault-health-filter-banner">
+        <span>Showing <b>${orphans.length}</b> orphan notes (0 connections)</span>
+        <button type="button" class="vault-clear-filter-btn" onclick="setVaultHealthFilter('all')">&times; Clear</button>
+      </div>
+    ` + orphans.map(n => {
+      const color = FOLDER_COLORS[n.folder] || FOLDER_COLORS.other;
+      return `
+        <div class="vault-sidebar-item" onclick="loadVaultNote('${escapeAttr(n.path)}', true, false)">
+          <div class="vault-item-top">
+            <span class="vault-folder-dot" style="background:${color}"></span>
+            <span class="vault-item-title">${escapeHtml(n.title)}</span>
+          </div>
+          <div class="vault-item-meta">
+            <span class="vault-folder-tag">${escapeHtml(n.folder)}</span>
+            <span style="color:#f59e0b;font-weight:600">0 connections</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } else if (_vaultHealthFilter === 'unresolved') {
+    listEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">Analyzing unresolved links...</div>';
+    try {
+      const res = await fetch('/api/vault/health');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const health = await res.json();
+      const unresolved = health.unresolved_links || [];
+
+      if (!unresolved.length) {
+        listEl.innerHTML = '<div class="vault-empty-list" style="color:var(--accent)">✨ No unresolved links! All wikilinks resolve properly.</div>';
+        return;
+      }
+
+      listEl.innerHTML = `
+        <div class="vault-health-filter-banner">
+          <span><b>${unresolved.length}</b> unresolved wikilinks</span>
+          <button type="button" class="vault-clear-filter-btn" onclick="setVaultHealthFilter('all')">&times; Clear</button>
+        </div>
+      ` + unresolved.map(u => {
+        const targetClean = escapeAttr(u.target);
+        const targetDisplay = escapeHtml(u.target);
+        const refCount = u.occurrences || (u.sources ? u.sources.length : 1);
+        const srcText = (u.sources || []).map(s => escapeHtml(s)).join(', ');
+        return `
+          <div class="vault-sidebar-item vault-unresolved-item">
+            <div class="vault-item-top">
+              <span class="vault-folder-dot" style="background:#ef4444"></span>
+              <span class="vault-item-title" style="color:#ef4444">[[${targetDisplay}]]</span>
+              <button type="button" class="vault-create-missing-btn" onclick="promptCreateVaultNote('notes', '${targetClean}')">+ Create</button>
+            </div>
+            <div class="vault-item-meta" style="flex-direction:column;align-items:flex-start;gap:2px">
+              <span>Referenced in: ${srcText || `${refCount} note(s)`}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      listEl.innerHTML = `<div style="padding:12px;color:#ef4444;font-size:12px">Error: ${escapeHtml(err.message)}</div>`;
+    }
+  } else {
+    // 'all'
+    const searchVal = document.getElementById('vaultSearchInput') ? document.getElementById('vaultSearchInput').value : '';
+    renderVaultSidebarList(_vaultData.nodes || [], searchVal);
   }
 }
 
@@ -184,7 +381,7 @@ function renderVaultSidebarList(nodes, filterText = '') {
       ? `<div class="vault-item-tags">${n.tags.map(t => `<span class="vault-item-tag" onclick="event.stopPropagation();setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
     return `
-      <div class="vault-sidebar-item ${isSel ? 'selected' : ''}" onclick="loadVaultNote('${escapeAttr(n.path)}')">
+      <div class="vault-sidebar-item ${isSel ? 'selected' : ''}" onclick="loadVaultNote('${escapeAttr(n.path)}', true, false)">
         <div class="vault-item-top">
           <span class="vault-folder-dot" style="background:${color}"></span>
           <span class="vault-item-title">${escapeHtml(n.title)}</span>
@@ -200,13 +397,13 @@ function renderVaultSidebarList(nodes, filterText = '') {
 }
 
 function filterVaultNotes(val) {
-  renderVaultSidebarList(_vaultData.nodes || [], val);
+  onVaultSearchInput(val);
 }
 
 /**
  * Open a note into the Right Sidebar Preview/Editor and highlight it in the 2D Graph.
  */
-async function loadVaultNote(relPath, openSidebar = true, openInEditor = true) {
+async function loadVaultNote(relPath, openSidebar = true, openInEditor = false) {
   if (!relPath) return;
 
   let clean = relPath.trim().replace(/^knowledge\//, '');
@@ -236,7 +433,7 @@ async function loadVaultNote(relPath, openSidebar = true, openInEditor = true) {
 /**
  * Delegate viewing & editing to the existing Right Sidebar.
  */
-function openVaultNoteInRightSidebar(note, openInEditor = true) {
+function openVaultNoteInRightSidebar(note, openInEditor = false) {
   if (!note) return;
 
   const fullPath = 'knowledge/' + (note.path.replace(/^knowledge\//, ''));
@@ -400,18 +597,140 @@ function highlightVaultGraphNode(pathOrId) {
 }
 
 /**
- * Prompt user to create a new note in the vault.
+ * Open the structured modal to create a new vault note with category presets and auto ADR numbering.
  */
-function promptCreateVaultNote() {
-  const noteName = prompt('Enter note path (e.g. architecture/memory_graph or user/preferences):');
-  if (!noteName || !noteName.trim()) return;
+async function promptCreateVaultNote(initialCategory = 'decisions', initialTitle = '') {
+  _selectedVaultCategory = initialCategory || 'decisions';
+  const modal = document.getElementById('vaultNewNoteModal');
+  if (!modal) return;
 
-  let clean = noteName.trim().replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!clean.endsWith('.md')) clean += '.md';
+  const titleInput = document.getElementById('vaultNewNoteTitle');
+  if (titleInput) titleInput.value = initialTitle || '';
 
-  const title = clean.split('/').pop().replace('.md', '').replace(/_/g, ' ');
-  const defaultContent = `# ${title.charAt(0).toUpperCase() + title.slice(1)}\n\nAdd your knowledge and link to other concepts using [[wikilinks]]!\n`;
-  saveNewNote(clean, defaultContent);
+  const tagsInput = document.getElementById('vaultNewNoteTags');
+  if (tagsInput) tagsInput.value = '';
+
+  await updateVaultCategorySelection();
+  updateVaultNotePathPreview();
+
+  modal.style.display = 'flex';
+  if (titleInput) {
+    titleInput.focus();
+    if (initialTitle) titleInput.select();
+  }
+}
+
+function closeVaultNewNoteModal() {
+  const modal = document.getElementById('vaultNewNoteModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function selectVaultCategory(category) {
+  _selectedVaultCategory = category;
+  await updateVaultCategorySelection();
+  updateVaultNotePathPreview();
+}
+
+async function updateVaultCategorySelection() {
+  const pills = {
+    decisions: document.getElementById('vaultCatDecisions'),
+    architecture: document.getElementById('vaultCatArch'),
+    user: document.getElementById('vaultCatUser'),
+    notes: document.getElementById('vaultCatNotes')
+  };
+  Object.keys(pills).forEach(k => {
+    if (pills[k]) pills[k].classList.toggle('active', k === _selectedVaultCategory);
+  });
+
+  if (_selectedVaultCategory === 'decisions') {
+    try {
+      const res = await fetch('/api/vault/template?category=decisions&title=Sample');
+      if (res.ok) {
+        const data = await res.json();
+        _nextAdrNumber = data.next_adr || 1;
+      }
+    } catch (_) {
+      _nextAdrNumber = 1;
+    }
+  }
+}
+
+function updateVaultNotePathPreview() {
+  const titleInput = document.getElementById('vaultNewNoteTitle');
+  const pathPreview = document.getElementById('vaultNewNotePathPreview');
+  if (!pathPreview) return;
+
+  const title = (titleInput ? titleInput.value : '').trim() || 'untitled';
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'note';
+
+  let relPath = '';
+  if (_selectedVaultCategory === 'decisions') {
+    const numStr = String(_nextAdrNumber || 1).padStart(3, '0');
+    relPath = `knowledge/decisions/adr_${numStr}_${slug}.md`;
+  } else if (_selectedVaultCategory === 'architecture') {
+    relPath = `knowledge/architecture/${slug}.md`;
+  } else if (_selectedVaultCategory === 'user') {
+    relPath = `knowledge/user/${slug}.md`;
+  } else {
+    relPath = `knowledge/notes/${slug}.md`;
+  }
+
+  pathPreview.value = relPath;
+}
+
+async function submitVaultNewNote() {
+  const titleInput = document.getElementById('vaultNewNoteTitle');
+  const tagsInput = document.getElementById('vaultNewNoteTags');
+  const pathPreview = document.getElementById('vaultNewNotePathPreview');
+
+  const title = (titleInput ? titleInput.value : '').trim();
+  if (!title) {
+    if (typeof showToast === 'function') showToast('Please enter a note title', 2500, 'error');
+    if (titleInput) titleInput.focus();
+    return;
+  }
+
+  const targetPath = pathPreview ? pathPreview.value : '';
+  if (!targetPath) return;
+
+  const btn = document.getElementById('btnSubmitVaultNewNote');
+  if (btn) btn.disabled = true;
+
+  try {
+    const tRes = await fetch(`/api/vault/template?category=${encodeURIComponent(_selectedVaultCategory)}&title=${encodeURIComponent(title)}`);
+    let content = `# ${title}\n\n`;
+    if (tRes.ok) {
+      const tData = await tRes.json();
+      if (tData.template) content = tData.template;
+    }
+
+    const rawTags = (tagsInput ? tagsInput.value : '').trim();
+    if (rawTags) {
+      const tagsList = rawTags.split(/[\s,]+/).map(t => t.startsWith('#') ? t : `#${t}`).join(' ');
+      content = `${content}\n\nTags: ${tagsList}\n`;
+    }
+
+    const saveRel = targetPath.replace(/^knowledge\//, '');
+    const sRes = await fetch('/api/vault/note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: saveRel, content: content })
+    });
+    const sData = await sRes.json();
+
+    if (sData.ok) {
+      if (typeof showToast === 'function') showToast(`Created ${saveRel}`, 2500, 'success');
+      closeVaultNewNoteModal();
+      await loadVault(true);
+      loadVaultNote(saveRel, true, false);
+    } else {
+      if (typeof showToast === 'function') showToast(sData.error || 'Failed to create note', 3000, 'error');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast(`Error creating note: ${err.message}`, 3000, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function saveNewNote(path, content) {
@@ -425,7 +744,7 @@ async function saveNewNote(path, content) {
     if (data.ok) {
       showToast(`Created ${path}`, 2000, 'success');
       await loadVault(true);
-      loadVaultNote(path);
+      loadVaultNote(path, true, false);
     } else {
       showToast(data.error || 'Error creating note', 3000, 'error');
     }
@@ -712,17 +1031,20 @@ function applyGraphDepthFilter() {
     const config = SPACING_CONFIGS[_currentGraphSpacing] || SPACING_CONFIGS.spacious;
     const angle = (i / Math.max(nodesToRender.length, 1)) * 2 * Math.PI;
     const dist = (config.spawnRadius || 280) + Math.random() * 120;
+    const totalConn = (typeof n.total_connections === 'number')
+      ? n.total_connections
+      : ((n.in_degree || 0) + (n.out_degree || 0) || (n.connections || 0));
     const gNode = {
       id: n.id,
       title: n.title,
       path: n.path,
       folder: n.folder,
-      connections: n.total_connections || 1,
+      connections: totalConn,
       x: canvas.width / 2 + Math.cos(angle) * dist,
       y: canvas.height / 2 + Math.sin(angle) * dist,
       vx: (Math.random() - 0.5) * 2,
       vy: (Math.random() - 0.5) * 2,
-      radius: Math.max(8, Math.min(20, 7 + (n.total_connections || 1) * 2)),
+      radius: Math.max(9, Math.min(26, 8 + Math.round(Math.sqrt(totalConn) * 5))),
       color: FOLDER_COLORS[n.folder] || FOLDER_COLORS.other
     };
     nodeMap[n.id] = gNode;
@@ -906,9 +1228,15 @@ function drawGraph() {
   // Draw links
   ctx.lineWidth = 1.3;
   _graphEdges.forEach(e => {
-    const isHovered = _hoverNode && (e.source.id === _hoverNode.id || e.target.id === _hoverNode.id);
-    const isSelected = _activeVaultNote && (_activeVaultNote.id === e.source.id || _activeVaultNote.id === e.target.id);
-    ctx.strokeStyle = (isHovered || isSelected) ? 'rgba(2, 136, 168, 0.7)' : 'rgba(255, 255, 255, 0.12)';
+    const isSrcDisabled = _disabledLegendFolders.has(e.source.folder);
+    const isTgtDisabled = _disabledLegendFolders.has(e.target.folder);
+    if (isSrcDisabled || isTgtDisabled) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+    } else {
+      const isHovered = _hoverNode && (e.source.id === _hoverNode.id || e.target.id === _hoverNode.id);
+      const isSelected = _activeVaultNote && (_activeVaultNote.id === e.source.id || _activeVaultNote.id === e.target.id);
+      ctx.strokeStyle = (isHovered || isSelected) ? 'rgba(2, 136, 168, 0.7)' : 'rgba(255, 255, 255, 0.12)';
+    }
     ctx.beginPath();
     ctx.moveTo(e.source.x, e.source.y);
     ctx.lineTo(e.target.x, e.target.y);
@@ -917,6 +1245,9 @@ function drawGraph() {
 
   // Draw nodes
   _graphNodes.forEach(n => {
+    const isFolderDisabled = _disabledLegendFolders.has(n.folder);
+    ctx.globalAlpha = isFolderDisabled ? 0.12 : 1.0;
+
     const isSelected = _activeVaultNote && (_activeVaultNote.id === n.id || _activeVaultNote.path === n.path);
     const isHovered = _hoverNode && _hoverNode.id === n.id;
 
@@ -974,7 +1305,49 @@ function drawGraph() {
     }
   });
 
+  ctx.globalAlpha = 1.0;
   ctx.restore();
+}
+
+function toggleVaultLegendFolder(folder) {
+  if (_disabledLegendFolders.has(folder)) {
+    _disabledLegendFolders.delete(folder);
+  } else {
+    _disabledLegendFolders.add(folder);
+  }
+
+  const btns = document.querySelectorAll('.vault-legend-btn');
+  btns.forEach(btn => {
+    if (btn.dataset.folder === folder) {
+      btn.classList.toggle('disabled', _disabledLegendFolders.has(folder));
+    }
+  });
+
+  drawGraph();
+}
+
+function exportGraphImage() {
+  const canvas = document.getElementById('vaultGraphCanvas');
+  if (!canvas) return;
+
+  drawGraph();
+
+  try {
+    const dataUrl = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.download = `antigravity-knowledge-graph-${new Date().toISOString().slice(0, 10)}.png`;
+    a.href = dataUrl;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (typeof showToast === 'function') {
+      showToast('Exported Knowledge Graph as PNG', 2500, 'success');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast(`Failed to export graph: ${err.message}`, 3000, 'error');
+    }
+  }
 }
 
 function setupCanvasListeners(canvas) {

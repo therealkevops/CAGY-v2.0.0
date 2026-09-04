@@ -178,6 +178,67 @@ class TestVaultEngine(unittest.TestCase):
         content = rule_file.read_text(encoding="utf-8")
         self.assertIn("# Antigravity Knowledge Vault & Long-Term Memory", content)
 
+    def test_search_vault_full_text(self):
+        res = vault.search_vault(self.vault_dir, "container")
+        self.assertTrue(res["ok"])
+        self.assertGreaterEqual(res["total_matches"], 1)
+        matched = res["results"][0]
+        self.assertIn("snippets", matched)
+        self.assertGreaterEqual(len(matched["snippets"]), 1)
+        self.assertIn("<mark>", matched["snippets"][0]["highlighted"])
+        self.assertIn("line", matched["snippets"][0])
+
+    def test_vault_health_orphans_and_unresolved(self):
+        # Add an orphan note (isolated, no links)
+        (self.vault_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "notes" / "isolated.md").write_text("# Isolated Idea\n\nNo wikilinks here.\n", encoding="utf-8")
+
+        # Add a note with unresolved wikilink
+        (self.vault_dir / "notes" / "broken.md").write_text("# Broken Link\n\nLinks to [[non_existent_target]].\n", encoding="utf-8")
+
+        health = vault.get_vault_health(self.vault_dir)
+        self.assertTrue(health["ok"])
+        self.assertGreaterEqual(health["orphan_count"], 1)
+        orphan_ids = [o["id"] for o in health["orphans"]]
+        self.assertIn("notes/isolated", orphan_ids)
+
+        self.assertGreaterEqual(health["unresolved_count"], 1)
+        unresolved_targets = [u["target"] for u in health["unresolved_links"]]
+        self.assertIn("non_existent_target", unresolved_targets)
+
+    def test_next_adr_numbering(self):
+        # Empty decisions directory -> starts at 1
+        num1 = vault.get_next_adr_number(self.vault_dir)
+        self.assertEqual(num1, 1)
+
+        # Create adr_001_initial.md and adr_002_storage.md
+        dec_dir = self.vault_dir / "decisions"
+        dec_dir.mkdir(parents=True, exist_ok=True)
+        (dec_dir / "adr_001_initial.md").write_text("# ADR 001\n", encoding="utf-8")
+        (dec_dir / "adr_002_storage.md").write_text("# ADR 002\n", encoding="utf-8")
+
+        num2 = vault.get_next_adr_number(self.vault_dir)
+        self.assertEqual(num2, 3)
+
+    def test_note_template_generation(self):
+        # Decisions ADR template
+        adr_tpl = vault.get_note_template("decisions", "Graph Layout Optimization", next_adr=5)
+        self.assertEqual(adr_tpl["category"], "decisions")
+        self.assertEqual(adr_tpl["filename"], "adr_005_graph_layout_optimization.md")
+        self.assertIn("ADR 005: Graph Layout Optimization", adr_tpl["template_content"])
+        self.assertIn("## Context & Problem Statement", adr_tpl["template_content"])
+
+        # Architecture template
+        arch_tpl = vault.get_note_template("architecture", "Unified Namespace")
+        self.assertEqual(arch_tpl["category"], "architecture")
+        self.assertEqual(arch_tpl["filename"], "unified_namespace.md")
+        self.assertIn("# Unified Namespace", arch_tpl["template_content"])
+
+        # User template
+        user_tpl = vault.get_note_template("user", "Coding Conventions")
+        self.assertEqual(user_tpl["category"], "user")
+        self.assertIn("## Principles & Preferences", user_tpl["template_content"])
+
 
 class TestVaultApiEndpoints(unittest.TestCase):
     """Test HTTP API endpoints for Knowledge Vault and Graph."""
@@ -289,6 +350,28 @@ class TestVaultApiEndpoints(unittest.TestCase):
         self.assertEqual(res["category"], "decisions")
         self.assertTrue(res["rules_synced"])
         self.assertTrue(res["rel_path"].startswith("decisions/adr_"))
+
+    def test_api_vault_search(self):
+        status, data = self._get("/api/vault/search?q=Engineer")
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+        self.assertGreaterEqual(len(data.get("results", [])), 1)
+        self.assertIn("snippets", data["results"][0])
+
+    def test_api_vault_health(self):
+        status, data = self._get("/api/vault/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+        self.assertIn("orphan_count", data)
+        self.assertIn("unresolved_count", data)
+
+    def test_api_vault_template(self):
+        status, data = self._get("/api/vault/template?category=decisions&title=Database%20Engine")
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+        self.assertIn("template", data)
+        self.assertIn("next_adr", data)
+        self.assertIn("ADR", data["template"])
 
 
 if __name__ == "__main__":

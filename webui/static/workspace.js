@@ -909,7 +909,16 @@ function renderMarkdownPreviewContent(data){
   const target=data&&data.el?data.el:$('previewMd');
   if(!data||!data.el) showPreview('md');
   try {
-    target.innerHTML=renderMd(data.content || '');
+    let html=renderMd(data.content || '');
+    // Transform Obsidian wikilinks [[Target|Alias]] into interactive note navigation anchors
+    html=html.replace(/\[\[([^\]\|#\n]+)(?:#[^\]\|]+)?(?:\|([^\]\n]+))?\]\]/g, function(_m, target, alias){
+      const cleanTarget = String(target || '').trim();
+      const safeTarget = cleanTarget.replace(/["'<>]/g, '');
+      const defaultLabel = cleanTarget.split('/').pop().replace(/\.md$/, '').replace(/_/g, ' ');
+      const safeLabel = String(alias || defaultLabel).replace(/[<>]/g, '').trim();
+      return `<a class="vault-wikilink-link" href="javascript:void(0)" onclick="loadVaultNote('${safeTarget}', true, false)" title="Open note [[${safeTarget}]]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>${safeLabel}</a>`;
+    });
+    target.innerHTML=html;
   } catch(err){
     target.innerHTML=`<pre style="white-space:pre-wrap;font-family:monospace;padding:16px;"><code>${esc(data.content || '')}</code></pre>`;
   }
