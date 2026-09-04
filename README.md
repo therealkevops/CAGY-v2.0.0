@@ -14,8 +14,9 @@ By encapsulating both the WebUI server and the native Linux `agy` CLI binary ins
 
 - **Full EDR & Process Shielding**: All shell executions, python scripts, file manipulations, and agent tool calls run exclusively inside the container's isolated Linux namespace.
 - **Native Antigravity Engine**: Uses the official Google Antigravity Linux binary (`agy`) with automated lifecycle management.
-- **Obsidian-Style Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) with bi-directional `[[wikilinks]]`, backlinks resolution, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
+- **Obsidian-Style Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) with bi-directional `[[wikilinks]]`, editor autocomplete, neighborhood depth filtering (`[ All | 1-Hop | 2-Hop ]`), `#tag` extraction, backlinks resolution, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
 - **Agent-Assisted Memory & Auto-Learning (`/memorize`)**: 1-click `🧠 Memorize` message actions and `/memorize` slash command that auto-categorize insights into ADRs (`decisions/adr_XXX`), user preferences, and architecture notes, auto-link existing entities with `[[wikilinks]]`, and sync to `.gemini/rules/` before every conversation turn.
+- **Modern Composer Slash Popover (`/`)**: Floating inline autocomplete popover with Lucide SVG icons, category pills (`Workflow`, `Memory`, `Tools`, `Agents`, `System`, `Session`), and argument guides for all Antigravity signature workflows (`/plan`, `/goal`, `/grill-me`, `/boost`, `/learn`, `/browser`, `/swarm`, `/artifacts`).
 - **Subagent Swarms Visualizer (`/swarm`)**: Real-time DAG hierarchy viewer, execution timeline, and inspector for delegated multi-agent subtasks (`invoke_subagent`).
 - **Model Context Protocol (MCP) Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets for GitHub, Docker, Fetch, Memory, PostgreSQL, SQLite, and Puppeteer servers with live latency probes.
 - **Artifact & Code Preview Canvas with Visual Diffs**: Tri-mode viewer (`[ Code | Diff | Live Preview ]`) featuring side-by-side Git diffs against HEAD, sandboxed live HTML/SVG canvas previews, and session-less direct-to-editor file manipulation.
@@ -75,11 +76,13 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 | View / Feature | Shortcut / Route | Description |
 | :--- | :--- | :--- |
 | **Chat & Pairing Canvas** | `/chat` (Default) | Real-time streaming conversation, syntax highlighting, and inline tool inspection. |
-| **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph and second brain with bi-directional wikilinks. |
+| **Inline Slash Popover** | `/` in Composer | Rich floating command popover with icons, category pills, and signature workflows. |
+| **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph with 1-Hop/2-Hop depth filtering and tag search. |
 | **Agent Auto-Memorization** | `/memorize` or `🧠` Button | Instantly extract user preferences, conventions, or ADRs into the Knowledge Vault. |
 | **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
 | **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets & test probes. |
 | **Workspace, Diffs & Canvas** | Right Sidebar / `/artifacts` | Tri-mode drawer (`[ Code | Diff | Live Preview ]`) with side-by-side git diffs and live canvas. |
+| **Wikilink Autocomplete** | `[[` in Editor | Instant note search & insertion (`[[id\|title]]`) directly inside the Markdown editor. |
 | **Skills & Rules Scaffolder** | `/skills` or Left Rail | Domain skills manager and visual rule generator. |
 | **Command Palette** | `Cmd + K` / `Ctrl + K` | Universal search for commands, panels, settings, and workflows. |
 
@@ -131,8 +134,43 @@ graph LR
 - **1-Click Message Action**: Click the `🧠` bookmark icon on any assistant message to immediately extract and persist the insight into the vault with toast feedback.
 - **Pre-Turn Rule Sync**: The CLI runner (`run_agent.py`) re-compiles `.gemini/rules/knowledge_vault.md` before every conversation turn, ensuring the model retains full context across all sessions.
 
-### 4. Obsidian Desktop Interoperability
+### 4. Knowledge Vault Power Tools
+- **Wikilink Autocomplete (`[[...]]`)**: When editing any note in the right sidebar (`#previewEditArea`), typing `[[` immediately opens a floating suggestion dropdown. As you type, notes are fuzzy-filtered across note titles, paths, folders, and `#tags`. Use `ArrowUp` / `ArrowDown` and press `Enter` or `Tab` to insert `[[id|title]]` (or `[[id]]`) and place the cursor right after `]]`. Press `Escape` to dismiss.
+- **Local Neighborhood Depth Filtering (`[ All | 1-Hop | 2-Hop ]`)**: The Knowledge Graph header includes instant neighborhood depth toggles. When set to `1-Hop` or `2-Hop`, a breadth-first search (BFS) filters the graph to display only the active note and its directly connected cluster. Node positions are preserved to avoid visual disorientation.
+- **Tag Extraction & Interactive Filtering**: The backend automatically parses `#tag` tokens across all markdown files (strictly excluding markdown headings). The vault sidebar renders interactive tag chips (`[All]`, `[#architecture]`, etc.) for 1-click filtering, and the vault search bar supports direct `#tag` lookups. Tags also display inside the right-panel note relations footer.
+
+### 5. Obsidian Desktop Interoperability
 Because all notes are saved as plain UTF-8 Markdown on the host filesystem under `./knowledge/`, you can open this folder directly as an existing vault in the official **[Obsidian](https://obsidian.md)** desktop app on macOS/Windows/Linux.
+
+---
+
+## Modern Composer Slash Popover & Signature Workflows (`/`)
+
+Typing `/` in the chat composer displays an inline floating popover with Lucide SVG icons, category pills, parameter hints, and keyboard/mouse navigation (`ArrowUp`, `ArrowDown`, `Enter`, `Tab`, `Escape`):
+
+```text
+  /plan [description]          WORKFLOW   Step-by-step implementation planning before coding
+  /goal [description]          WORKFLOW   Autonomous long-running goal execution until completion
+  /grill-me [topic]            WORKFLOW   Interactive design interview to stress-test requirements
+  /boost [complex task]        WORKFLOW   High-depth reasoning and multi-perspective verification
+  /learn [rule/correction]     WORKFLOW   Persist behavioral guidelines & conventions
+  /schedule [instructions]     WORKFLOW   Schedule recurring or one-shot task timer
+  /teamwork-preview [brief]    AGENTS     Autonomous subagents team collaboration preview
+  /memorize [insight]          MEMORY     Persist insights, preferences, or decisions into Vault
+  /vault                       MEMORY     Open Knowledge Vault & Graph memory panel
+  /browser [url or query]      TOOLS      Web browsing and URL content extraction
+  /swarm                       AGENTS     Inspect autonomous subagents swarm and execution trees
+  /artifacts                   TOOLS      Open code preview, interactive diffs and generated artifacts
+  /quota                       SYSTEM     View live Gemini & model quota balances and reset timers
+  /effort [low|med|high]       SYSTEM     Set reasoning effort depth for thinking models
+  /status                      SYSTEM     Display container runtime & EDR containment diagnostics
+  /skills                      CUSTOM     Browse active and built-in workspace skills
+  /mcp                         CUSTOM     Inspect configured Model Context Protocol servers
+  /new                         SESSION    Start a new conversation
+  /clear                       SESSION    Clear the active chat view
+  /theme [name]                SESSION    Switch UI theme or skin
+  /help                        SESSION    Show available commands
+```
 
 ---
 
