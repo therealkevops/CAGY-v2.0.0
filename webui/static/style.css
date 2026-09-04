@@ -5607,11 +5607,25 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 .swarm-list-item-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); border-top: 1px solid var(--border-subtle); padding-top: 4px; }
 
 /* Swarm Main View & Topology Layout */
-#mainSubagents .main-view-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#mainSubagents .main-view-body,
+#subagentDetailBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+}
+.swarm-graph-container {
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 8px;
+}
 .swarm-status-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-pill); font-family: var(--font-mono); }
 .swarm-status-badge.running { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
 .swarm-status-badge.done { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--border); }
-#subagentDetailBody { display: flex; flex-direction: column; gap: 16px; padding: 16px; overflow-y: auto; flex: 1; }
 .swarm-topology-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
 .swarm-section-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; }
 .swarm-section-hint { font-size: 11px; font-weight: 400; color: var(--muted); }
@@ -5777,8 +5791,17 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 .mcp-switch input:checked + .mcp-slider:before { transform: translateX(12px); }
 
 /* MCP Main View & Tool Catalog */
-#mainMcp .main-view-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-#mainMcpBody { display: flex; flex-direction: column; gap: 16px; padding: 16px; overflow-y: auto; flex: 1; }
+#mainMcp .main-view-body,
+#mainMcpBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+}
 .mcp-controls-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: var(--surface); padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .mcp-search-box { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; }
 .mcp-search-box input { border: none; background: transparent; outline: none; width: 100%; color: var(--text); font-size: 12.5px; }
