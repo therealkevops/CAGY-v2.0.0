@@ -1,19 +1,48 @@
-container_data
+# Version control
 .git
-.gemini
-.memory
-.agy_uploads
-.hermes_uploads
+.github
+
+# Secrets & Environment
 .env
 .env.*
 *.pem
 *.crt
 *.key
+auth.json
+google_token.json
+mcp.json
+.gemini/mcp.json
+
+# Persistent Container State & Dynamic Runtime Data
+container_data/
 workspace/*
 !workspace/.gitkeep
-node_modules
-__pycache__
-*.pyc
-*.pyo
-*.pbtxt
+.agy_uploads/
+.hermes_uploads/
+.memory/
+.gemini/
+state.db*
+*.snap
+
+# OS & Editor Artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node & Python caches
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# Logs & Temporary files
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp*

@@ -43,6 +43,12 @@ RUN echo "insecure" > /root/.curlrc \
 # Add supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy application code, default skills, and knowledge into /workspace for standalone execution
+COPY --chown=root:root . /workspace
+
+# Ensure executable permissions on helper scripts
+RUN chmod +x /workspace/*.sh 2>/dev/null || true
+
 # Environment variables
 ENV WORKSPACE_DIR=/workspace \
     DATA_DIR=/opt/data \
