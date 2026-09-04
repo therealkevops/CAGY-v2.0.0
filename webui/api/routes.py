@@ -13934,6 +13934,14 @@ def handle_get(handler, parsed) -> bool:
         return _handle_artifacts_list(handler, parsed)
     if parsed.path == "/api/artifacts/content":
         return _handle_artifact_content(handler, parsed)
+    if parsed.path == "/api/diff/file":
+        from api.diff_viewer import get_file_diff_against_head
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        path = qs.get("path", [""])[0]
+        ws_path = Path("/workspace")
+        if not ws_path.exists():
+            ws_path = Path.cwd()
+        return j(handler, get_file_diff_against_head(ws_path, path))
 
 
     # ── Checkpoints / Rollback (GET) ──
@@ -14248,6 +14256,14 @@ def handle_post(handler, parsed) -> bool:
         from api.mcp_hub import test_mcp_server
         body = _read_json_body(handler) or {}
         return j(handler, test_mcp_server(body))
+
+    if parsed.path == "/api/diff/compute":
+        from api.diff_viewer import compute_structured_diff
+        body = _read_json_body(handler) or {}
+        original = body.get("original", "")
+        modified = body.get("modified", "")
+        filename = body.get("filename", "")
+        return j(handler, compute_structured_diff(original, modified, filename=filename))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule

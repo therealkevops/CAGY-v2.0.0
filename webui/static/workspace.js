@@ -663,6 +663,7 @@ async function openArtifactPath(path){
           renderCodePreviewContent(path, data.content || '');
         }
         _previewCurrentPath = path;
+        if(typeof resetPreviewDiff === 'function') resetPreviewDiff();
         const textEl = $('previewPathText');
         if(textEl) textEl.textContent = path.split('/').pop() || path;
         const badgeEl = $('previewBadge');
@@ -1179,6 +1180,7 @@ async function openFile(path, opts={}){
   $('fileTree').style.display='none';
 
   _previewCurrentPath = path;
+  if(typeof resetPreviewDiff === 'function') resetPreviewDiff();
   renderFileBreadcrumb(path);
   if(IMAGE_EXTS.has(ext)){
     // Image: load via raw endpoint, show as <img>
