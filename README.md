@@ -153,6 +153,20 @@ Inspect prompt token cost efficiency and the exact leverage of your Knowledge Va
 - **Multi-Model Pricing Matrix**: Real-time cost comparison showing what the current session would cost on Gemini 3.8 Flash, Gemini 1.5 Pro (16.6x), and Claude 3.5 Sonnet (40x).
 - **Inline Message Telemetry**: Default-enabled per-message token chips in assistant message footers displaying turn prompt tokens, output tokens, generation duration, and throughput (tok/s). Toggle anytime via `/usage`.
 
+#### Data Sources & Validation Math
+The dashboard separates numbers into measured ground truth, published rates, and estimation models:
+
+| Metric | Source / Category | Math & Formula |
+| :--- | :--- | :--- |
+| **Input / Output Tokens** | Measured Ground Truth | Emitted directly by Google Gemini API in `event: result.usage` at turn completion. |
+| **Throughput (TPS)** | Measured Ground Truth | $\text{TPS} = \frac{\text{Output Tokens}}{\text{Stream Duration (seconds)}}$ timed via system wall-clock. |
+| **Session Cost (\$ USD)** | Deterministic Math | $\text{Cost} = (\text{Input} \times \frac{\$0.075}{1\text{M}}) + (\text{Output} \times \frac{\$0.30}{1\text{M}})$ based on official Gemini 3.8 Flash rates. |
+| **Memory Leverage (MLR)** | Deterministic Math | $\text{MLR} = \frac{\text{Total Words in Knowledge Vault}}{\text{Tokens in Compiled Rules}}$ (e.g. 5,000 vault words / 600 rule tokens = **8.3x**). |
+| **Model Comparison** | Deterministic Math | Exact tokens multiplied against Gemini 1.5 Pro (\$1.25/\$5.00) and Claude 3.5 Sonnet (\$3.00/\$15.00). |
+| **Avoided Context Turns** | Modeled Estimate | $\text{Tokens Saved} = \text{Notes} \times \min(\text{Sessions}, 10) \times 4{,}500\text{ tokens}$ (context re-explanation heuristic). |
+
+*Validate raw model usage anytime via **Settings $\to$ JSON** or `curl http://localhost:8989/api/analytics/efficiency`.*
+
 ---
 
 ## Modern Composer Slash Popover & Signature Workflows (`/`)
