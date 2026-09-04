@@ -6259,9 +6259,22 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto !important;
-  overflow-x: hidden;
+  overflow: hidden !important;
   padding: 0;
+  position: relative;
+}
+
+.vault-stats-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  margin-right: 4px;
 }
 
 /* Vault Sidebar */
@@ -6371,44 +6384,7 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   font-size: 12px;
 }
 
-/* Vault Main View & Controls */
-.vault-view-toggle {
-  display: inline-flex;
-  align-items: center;
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-  gap: 2px;
-}
-.vault-view-toggle-btn {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-.vault-view-toggle-btn:hover {
-  color: var(--text);
-}
-.vault-view-toggle-btn.active {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-}
-
-.vault-layout-wrap {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-}
+/* Vault Full-Canvas Graph */
 .vault-graph-panel {
   flex: 1;
   position: relative;
@@ -6416,8 +6392,12 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   min-height: 350px;
   min-width: 0;
   background: var(--bg);
-  border-right: 1px solid var(--border);
   overflow: hidden;
+}
+.vault-graph-panel.full-canvas {
+  width: 100%;
+  height: 100%;
+  border-right: none;
 }
 #vaultGraphCanvas {
   width: 100%;
@@ -6426,19 +6406,20 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 }
 .vault-graph-legend {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
+  bottom: 16px;
+  left: 16px;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  background: rgba(18, 18, 20, 0.8);
+  gap: 12px;
+  background: rgba(18, 18, 20, 0.82);
   backdrop-filter: blur(8px);
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   font-size: 11px;
   color: var(--muted);
   pointer-events: none;
+  z-index: 5;
 }
 .vault-legend-item {
   display: inline-flex;
@@ -6452,133 +6433,22 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   display: inline-block;
 }
 
-/* Vault Editor */
-.vault-editor-panel {
-  flex: 1;
+/* Right-Panel Linked References & Outgoing Relations Footer */
+.preview-vault-relations {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--surface-subtle);
-  overflow-y: auto;
-}
-#vaultEditorContainer {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.vault-editor-card {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.vault-editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.vault-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-.vault-folder-badge {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid;
-  flex-shrink: 0;
-}
-.vault-note-title-input {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-  background: transparent;
-  border: none;
-  outline: none;
-  flex: 1;
-  min-width: 120px;
-}
-.vault-path-sub {
-  font-size: 11px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  flex-shrink: 0;
-}
-.vault-editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.btn-vault-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btn-vault-action:hover {
-  background: var(--surface-subtle);
-}
-.btn-vault-action.primary {
-  background: var(--accent);
-  color: #000;
-  border-color: var(--accent);
-}
-.btn-vault-action.primary:hover {
-  opacity: 0.9;
-}
-.btn-vault-action.danger {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.3);
-}
-.btn-vault-action.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-.vault-editor-body {
-  flex: 1;
-  min-height: 250px;
-  display: flex;
-}
-.vault-textarea {
-  flex: 1;
   width: 100%;
-  border: none;
-  outline: none;
-  padding: 18px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text);
-  background: var(--bg);
-  resize: none;
+  margin-top: 14px;
+  flex-shrink: 0;
 }
-.vault-relations-footer {
-  padding: 14px 18px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
+.preview-vault-relations .vault-relations-footer {
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .vault-relation-block {
   display: flex;
@@ -6605,7 +6475,7 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   border-radius: var(--radius-pill);
   font-size: 11.5px;
   font-family: var(--font-mono);
-  background: var(--surface-subtle);
+  background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
@@ -6620,18 +6490,9 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   border-style: dashed;
 }
 .vault-empty-text {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--muted);
   font-style: italic;
 }
-.vault-editor-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--muted);
-  font-size: 13px;
-  padding: 40px;
-  text-align: center;
-}
+
 

@@ -787,30 +787,19 @@
       <div class="main-view-header">
         <div class="main-view-title" id="vaultHeaderTitle">Knowledge Graph & Vault Memory</div>
         <div class="main-view-actions">
-          <div class="vault-view-toggle">
-            <button type="button" class="vault-view-toggle-btn active" data-mode="split" onclick="switchVaultView('split')">Split</button>
-            <button type="button" class="vault-view-toggle-btn" data-mode="graph" onclick="switchVaultView('graph')">Graph Only</button>
-            <button type="button" class="vault-view-toggle-btn" data-mode="editor" onclick="switchVaultView('editor')">Note Only</button>
-          </div>
+          <span class="vault-stats-badge" id="vaultHeaderStats">0 notes · 0 links</span>
           <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="resetGraphView()" data-tooltip="Reset Zoom & Pan" aria-label="Reset Zoom & Pan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
           <button type="button" id="btnSyncVaultRules" class="panel-head-btn primary has-tooltip has-tooltip--bottom" onclick="syncVaultRules()" data-tooltip="Compile Vault to Antigravity Rules" aria-label="Compile Vault to Rules"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sync Rules</button>
         </div>
       </div>
       <div class="main-view-body" id="vaultMainBody">
-        <div class="vault-layout-wrap">
-          <div class="vault-graph-panel" id="vaultGraphBox">
-            <canvas id="vaultGraphCanvas"></canvas>
-            <div class="vault-graph-legend">
-              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#3b82f6"></span> User</span>
-              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</span>
-              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</span>
-              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Journal</span>
-            </div>
-          </div>
-          <div class="vault-editor-panel" id="vaultEditorBox">
-            <div id="vaultEditorContainer">
-              <div class="vault-editor-empty">Select or create a note to view and edit its contents and backlinks.</div>
-            </div>
+        <div class="vault-graph-panel full-canvas" id="vaultGraphBox">
+          <canvas id="vaultGraphCanvas"></canvas>
+          <div class="vault-graph-legend">
+            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#3b82f6"></span> User</span>
+            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</span>
+            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</span>
+            <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Journal</span>
           </div>
         </div>
       </div>
@@ -1399,6 +1388,7 @@
         <iframe id="previewHtmlIframe" style="width:100%;height:100%;border:none;background:#fff" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="HTML preview"></iframe>
       </div>
       <textarea id="previewEditArea" style="display:none;flex:1;width:100%;background:var(--code-bg);color:var(--pre-text);border:1px solid var(--border2);border-radius:8px;padding:12px;font-family:var(--font-mono);font-size:12px;line-height:1.6;resize:none;outline:none" oninput="_previewDirty=true;updateEditBtn()"></textarea>
+      <div class="preview-vault-relations" id="previewVaultRelations" style="display:none"></div>
     </div>
   </aside>
 </div>

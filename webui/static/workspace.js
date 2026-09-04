@@ -1066,12 +1066,16 @@ async function toggleEditMode(){
   }
   if(editing){
     // Save
-    if(!S.session||!_previewCurrentPath)return;
+    if(!_previewCurrentPath)return;
+    const isVaultNote = _previewCurrentPath.startsWith('knowledge/') || _previewSaveRoute === '/api/vault/note';
+    if(!isVaultNote && !S.session) return;
     const content=$('previewEditArea').value;
     try{
-      const saved=await api(_previewSaveRoute||'/api/file/save',{method:'POST',body:JSON.stringify({
-        session_id:S.session.session_id, path:_previewCurrentPath, content
-      })});
+      const route = isVaultNote ? '/api/vault/note' : (_previewSaveRoute||'/api/file/save');
+      const payload = isVaultNote
+        ? { path: _previewCurrentPath.replace(/^knowledge\//, ''), content }
+        : { session_id: (S && S.session ? S.session.session_id : ''), path: _previewCurrentPath, content };
+      const saved=await api(route,{method:'POST',body:JSON.stringify(payload)});
       const savedContent=saved&&typeof saved.content==='string'?saved.content:content;
       if(saved && typeof saved.editable==='boolean') _previewServerEditable = saved.editable;
       if(saved && saved.preview_kind) _previewPreviewKind = saved.preview_kind;
@@ -1092,6 +1096,12 @@ async function toggleEditMode(){
       if(_previewCurrentMode==='code') $('previewCode').style.display='';
       else $('previewMd').style.display='';
       showToast(t('saved'));
+      if(isVaultNote){
+        if(typeof loadVault === 'function') loadVault(true);
+        if(typeof renderVaultRelationsForCurrentPreview === 'function'){
+          renderVaultRelationsForCurrentPreview(_previewCurrentPath);
+        }
+      }
     }catch(e){setStatus(t('save_failed')+e.message);}
   }else{
     // Enter edit mode: populate textarea with current content
@@ -1182,6 +1192,17 @@ async function openFile(path, opts={}){
   _previewCurrentPath = path;
   if(typeof resetPreviewDiff === 'function') resetPreviewDiff();
   renderFileBreadcrumb(path);
+  const relVault = $('previewVaultRelations');
+  if(relVault){
+    if(path.startsWith('knowledge/')){
+      if(typeof renderVaultRelationsForCurrentPreview === 'function'){
+        renderVaultRelationsForCurrentPreview(path);
+      }
+    } else {
+      relVault.style.display = 'none';
+      relVault.innerHTML = '';
+    }
+  }
   if(IMAGE_EXTS.has(ext)){
     // Image: load via raw endpoint, show as <img>
     showPreview('image');

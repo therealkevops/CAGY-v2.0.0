@@ -13951,6 +13951,8 @@ def handle_get(handler, parsed) -> bool:
         from api.vault import get_note, get_vault_dir
         qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
         path = qs.get("path", [""])[0]
+        if path.startswith("knowledge/"):
+            path = path[len("knowledge/"):]
         return j(handler, get_note(get_vault_dir(), path))
 
 
@@ -14280,6 +14282,8 @@ def handle_post(handler, parsed) -> bool:
         from api.vault import save_note, get_vault_dir
         body = _read_json_body(handler) or {}
         path = body.get("path", "")
+        if path.startswith("knowledge/"):
+            path = path[len("knowledge/"):]
         content = body.get("content", "")
         return j(handler, save_note(get_vault_dir(), path, content))
 
@@ -14287,6 +14291,8 @@ def handle_post(handler, parsed) -> bool:
         from api.vault import delete_note, get_vault_dir
         body = _read_json_body(handler) or {}
         path = body.get("path", "")
+        if path.startswith("knowledge/"):
+            path = path[len("knowledge/"):]
         return j(handler, delete_note(get_vault_dir(), path))
 
     if parsed.path == "/api/vault/sync":
@@ -24095,6 +24101,16 @@ def _handle_file_save(handler, body):
         fd = open_anchored_write_fd(ws_root, target)
         with os.fdopen(fd, "wb", closefd=True) as fh:
             fh.write(data)
+
+        # Auto-sync vault rules if saving a note in knowledge/
+        clean_path = str(body["path"]).strip().lstrip("/")
+        if clean_path.startswith("knowledge/"):
+            try:
+                from api.vault import sync_vault_to_rules, get_vault_dir
+                sync_vault_to_rules(get_vault_dir(ws_root), ws_root)
+            except Exception:
+                pass
+
         return j(
             handler, {"ok": True, "path": body["path"], "size": len(data)}
         )

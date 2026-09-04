@@ -1,12 +1,15 @@
 /**
- * Antigravity (CAGY) Knowledge Vault & Graph Memory Engine
- * Provides an interactive 2D Force-Directed Knowledge Graph, bi-directional
- * wikilink navigation, note editing, backlinks inspection, and rules synchronization.
+ * Antigravity (CAGY) Knowledge Vault & 2D Graph Memory Engine
+ * Features:
+ * - Full-Canvas interactive 2D Force-Directed Knowledge Graph physics engine
+ * - Node navigation, drag, zoom/pan, hover glowing, and folder coloring
+ * - Direct integration with Right Panel file preview & in-place markdown editor
+ * - Backlinks & Linked References inspector rendered right inside the preview panel
+ * - Background auto-compilation to native Antigravity rules (.gemini/rules/knowledge_vault.md)
  */
 
 let _vaultData = { nodes: [], edges: [], stats: {} };
 let _activeVaultNote = null;
-let _vaultViewMode = 'split'; // 'graph' | 'editor' | 'split'
 let _vaultSimRunning = false;
 let _vaultZoom = 1.0;
 let _vaultPan = { x: 0, y: 0 };
@@ -25,7 +28,7 @@ const FOLDER_COLORS = {
 };
 
 /**
- * Load vault graph data and populate UI.
+ * Load vault graph data and populate left sidebar and 2D canvas.
  */
 async function loadVault(force = false) {
   const listEl = document.getElementById('vaultNoteList');
@@ -43,8 +46,8 @@ async function loadVault(force = false) {
     renderVaultSidebarList(data.nodes || []);
     initVaultGraph(data.nodes || [], data.edges || []);
 
-    if (!_activeVaultNote && data.nodes && data.nodes.length > 0) {
-      loadVaultNote(data.nodes[0].path);
+    if (_activeVaultNote) {
+      highlightVaultGraphNode(_activeVaultNote.path || _activeVaultNote.id);
     }
   } catch (err) {
     if (listEl) {
@@ -56,8 +59,12 @@ async function loadVault(force = false) {
 function updateVaultMetrics(stats) {
   const mNotes = document.getElementById('vaultMetricNotes');
   const mEdges = document.getElementById('vaultMetricEdges');
-  if (mNotes) mNotes.textContent = String(stats.total_notes || 0);
-  if (mEdges) mEdges.textContent = String(stats.total_edges || 0);
+  const hStats = document.getElementById('vaultHeaderStats');
+  const notes = stats.total_notes || 0;
+  const edges = stats.total_edges || 0;
+  if (mNotes) mNotes.textContent = String(notes);
+  if (mEdges) mEdges.textContent = String(edges);
+  if (hStats) hStats.textContent = `${notes} notes · ${edges} links`;
 }
 
 function renderVaultSidebarList(nodes, filterText = '') {
@@ -75,7 +82,7 @@ function renderVaultSidebarList(nodes, filterText = '') {
   }
 
   listEl.innerHTML = filtered.map(n => {
-    const isSel = _activeVaultNote && _activeVaultNote.path === n.path;
+    const isSel = _activeVaultNote && (_activeVaultNote.path === n.path || _activeVaultNote.id === n.id);
     const color = FOLDER_COLORS[n.folder] || FOLDER_COLORS.other;
     return `
       <div class="vault-sidebar-item ${isSel ? 'selected' : ''}" onclick="loadVaultNote('${escapeAttr(n.path)}')">
@@ -97,134 +104,148 @@ function filterVaultNotes(val) {
 }
 
 /**
- * Load a note into the editor and inspect its backlinks.
+ * Open a note into the Right Sidebar Preview/Editor and highlight it in the 2D Graph.
  */
-async function loadVaultNote(relPath) {
+async function loadVaultNote(relPath, openSidebar = true) {
   if (!relPath) return;
 
+  let clean = relPath.trim().replace(/^knowledge\//, '');
+  if (!clean.endsWith('.md')) clean += '.md';
+
   try {
-    const res = await fetch(`/api/vault/note?path=${encodeURIComponent(relPath)}`);
+    const res = await fetch(`/api/vault/note?path=${encodeURIComponent(clean)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const note = await res.json();
     _activeVaultNote = note;
 
     renderVaultSidebarList(_vaultData.nodes || []);
-    renderVaultEditor(note);
+    highlightVaultGraphNode(clean);
 
-    // Highlight node in graph
-    if (_vaultData.nodes) {
-      const match = _vaultData.nodes.find(n => n.id === note.id || n.path === note.path);
-      if (match) {
-        _hoverNode = match;
-        triggerGraphRepaint();
-      }
+    if (openSidebar) {
+      openVaultNoteInRightSidebar(note);
     }
   } catch (err) {
     showToast(`Could not load note: ${err.message}`, 3000, 'error');
   }
 }
 
-function renderVaultEditor(note) {
-  const container = document.getElementById('vaultEditorContainer');
+/**
+ * Delegate viewing & editing to the existing Right Sidebar.
+ */
+function openVaultNoteInRightSidebar(note) {
+  if (!note) return;
+
+  // 1. Expand right sidebar if collapsed
+  if (typeof toggleWorkspacePanel === 'function') {
+    toggleWorkspacePanel(true);
+  }
+
+  const fullPath = 'knowledge/' + (note.path.replace(/^knowledge\//, ''));
+
+  // 2. Set preview state
+  _previewCurrentPath = fullPath;
+  _previewRawContent = note.content || '';
+  _previewRawContentPath = fullPath;
+  _previewSaveRoute = '/api/vault/note';
+  _previewCurrentMode = 'md';
+
+  const previewPathText = document.getElementById('previewPathText');
+  if (previewPathText) previewPathText.textContent = fullPath;
+
+  const previewArea = document.getElementById('previewArea');
+  if (previewArea) previewArea.classList.add('visible');
+
+  const fileTree = document.getElementById('fileTree');
+  if (fileTree) fileTree.style.display = 'none';
+
+  // 3. Render rich Markdown preview in right panel
+  if (typeof renderMarkdownPreviewContent === 'function') {
+    renderMarkdownPreviewContent({ content: note.content || '' });
+  } else if (typeof renderMd === 'function') {
+    const mdEl = document.getElementById('previewMd');
+    if (mdEl) {
+      mdEl.innerHTML = renderMd(note.content || '');
+      mdEl.style.display = '';
+    }
+  }
+
+  if (typeof showPreview === 'function') {
+    showPreview('md');
+  }
+
+  // Ensure Edit button is available
+  const btnEdit = document.getElementById('btnEditFile');
+  if (btnEdit) btnEdit.style.display = 'inline-flex';
+
+  // 4. Render Linked References (Backlinks) tray in the right panel
+  renderVaultRelationsInPreview(note);
+}
+
+/**
+ * Render backlinks and outgoing links at the bottom of the right panel preview.
+ */
+function renderVaultRelationsInPreview(note) {
+  let container = document.getElementById('previewVaultRelations');
+  if (!container) {
+    const pArea = document.getElementById('previewArea');
+    if (pArea) {
+      container = document.createElement('div');
+      container.id = 'previewVaultRelations';
+      container.className = 'preview-vault-relations';
+      pArea.appendChild(container);
+    }
+  }
   if (!container) return;
 
-  const folder = note.path.includes('/') ? note.path.split('/')[0] : 'root';
-  const color = FOLDER_COLORS[folder] || FOLDER_COLORS.other;
-
-  // Render clickable incoming backlinks
   const backlinks = Array.isArray(note.backlinks) ? note.backlinks : [];
   const backlinksHtml = backlinks.length > 0
     ? backlinks.map(b => `<button type="button" class="vault-chip" onclick="loadVaultNote('${escapeAttr(b)}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> ${escapeHtml(b)}</button>`).join('')
-    : '<span class="vault-empty-text">No incoming backlinks yet.</span>';
+    : '<span class="vault-empty-text">No incoming backlinks</span>';
 
-  // Render clickable outgoing links
   const outgoing = Array.isArray(note.outgoing_links) ? note.outgoing_links : [];
   const outgoingHtml = outgoing.length > 0
     ? outgoing.map(b => `<button type="button" class="vault-chip outgoing" onclick="loadVaultNote('${escapeAttr(b)}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> ${escapeHtml(b)}</button>`).join('')
-    : '<span class="vault-empty-text">No outgoing links.</span>';
+    : '<span class="vault-empty-text">No outgoing links</span>';
 
   container.innerHTML = `
-    <div class="vault-editor-card">
-      <div class="vault-editor-header">
-        <div class="vault-title-wrap">
-          <span class="vault-folder-badge" style="border-color:${color};color:${color}">${escapeHtml(folder)}</span>
-          <input type="text" class="vault-note-title-input" id="vaultNoteTitle" value="${escapeAttr(note.title)}" readonly>
-          <span class="vault-path-sub">${escapeHtml(note.path)}</span>
-        </div>
-        <div class="vault-editor-actions">
-          <button type="button" class="btn-vault-action primary" onclick="saveActiveVaultNote()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save
-          </button>
-          <button type="button" class="btn-vault-action danger" onclick="deleteActiveVaultNote()">Delete</button>
-        </div>
+    <div class="vault-relations-footer">
+      <div class="vault-relation-block">
+        <span class="vault-relation-title">Linked References (Backlinks):</span>
+        <div class="vault-chips-row">${backlinksHtml}</div>
       </div>
-      <div class="vault-editor-body">
-        <textarea class="vault-textarea" id="vaultNoteTextarea" placeholder="Write Markdown with [[wikilinks]]...">${escapeHtml(note.content || '')}</textarea>
-      </div>
-      <div class="vault-relations-footer">
-        <div class="vault-relation-block">
-          <span class="vault-relation-title">Linked References (Backlinks):</span>
-          <div class="vault-chips-row">${backlinksHtml}</div>
-        </div>
-        <div class="vault-relation-block">
-          <span class="vault-relation-title">Outgoing Links:</span>
-          <div class="vault-chips-row">${outgoingHtml}</div>
-        </div>
+      <div class="vault-relation-block">
+        <span class="vault-relation-title">Outgoing Links:</span>
+        <div class="vault-chips-row">${outgoingHtml}</div>
       </div>
     </div>
   `;
+  container.style.display = 'flex';
 }
 
 /**
- * Save the currently open note.
+ * Helper called by workspace.js when any file starting with knowledge/ is viewed.
  */
-async function saveActiveVaultNote() {
-  if (!_activeVaultNote) return;
-  const textarea = document.getElementById('vaultNoteTextarea');
-  if (!textarea) return;
-
-  const content = textarea.value;
+async function renderVaultRelationsForCurrentPreview(path) {
+  if (!path || !path.startsWith('knowledge/')) return;
+  const rel = path.replace(/^knowledge\//, '');
   try {
-    const res = await fetch('/api/vault/note', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: _activeVaultNote.path, content: content })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      showToast('Note saved & knowledge rules synchronized!', 2000, 'success');
-      loadVault(true);
-    } else {
-      showToast(data.error || 'Failed to save note', 3000, 'error');
+    const res = await fetch(`/api/vault/note?path=${encodeURIComponent(rel)}`);
+    if (res.ok) {
+      const note = await res.json();
+      _activeVaultNote = note;
+      renderVaultRelationsInPreview(note);
+      highlightVaultGraphNode(note.path);
     }
-  } catch (err) {
-    showToast(err.message, 3000, 'error');
-  }
+  } catch (_) {}
 }
 
-/**
- * Delete active note with confirmation.
- */
-async function deleteActiveVaultNote() {
-  if (!_activeVaultNote) return;
-  if (!confirm(`Are you sure you want to delete "${_activeVaultNote.path}"?`)) return;
-
-  try {
-    const res = await fetch('/api/vault/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: _activeVaultNote.path })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      showToast('Note deleted', 2000);
-      _activeVaultNote = null;
-      loadVault(true);
-    } else {
-      showToast(data.error || 'Failed to delete note', 3000, 'error');
-    }
-  } catch (err) {
-    showToast(err.message, 3000, 'error');
+function highlightVaultGraphNode(pathOrId) {
+  if (!_vaultData.nodes) return;
+  const clean = pathOrId.replace(/^knowledge\//, '').replace(/\.md$/, '');
+  const match = _vaultData.nodes.find(n => n.id === clean || n.path === (clean + '.md') || n.path === pathOrId);
+  if (match) {
+    _hoverNode = match;
+    triggerGraphRepaint();
   }
 }
 
@@ -238,13 +259,10 @@ function promptCreateVaultNote() {
   let clean = noteName.trim().replace(/\\/g, '/').replace(/^\/+/, '');
   if (!clean.endsWith('.md')) clean += '.md';
 
-  const defaultContent = `# ${clean.split('/').pop().replace('.md', '').replace(/_/g, ' ').titleCase()}\n\nAdd your knowledge and link to other concepts using [[wikilinks]]!\n`;
+  const title = clean.split('/').pop().replace('.md', '').replace(/_/g, ' ');
+  const defaultContent = `# ${title.charAt(0).toUpperCase() + title.slice(1)}\n\nAdd your knowledge and link to other concepts using [[wikilinks]]!\n`;
   saveNewNote(clean, defaultContent);
 }
-
-String.prototype.titleCase = function() {
-  return this.replace(/\w\S*/g, function(txt) { return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(); });
-};
 
 async function saveNewNote(path, content) {
   try {
@@ -288,37 +306,6 @@ async function syncVaultRules() {
   }
 }
 
-/**
- * Switch view mode: 'graph' (graph only), 'editor' (editor only), 'split' (both side by side).
- */
-function switchVaultView(mode) {
-  _vaultViewMode = mode;
-  document.querySelectorAll('.vault-view-toggle-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  });
-
-  const graphBox = document.getElementById('vaultGraphBox');
-  const editorBox = document.getElementById('vaultEditorBox');
-
-  if (graphBox && editorBox) {
-    if (mode === 'graph') {
-      graphBox.style.display = 'flex';
-      graphBox.style.flex = '1';
-      editorBox.style.display = 'none';
-    } else if (mode === 'editor') {
-      graphBox.style.display = 'none';
-      editorBox.style.display = 'flex';
-      editorBox.style.flex = '1';
-    } else {
-      graphBox.style.display = 'flex';
-      graphBox.style.flex = '1';
-      editorBox.style.display = 'flex';
-      editorBox.style.flex = '1';
-    }
-  }
-  resizeGraphCanvas();
-}
-
 /* ─────────────────────────────────────────────────────────────
    2D Force-Directed Graph Engine (Pure Zero-Dependency Canvas)
    ───────────────────────────────────────────────────────────── */
@@ -334,7 +321,7 @@ function initVaultGraph(nodes, edges) {
   const nodeMap = {};
   _graphNodes = nodes.map((n, i) => {
     const angle = (i / Math.max(nodes.length, 1)) * 2 * Math.PI;
-    const dist = 120 + Math.random() * 80;
+    const dist = 140 + Math.random() * 90;
     const gNode = {
       id: n.id,
       title: n.title,
@@ -345,7 +332,7 @@ function initVaultGraph(nodes, edges) {
       y: canvas.height / 2 + Math.sin(angle) * dist,
       vx: (Math.random() - 0.5) * 2,
       vy: (Math.random() - 0.5) * 2,
-      radius: Math.max(7, Math.min(18, 6 + (n.total_connections || 1) * 2)),
+      radius: Math.max(8, Math.min(20, 7 + (n.total_connections || 1) * 2)),
       color: FOLDER_COLORS[n.folder] || FOLDER_COLORS.other
     };
     nodeMap[n.id] = gNode;
@@ -378,20 +365,20 @@ function resizeGraphCanvas() {
 function startGraphSimulation() {
   _vaultSimRunning = true;
   let iterations = 0;
-  const maxIterations = 280;
+  const maxIterations = 300;
 
   function step() {
     if (!_vaultSimRunning) return;
 
     // Physics constants
-    const repulsion = 900;
-    const springLen = 110;
+    const repulsion = 1100;
+    const springLen = 130;
     const springK = 0.04;
-    const damping = 0.82;
-    const centerPull = 0.015;
+    const damping = 0.83;
+    const centerPull = 0.012;
 
     const canvas = document.getElementById('vaultGraphCanvas');
-    const cx = canvas ? canvas.width / 2 : 300;
+    const cx = canvas ? canvas.width / 2 : 400;
     const cy = canvas ? canvas.height / 2 : 300;
 
     // 1. Repulsion between all node pairs
@@ -472,19 +459,20 @@ function drawGraph() {
   ctx.translate(_vaultPan.x, _vaultPan.y);
   ctx.scale(_vaultZoom, _vaultZoom);
 
-  // Draw subtle grid dots
+  // Subtle grid dots
   ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-  for (let x = -200; x < canvas.width + 400; x += 40) {
-    for (let y = -200; y < canvas.height + 400; y += 40) {
+  for (let x = -400; x < canvas.width + 600; x += 40) {
+    for (let y = -400; y < canvas.height + 600; y += 40) {
       ctx.fillRect(x, y, 1.5, 1.5);
     }
   }
 
   // Draw links
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.3;
   _graphEdges.forEach(e => {
     const isHovered = _hoverNode && (e.source.id === _hoverNode.id || e.target.id === _hoverNode.id);
-    ctx.strokeStyle = isHovered ? 'rgba(2, 136, 168, 0.6)' : 'rgba(255, 255, 255, 0.12)';
+    const isSelected = _activeVaultNote && (_activeVaultNote.id === e.source.id || _activeVaultNote.id === e.target.id);
+    ctx.strokeStyle = (isHovered || isSelected) ? 'rgba(2, 136, 168, 0.7)' : 'rgba(255, 255, 255, 0.12)';
     ctx.beginPath();
     ctx.moveTo(e.source.x, e.source.y);
     ctx.lineTo(e.target.x, e.target.y);
@@ -496,28 +484,28 @@ function drawGraph() {
     const isSelected = _activeVaultNote && (_activeVaultNote.id === n.id || _activeVaultNote.path === n.path);
     const isHovered = _hoverNode && _hoverNode.id === n.id;
 
-    // Node glow
+    // Glow ring
     if (isSelected || isHovered) {
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.radius + 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(2, 136, 168, 0.25)';
+      ctx.arc(n.x, n.y, n.radius + 7, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(2, 136, 168, 0.28)';
       ctx.fill();
     }
 
     // Node body
     ctx.beginPath();
     ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-    ctx.fillStyle = isSelected ? '#fff' : n.color;
+    ctx.fillStyle = isSelected ? '#ffffff' : n.color;
     ctx.fill();
-    ctx.strokeStyle = isSelected ? 'var(--accent)' : 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isSelected ? 'var(--accent)' : 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1.6;
     ctx.stroke();
 
     // Node label
-    ctx.fillStyle = isSelected ? '#fff' : 'rgba(255, 255, 255, 0.85)';
-    ctx.font = isSelected ? 'bold 11px system-ui, sans-serif' : '10px system-ui, sans-serif';
+    ctx.fillStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.88)';
+    ctx.font = isSelected ? 'bold 11px system-ui, sans-serif' : '10.5px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(n.title, n.x, n.y + n.radius + 13);
+    ctx.fillText(n.title, n.x, n.y + n.radius + 14);
   });
 
   ctx.restore();
@@ -532,7 +520,7 @@ function setupCanvasListeners(canvas) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-    _vaultZoom = Math.max(0.3, Math.min(3.0, _vaultZoom * zoomFactor));
+    _vaultZoom = Math.max(0.25, Math.min(3.5, _vaultZoom * zoomFactor));
     drawGraph();
   }, { passive: false });
 
@@ -544,7 +532,7 @@ function setupCanvasListeners(canvas) {
 
     const clicked = _graphNodes.find(n => {
       const d = Math.sqrt((n.x - mx) ** 2 + (n.y - my) ** 2);
-      return d <= n.radius + 4;
+      return d <= n.radius + 5;
     });
 
     if (clicked) {
@@ -584,7 +572,7 @@ function setupCanvasListeners(canvas) {
 
     const hover = _graphNodes.find(n => {
       const d = Math.sqrt((n.x - mx) ** 2 + (n.y - my) ** 2);
-      return d <= n.radius + 4;
+      return d <= n.radius + 5;
     });
 
     if (hover !== _hoverNode) {
