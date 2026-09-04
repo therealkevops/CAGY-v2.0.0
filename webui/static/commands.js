@@ -4,26 +4,31 @@ function cmdPassToAgent(args){
 
 const COMMANDS=[
   // Antigravity (AGY) Signature Workflows
-  {name:'plan',      desc:'Antigravity: Step-by-step implementation planning before coding', fn:cmdPassToAgent, arg:'[plan description]'},
-  {name:'goal',      desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
-  {name:'grill-me',  desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
-  {name:'learn',     desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
-  {name:'memorize',  desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
-  {name:'vault',     desc:'Antigravity: Open Knowledge Vault & Graph memory panel',                         fn:cmdVault, noEcho:true},
-  {name:'schedule',  desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
+  {name:'plan',             desc:'Antigravity: Step-by-step implementation planning before coding', fn:cmdPassToAgent, arg:'[plan description]'},
+  {name:'goal',             desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
+  {name:'grill-me',         desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
+  {name:'learn',            desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
+  {name:'memorize',         desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
+  {name:'vault',            desc:'Antigravity: Open Knowledge Vault & Graph memory panel', fn:cmdVault, noEcho:true},
+  {name:'browser',          desc:'Antigravity: Web browsing and URL content extraction', fn:cmdPassToAgent, arg:'[url or research query]'},
+  {name:'swarm',            desc:'Antigravity: Inspect autonomous subagents swarm and execution trees', fn:cmdSwarm, noEcho:true},
+  {name:'artifacts',        desc:'Antigravity: Open code preview, interactive diffs and generated artifacts panel', fn:cmdArtifacts, noEcho:true},
+  {name:'boost',            desc:'Antigravity: High-depth reasoning and multi-perspective verification', fn:cmdPassToAgent, arg:'[complex task]'},
+  {name:'teamwork-preview', desc:'Antigravity: Autonomous subagents team collaboration preview', fn:cmdPassToAgent, arg:'[project brief]'},
+  {name:'schedule',         desc:'Antigravity: Schedule recurring or one-shot task timer', fn:cmdPassToAgent, arg:'[timer/cron instructions]'},
   // Antigravity (AGY) Settings & Diagnostics
-  {name:'quota',     desc:'Antigravity: View live Gemini & model quota balances and reset timers', fn:cmdQuota, noEcho:true},
-  {name:'usage',     desc:'Antigravity: Alias for /quota',                                         fn:cmdQuota, noEcho:true},
-  {name:'effort',    desc:'Antigravity: Set reasoning effort (low, medium, high)',                fn:cmdEffort, arg:'[low|medium|high]', noEcho:true},
-  {name:'mode',      desc:'Antigravity: Set agent execution mode (accept-edits, plan)',            fn:cmdMode,   arg:'[plan|accept-edits]', noEcho:true},
-  {name:'status',    desc:'Antigravity: Display container runtime & EDR containment diagnostics', fn:cmdStatus, noEcho:true},
-  {name:'skills',    desc:'Antigravity: Browse active and built-in workspace skills',             fn:cmdSkills, noEcho:true},
-  {name:'mcp',       desc:'Antigravity: Inspect configured Model Context Protocol servers',        fn:cmdMcp,    noEcho:true},
+  {name:'quota',            desc:'Antigravity: View live Gemini & model quota balances and reset timers', fn:cmdQuota, noEcho:true},
+  {name:'usage',            desc:'Antigravity: Alias for /quota',                                         fn:cmdQuota, noEcho:true},
+  {name:'effort',           desc:'Antigravity: Set reasoning effort (low, medium, high)',                fn:cmdEffort, arg:'[low|medium|high]', noEcho:true},
+  {name:'mode',             desc:'Antigravity: Set agent execution mode (accept-edits, plan)',            fn:cmdMode,   arg:'[plan|accept-edits]', noEcho:true},
+  {name:'status',           desc:'Antigravity: Display container runtime & EDR containment diagnostics', fn:cmdStatus, noEcho:true},
+  {name:'skills',           desc:'Antigravity: Browse active and built-in workspace skills',             fn:cmdSkills, noEcho:true},
+  {name:'mcp',              desc:'Antigravity: Inspect configured Model Context Protocol servers',        fn:cmdMcp,    noEcho:true},
   // Session Controls
-  {name:'new',       desc:'Start a new conversation',            fn:cmdNew,       noEcho:true},
-  {name:'clear',     desc:'Clear the active chat view',         fn:cmdClear,     noEcho:true},
-  {name:'theme',     desc:'Switch UI theme or skin', fn:cmdTheme, arg:'name',  noEcho:true},
-  {name:'help',      desc:'Show available commands',             fn:cmdHelp},
+  {name:'new',              desc:'Start a new conversation',            fn:cmdNew,       noEcho:true},
+  {name:'clear',            desc:'Clear the active chat view',         fn:cmdClear,     noEcho:true},
+  {name:'theme',            desc:'Switch UI theme or skin', fn:cmdTheme, arg:'name',  noEcho:true},
+  {name:'help',             desc:'Show available commands',             fn:cmdHelp},
 ];
 
 const SLASH_SUBARG_SOURCES={};
@@ -399,6 +404,21 @@ function cmdClear(){
 function cmdVault(){
   if(typeof switchPanel==='function'){
     switchPanel('vault', {fromRailClick:true});
+  }
+}
+
+function cmdSwarm(){
+  if(typeof switchPanel==='function'){
+    switchPanel('subagents', {fromRailClick:true});
+  }
+}
+
+function cmdArtifacts(){
+  if(typeof toggleWorkspacePanel==='function'){
+    toggleWorkspacePanel(true);
+  }
+  if(typeof _setWorkspacePanelMode==='function'){
+    _setWorkspacePanelMode('preview');
   }
 }
 
@@ -2147,6 +2167,58 @@ function ensureSkillCommandsLoadedForAutocomplete(){
 
 let _cmdSelectedIdx=-1;
 
+const CMD_ICONS = {
+  plan: 'clipboard-list',
+  goal: 'play',
+  'grill-me': 'sparkles',
+  learn: 'brain',
+  memorize: 'brain',
+  vault: 'map',
+  browser: 'globe',
+  swarm: 'bot',
+  artifacts: 'file-text',
+  boost: 'zap',
+  'teamwork-preview': 'layers',
+  schedule: 'clock',
+  quota: 'cpu',
+  usage: 'cpu',
+  effort: 'sparkles',
+  mode: 'wrench',
+  status: 'shield',
+  skills: 'book-open',
+  mcp: 'plug',
+  new: 'plus',
+  clear: 'trash-2',
+  theme: 'star',
+  help: 'file-text',
+};
+
+const CMD_CATEGORIES = {
+  plan: 'Workflow',
+  goal: 'Workflow',
+  'grill-me': 'Workflow',
+  learn: 'Workflow',
+  memorize: 'Memory',
+  vault: 'Memory',
+  browser: 'Tools',
+  swarm: 'Agents',
+  artifacts: 'Tools',
+  boost: 'Workflow',
+  'teamwork-preview': 'Agents',
+  schedule: 'Workflow',
+  quota: 'System',
+  usage: 'System',
+  effort: 'System',
+  mode: 'System',
+  status: 'System',
+  skills: 'Custom',
+  mcp: 'Custom',
+  new: 'Session',
+  clear: 'Session',
+  theme: 'Session',
+  help: 'Session',
+};
+
 function showCmdDropdown(matches){
   const dd=$('cmdDropdown');
   if(!dd)return;
@@ -2168,13 +2240,27 @@ function showCmdDropdown(matches){
       : '';
     if(c.source==='skill') el.classList.add('cmd-item-skill');
     if(isPath) el.classList.add('cmd-item-path');
+
+    const iconName = isPath ? 'folder' : (isSubArg ? 'chevron-right' : (CMD_ICONS[c.name] || 'terminal'));
+    const iconSvg = (typeof li === 'function') ? li(iconName, 14) : '';
+    const iconHtml = `<div class="cmd-item-icon">${iconSvg}</div>`;
+
+    const category = (!isSubArg && !isPath && CMD_CATEGORIES[c.name]) ? CMD_CATEGORIES[c.name] : '';
+    const catBadge = category ? `<span class="cmd-item-category">${esc(category)}</span>` : '';
+
     const nameHtml=isPath
       ? `<div class="cmd-item-name"><span class="cmd-item-path-value">${esc(c.value)}</span></div>`
       : isSubArg
       ? `<div class="cmd-item-name"><span class="cmd-item-parent">/${esc(c.parent)}</span> <span class="cmd-item-subarg">${esc(c.value)}</span></div>`
-      : `<div class="cmd-item-name">/${esc(c.name)}${usage}${badge}</div>`;
+      : `<div class="cmd-item-head"><div class="cmd-item-name">/${esc(c.name)}${usage}</div><div class="cmd-item-tags">${catBadge}${badge}</div></div>`;
     const descHtml=`<div class="cmd-item-desc">${esc(c.desc)}</div>`;
-    el.innerHTML=`${nameHtml}${descHtml}`;
+    el.innerHTML=`${iconHtml}<div class="cmd-item-content">${nameHtml}${descHtml}</div>`;
+
+    el.onmouseenter=()=>{
+      dd.querySelectorAll('.cmd-item').forEach(iEl=>iEl.classList.remove('selected'));
+      el.classList.add('selected');
+      _cmdSelectedIdx=i;
+    };
     el.onmousedown=(e)=>{
       e.preventDefault();
       if(isPath){

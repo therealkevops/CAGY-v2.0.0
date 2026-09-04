@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Set, Optional
 
 WIKILINK_REGEX = re.compile(r'\[\[([^\]\|#]+)(?:#[^\]\|]+)?(?:\|([^\]]+))?\]\]')
+TAG_REGEX = re.compile(r'(?:^|\s)#([a-zA-Z][a-zA-Z0-9_\-/]*)')
 
 def extract_wikilinks(content: str) -> List[Dict[str, Any]]:
     """Extract all wikilinks [[Target|Alias]] or [[Target#Section|Alias]] from text."""
@@ -20,6 +21,24 @@ def extract_wikilinks(content: str) -> List[Dict[str, Any]]:
         alias = match.group(2).strip() if match.group(2) else ""
         links.append({"target": target, "alias": alias})
     return links
+
+def extract_tags(content: str) -> List[str]:
+    """Extract all #tags from markdown content (ignoring markdown headings # Heading)."""
+    tags = set()
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Strip heading markers at start of line
+        if line.startswith("#"):
+            parts = line.split(maxsplit=1)
+            if parts and all(c == "#" for c in parts[0]):
+                line = parts[1] if len(parts) > 1 else ""
+        for m in TAG_REGEX.finditer(line):
+            tag = m.group(1).strip().lower()
+            if len(tag) >= 2:
+                tags.add(tag)
+    return sorted(tags)
 
 def get_vault_dir(workspace_path: Optional[Path] = None) -> Path:
     """Resolve knowledge vault directory."""
@@ -97,6 +116,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             mtime = 0
 
         title = _extract_title(content, p.stem)
+        tags = extract_tags(content)
 
         # Extract all wikilinks
         raw_links = WIKILINK_REGEX.findall(content)
@@ -123,6 +143,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             "size_bytes": size,
             "mtime": mtime,
             "links": resolved_links,
+            "tags": tags,
         }
 
     # Third pass: Invert outgoing links into backlinks
@@ -147,6 +168,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             "title": info["title"],
             "path": info["path"],
             "folder": info["folder"],
+            "tags": info.get("tags", []),
             "size_bytes": info["size_bytes"],
             "mtime": info["mtime"],
             "links_count": links_count,
@@ -169,12 +191,15 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
     # Sort nodes by total connections descending
     nodes.sort(key=lambda n: n["total_connections"], reverse=True)
 
+    all_tags = sorted({t for n in nodes for t in n.get("tags", [])})
+
     return {
         "nodes": nodes,
         "edges": edges,
         "stats": {
             "total_notes": len(nodes),
             "total_edges": len(edges),
+            "all_tags": all_tags,
             "vault_path": str(vault_path),
             "timestamp": time.time()
         }
@@ -222,6 +247,7 @@ def get_note(vault_path: Path, rel_path: str) -> Dict[str, Any]:
         "title": title,
         "path": clean_rel,
         "content": content,
+        "tags": extract_tags(content),
         "size_bytes": stat.st_size,
         "mtime": stat.st_mtime,
         "outgoing_links": outgoing,

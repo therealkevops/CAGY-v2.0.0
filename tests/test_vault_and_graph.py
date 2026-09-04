@@ -59,6 +59,14 @@ class TestVaultEngine(unittest.TestCase):
         self.assertEqual(targets, ["Note A", "Note B", "Note C", "Note D"])
         self.assertEqual(links[1]["alias"], "Alias B")
 
+    def test_extract_tags(self):
+        sample = "# Note Title\n\nThis is a note with #infrastructure, #nutanix/nc2 and #docker-debian tags.\n## Heading Two\nNot a tag: # Heading"
+        tags = vault.extract_tags(sample)
+        self.assertIn("infrastructure", tags)
+        self.assertIn("nutanix/nc2", tags)
+        self.assertIn("docker-debian", tags)
+        self.assertNotIn("heading", tags)
+
     def test_scan_vault_and_build_graph(self):
         graph = vault.scan_vault(self.vault_dir)
         self.assertEqual(graph["stats"]["total_notes"], 3)

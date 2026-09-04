@@ -9,6 +9,10 @@
  */
 
 let _vaultData = { nodes: [], edges: [], stats: {} };
+let _allGraphNodes = [];
+let _allGraphEdges = [];
+let _currentGraphDepth = 'all'; // 'all', '1', '2'
+let _activeTagFilter = null;
 let _activeVaultNote = null;
 let _vaultSimRunning = false;
 let _vaultZoom = 1.0;
@@ -42,8 +46,11 @@ async function loadVault(force = false) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _vaultData = data;
+    _allGraphNodes = data.nodes || [];
+    _allGraphEdges = data.edges || [];
 
     updateVaultMetrics(data.stats || {});
+    renderVaultTagFilter((data.stats && data.stats.all_tags) || []);
     renderVaultSidebarList(data.nodes || []);
     initVaultGraph(data.nodes || [], data.edges || []);
 
@@ -65,17 +72,63 @@ function updateVaultMetrics(stats) {
   const edges = stats.total_edges || 0;
   if (mNotes) mNotes.textContent = String(notes);
   if (mEdges) mEdges.textContent = String(edges);
-  if (hStats) hStats.textContent = `${notes} notes · ${edges} links`;
+  if (hStats && _currentGraphDepth === 'all') {
+    hStats.textContent = `${notes} notes · ${edges} links`;
+  }
+}
+
+function renderVaultTagFilter(allTags) {
+  const container = document.getElementById('vaultTagFilter');
+  if (!container) return;
+  if (!allTags || !allTags.length) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  container.style.display = 'flex';
+  let html = `<button type="button" class="vault-tag-pill ${!_activeTagFilter ? 'active' : ''}" onclick="setVaultTagFilter(null)">All</button>`;
+  allTags.forEach(t => {
+    const isAct = _activeTagFilter === t;
+    html += `<button type="button" class="vault-tag-pill ${isAct ? 'active' : ''}" onclick="setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}</button>`;
+  });
+  container.innerHTML = html;
+}
+
+function setVaultTagFilter(tag) {
+  _activeTagFilter = (_activeTagFilter === tag) ? null : tag;
+  renderVaultTagFilter(_vaultData.stats && _vaultData.stats.all_tags);
+  const searchVal = document.getElementById('vaultSearchInput') ? document.getElementById('vaultSearchInput').value : '';
+  renderVaultSidebarList(_vaultData.nodes || [], searchVal);
 }
 
 function renderVaultSidebarList(nodes, filterText = '') {
   const listEl = document.getElementById('vaultNoteList');
   if (!listEl) return;
 
-  const q = (filterText || '').toLowerCase().trim();
-  const filtered = nodes.filter(n =>
-    !q || n.title.toLowerCase().includes(q) || n.path.toLowerCase().includes(q) || n.folder.toLowerCase().includes(q)
-  );
+  const rawQ = (filterText || '').trim();
+  let tagSearch = _activeTagFilter;
+  let textSearch = rawQ;
+
+  if (rawQ.startsWith('#')) {
+    tagSearch = rawQ.slice(1).toLowerCase();
+    textSearch = '';
+  }
+
+  const q = textSearch.toLowerCase();
+  const filtered = nodes.filter(n => {
+    if (tagSearch) {
+      const nTags = Array.isArray(n.tags) ? n.tags.map(t => t.toLowerCase()) : [];
+      if (!nTags.some(t => t.includes(tagSearch.toLowerCase()))) return false;
+    }
+    if (q) {
+      const matchText = n.title.toLowerCase().includes(q) ||
+                        n.path.toLowerCase().includes(q) ||
+                        n.folder.toLowerCase().includes(q) ||
+                        (Array.isArray(n.tags) && n.tags.some(t => t.toLowerCase().includes(q)));
+      if (!matchText) return false;
+    }
+    return true;
+  });
 
   if (!filtered.length) {
     listEl.innerHTML = '<div class="vault-empty-list">No matching notes found.</div>';
@@ -85,6 +138,9 @@ function renderVaultSidebarList(nodes, filterText = '') {
   listEl.innerHTML = filtered.map(n => {
     const isSel = _activeVaultNote && (_activeVaultNote.path === n.path || _activeVaultNote.id === n.id);
     const color = FOLDER_COLORS[n.folder] || FOLDER_COLORS.other;
+    const tagsHtml = (Array.isArray(n.tags) && n.tags.length > 0)
+      ? `<div class="vault-item-tags">${n.tags.map(t => `<span class="vault-item-tag" onclick="event.stopPropagation();setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}</span>`).join('')}</div>`
+      : '';
     return `
       <div class="vault-sidebar-item ${isSel ? 'selected' : ''}" onclick="loadVaultNote('${escapeAttr(n.path)}')">
         <div class="vault-item-top">
@@ -95,6 +151,7 @@ function renderVaultSidebarList(nodes, filterText = '') {
           <span class="vault-folder-tag">${escapeHtml(n.folder)}</span>
           <span>${n.links_count} links · ${n.backlinks_count} backlinks</span>
         </div>
+        ${tagsHtml}
       </div>
     `;
   }).join('');
@@ -120,7 +177,11 @@ async function loadVaultNote(relPath, openSidebar = true, openInEditor = true) {
     _activeVaultNote = note;
 
     renderVaultSidebarList(_vaultData.nodes || []);
-    highlightVaultGraphNode(clean);
+    if (_currentGraphDepth !== 'all') {
+      applyGraphDepthFilter();
+    } else {
+      highlightVaultGraphNode(clean);
+    }
 
     if (openSidebar) {
       openVaultNoteInRightSidebar(note, openInEditor);
@@ -191,8 +252,11 @@ function openVaultNoteInRightSidebar(note, openInEditor = true) {
     editArea.style.display = '';
     if (mdEl) mdEl.style.display = 'none';
     if (codeEl) codeEl.style.display = 'none';
+    setupWikilinkAutocomplete();
     editArea.onkeydown = e => {
       if (e.key === 'Escape') {
+        const dd = document.getElementById('wikilinkDropdown');
+        if (dd && dd.style.display !== 'none') return; // handled by wikilink listener
         e.preventDefault();
         if (typeof cancelEditMode === 'function') cancelEditMode();
       }
@@ -232,6 +296,11 @@ function renderVaultRelationsInPreview(note) {
   }
   if (!container) return;
 
+  const tags = Array.isArray(note.tags) ? note.tags : [];
+  const tagsHtml = tags.length > 0
+    ? tags.map(t => `<span class="vault-chip tag" onclick="setVaultTagFilter('${escapeAttr(t)}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg> #${escapeHtml(t)}</span>`).join('')
+    : '<span class="vault-empty-text">No tags</span>';
+
   const backlinks = Array.isArray(note.backlinks) ? note.backlinks : [];
   const backlinksHtml = backlinks.length > 0
     ? backlinks.map(b => `<button type="button" class="vault-chip" onclick="loadVaultNote('${escapeAttr(b)}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> ${escapeHtml(b)}</button>`).join('')
@@ -244,6 +313,10 @@ function renderVaultRelationsInPreview(note) {
 
   container.innerHTML = `
     <div class="vault-relations-footer">
+      <div class="vault-relation-block">
+        <span class="vault-relation-title">Tags:</span>
+        <div class="vault-chips-row">${tagsHtml}</div>
+      </div>
       <div class="vault-relation-block">
         <span class="vault-relation-title">Linked References (Backlinks):</span>
         <div class="vault-chips-row">${backlinksHtml}</div>
@@ -342,6 +415,169 @@ async function syncVaultRules() {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Wikilink Autocomplete Engine for Right-Sidebar Editor
+   ───────────────────────────────────────────────────────────── */
+
+let _wikilinkSelectedIdx = -1;
+let _wikilinkMatches = [];
+
+function setupWikilinkAutocomplete() {
+  const editArea = document.getElementById('previewEditArea');
+  const dropdown = document.getElementById('wikilinkDropdown');
+  if (!editArea || !dropdown || editArea._hasWikilinkSetup) return;
+  editArea._hasWikilinkSetup = true;
+
+  function hideDropdown() {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+    _wikilinkSelectedIdx = -1;
+    _wikilinkMatches = [];
+  }
+
+  function checkTrigger() {
+    const text = editArea.value;
+    const pos = editArea.selectionStart;
+    const before = text.slice(0, pos);
+    const match = before.match(/\[\[([^\]\r\n]*)$/);
+    if (!match) {
+      hideDropdown();
+      return;
+    }
+
+    const query = match[1].toLowerCase().trim();
+    const allNotes = (_vaultData && _vaultData.nodes) ? _vaultData.nodes : [];
+
+    _wikilinkMatches = allNotes.filter(n => {
+      if (!query) return true;
+      return n.title.toLowerCase().includes(query) ||
+             n.id.toLowerCase().includes(query) ||
+             (Array.isArray(n.tags) && n.tags.some(t => t.toLowerCase().includes(query))) ||
+             n.folder.toLowerCase().includes(query);
+    }).slice(0, 8);
+
+    if (!_wikilinkMatches.length) {
+      hideDropdown();
+      return;
+    }
+
+    _wikilinkSelectedIdx = 0;
+    renderDropdown();
+  }
+
+  function renderDropdown() {
+    dropdown.innerHTML = _wikilinkMatches.map((n, idx) => {
+      const isSel = idx === _wikilinkSelectedIdx;
+      const color = FOLDER_COLORS[n.folder] || FOLDER_COLORS.other;
+      const tags = (Array.isArray(n.tags) && n.tags.length)
+        ? `<div class="wikilink-item-tags">${n.tags.map(t => `<span class="wikilink-tag">#${escapeHtml(t)}</span>`).join('')}</div>`
+        : '';
+      return `
+        <div class="wikilink-item ${isSel ? 'selected' : ''}" data-idx="${idx}">
+          <div class="wikilink-item-main">
+            <span class="vault-folder-dot" style="background:${color}"></span>
+            <span class="wikilink-item-title">${escapeHtml(n.title)}</span>
+            <span class="vault-folder-tag">${escapeHtml(n.folder)}</span>
+          </div>
+          ${tags}
+        </div>
+      `;
+    }).join('');
+
+    dropdown.style.display = 'block';
+
+    dropdown.querySelectorAll('.wikilink-item').forEach(el => {
+      el.onmousedown = (e) => {
+        e.preventDefault();
+        const idx = parseInt(el.dataset.idx, 10);
+        insertWikilink(_wikilinkMatches[idx]);
+      };
+    });
+  }
+
+  function insertWikilink(targetNote) {
+    if (!targetNote) { hideDropdown(); return; }
+    const text = editArea.value;
+    const pos = editArea.selectionStart;
+    const before = text.slice(0, pos);
+    const after = text.slice(pos);
+
+    const match = before.match(/\[\[([^\]\r\n]*)$/);
+    if (!match) return;
+
+    const prefix = before.slice(0, match.index);
+    const linkText = (targetNote.title && targetNote.title !== targetNote.id)
+      ? `[[${targetNote.id}|${targetNote.title}]]`
+      : `[[${targetNote.id}]]`;
+
+    editArea.value = prefix + linkText + after;
+    const newCursor = prefix.length + linkText.length;
+    editArea.selectionStart = newCursor;
+    editArea.selectionEnd = newCursor;
+    editArea.focus();
+
+    if (typeof _previewDirty !== 'undefined') _previewDirty = true;
+    if (typeof updateEditBtn === 'function') updateEditBtn();
+
+    hideDropdown();
+  }
+
+  editArea.addEventListener('input', checkTrigger);
+  editArea.addEventListener('click', checkTrigger);
+  editArea.addEventListener('keyup', (e) => {
+    if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      checkTrigger();
+    }
+  });
+
+  editArea.addEventListener('keydown', (e) => {
+    if (dropdown.style.display === 'none') return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _wikilinkSelectedIdx = (_wikilinkSelectedIdx + 1) % _wikilinkMatches.length;
+      renderDropdown();
+      const sel = dropdown.querySelector(`.wikilink-item[data-idx="${_wikilinkSelectedIdx}"]`);
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _wikilinkSelectedIdx = (_wikilinkSelectedIdx - 1 + _wikilinkMatches.length) % _wikilinkMatches.length;
+      renderDropdown();
+      const sel = dropdown.querySelector(`.wikilink-item[data-idx="${_wikilinkSelectedIdx}"]`);
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      if (_wikilinkMatches.length > 0 && _wikilinkSelectedIdx >= 0) {
+        e.preventDefault();
+        insertWikilink(_wikilinkMatches[_wikilinkSelectedIdx]);
+        return;
+      }
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideDropdown();
+      return;
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!editArea.contains(e.target) && !dropdown.contains(e.target)) {
+      hideDropdown();
+    }
+  });
+}
+
+// Automatically setup wikilink dropdown when script is loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupWikilinkAutocomplete);
+} else {
+  setupWikilinkAutocomplete();
+}
+
+/* ─────────────────────────────────────────────────────────────
    2D Force-Directed Graph Engine (Pure Zero-Dependency Canvas)
    ───────────────────────────────────────────────────────────── */
 
@@ -349,13 +585,89 @@ let _graphNodes = [];
 let _graphEdges = [];
 let _animFrameId = null;
 
-function initVaultGraph(nodes, edges) {
+function setGraphDepthFilter(depth) {
+  _currentGraphDepth = String(depth || 'all');
+  const btns = document.querySelectorAll('#vaultDepthFilter .vault-depth-btn');
+  btns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.depth === _currentGraphDepth);
+  });
+  applyGraphDepthFilter();
+}
+
+function applyGraphDepthFilter() {
   const canvas = document.getElementById('vaultGraphCanvas');
   if (!canvas) return;
 
+  let nodesToRender = _allGraphNodes;
+  let edgesToRender = _allGraphEdges;
+
+  if (_currentGraphDepth !== 'all' && _allGraphNodes.length > 0) {
+    const maxHops = parseInt(_currentGraphDepth, 10) || 1;
+    let rootId = null;
+    if (_activeVaultNote) {
+      rootId = _activeVaultNote.id || _activeVaultNote.path.replace(/^knowledge\//, '').replace(/\.md$/, '');
+    } else if (_hoverNode) {
+      rootId = _hoverNode.id;
+    } else if (_allGraphNodes.length > 0) {
+      rootId = _allGraphNodes[0].id;
+    }
+
+    // Build bidirectional adjacency list
+    const adj = {};
+    _allGraphNodes.forEach(n => { adj[n.id] = []; });
+    _allGraphEdges.forEach(e => {
+      if (adj[e.source] && adj[e.target]) {
+        adj[e.source].push(e.target);
+        adj[e.target].push(e.source);
+      }
+    });
+
+    const visited = new Set();
+    if (rootId && adj[rootId]) {
+      visited.add(rootId);
+      let frontier = [rootId];
+      for (let hop = 0; hop < maxHops; hop++) {
+        const nextFrontier = [];
+        frontier.forEach(currId => {
+          (adj[currId] || []).forEach(neighborId => {
+            if (!visited.has(neighborId)) {
+              visited.add(neighborId);
+              nextFrontier.push(neighborId);
+            }
+          });
+        });
+        frontier = nextFrontier;
+      }
+    }
+
+    nodesToRender = _allGraphNodes.filter(n => visited.has(n.id));
+    edgesToRender = _allGraphEdges.filter(e => visited.has(e.source) && visited.has(e.target));
+
+    const hStats = document.getElementById('vaultHeaderStats');
+    if (hStats) {
+      hStats.textContent = `${nodesToRender.length} of ${_allGraphNodes.length} notes (${_currentGraphDepth}-hop focus)`;
+    }
+  } else {
+    const hStats = document.getElementById('vaultHeaderStats');
+    if (hStats) {
+      const totalNotes = (_vaultData.stats && _vaultData.stats.total_notes) || _allGraphNodes.length;
+      const totalEdges = (_vaultData.stats && _vaultData.stats.total_edges) || _allGraphEdges.length;
+      hStats.textContent = `${totalNotes} notes · ${totalEdges} links`;
+    }
+  }
+
+  // Preserve node positions if already simulated to prevent jarring jumps
+  const existingMap = {};
+  _graphNodes.forEach(gn => { existingMap[gn.id] = gn; });
+
   const nodeMap = {};
-  _graphNodes = nodes.map((n, i) => {
-    const angle = (i / Math.max(nodes.length, 1)) * 2 * Math.PI;
+  _graphNodes = nodesToRender.map((n, i) => {
+    const existing = existingMap[n.id];
+    if (existing) {
+      nodeMap[n.id] = existing;
+      return existing;
+    }
+    const angle = (i / Math.max(nodesToRender.length, 1)) * 2 * Math.PI;
     const dist = 140 + Math.random() * 90;
     const gNode = {
       id: n.id,
@@ -374,7 +686,7 @@ function initVaultGraph(nodes, edges) {
     return gNode;
   });
 
-  _graphEdges = edges.map(e => {
+  _graphEdges = edgesToRender.map(e => {
     return {
       source: nodeMap[e.source] || null,
       target: nodeMap[e.target] || null
@@ -384,6 +696,12 @@ function initVaultGraph(nodes, edges) {
   setupCanvasListeners(canvas);
   resizeGraphCanvas();
   startGraphSimulation();
+}
+
+function initVaultGraph(nodes, edges) {
+  _allGraphNodes = nodes || [];
+  _allGraphEdges = edges || [];
+  applyGraphDepthFilter();
 }
 
 function resizeGraphCanvas(restartPhysics = false) {
