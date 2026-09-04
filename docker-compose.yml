@@ -1,5 +1,6 @@
 services:
   agy-unified:
+    image: cagy:latest
     build: .
     container_name: agy-unified
     restart: unless-stopped
@@ -19,7 +20,6 @@ services:
       - ./container_data/gemini:/root/.gemini
       - ./container_data/config:/root/.config
       - ./container_data/webui:/root/.agy/webui
-      - ./container_data/webui:/root/.hermes/webui
       # Mount host project root to container workspace
       - ./:/workspace
       - ./supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro

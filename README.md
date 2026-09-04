@@ -114,6 +114,24 @@ CAGY includes a comprehensive automated test suite covering syntax compilation, 
 ./run-tests.sh --compatibility
 ```
 
+### Building & Publishing Container Images
+
+CAGY features an optimized multi-stage `Dockerfile` with multi-architecture support (`linux/amd64` and `linux/arm64`), pre-bundled `uv`/`uvx` binaries, and a streamlined runtime footprint:
+
+```bash
+# Build optimized image for local architecture (tagged cagy:latest and cagy:v2.0-cagy)
+./build-image.sh
+
+# Build with post-build toolchain verification (uv, uvx, agy)
+./build-image.sh --test
+
+# Validate multi-arch cross-compilation (linux/amd64 & linux/arm64)
+./build-image.sh --multi-arch
+
+# Build and push multi-arch image to container registry
+./build-image.sh --push ghcr.io/<owner>/cagy
+```
+
 ### Updating Antigravity CLI
 
 We provide two update pathways:

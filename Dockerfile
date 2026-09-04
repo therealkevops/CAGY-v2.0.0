@@ -1,3 +1,6 @@
+# syntax=docker/dockerfile:1
+FROM ghcr.io/astral-sh/uv:latest AS uv-bin
+
 FROM node:22-bookworm-slim
 
 USER root
@@ -5,7 +8,10 @@ USER root
 # Prevent interactive prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install core development tools, Python, Git, Ripgrep, Supervisor, Docker CLI
+# Copy pre-compiled uv & uvx binaries for zero-overhead Python MCP server execution
+COPY --from=uv-bin /uv /uvx /usr/local/bin/
+
+# Install core runtime tools, Python, Git, Ripgrep, Supervisor, and CA certs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -14,19 +20,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     unzip \
     procps \
-    build-essential \
     python3 \
     python3-pip \
     python3-venv \
     supervisor \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install Python dependencies for Antigravity WebUI
-RUN pip3 install --no-cache-dir --break-system-packages pyyaml cryptography psutil
+# Install Python dependencies for Antigravity WebUI using pre-built binary wheels
+RUN pip3 install --no-cache-dir --break-system-packages pyyaml cryptography psutil \
+    && rm -rf /root/.cache
 
 # Prepare persistent configuration and workspace directories
-RUN mkdir -p /opt/data /workspace /root/.gemini /root/.config
+RUN mkdir -p /opt/data /workspace /root/.gemini /root/.config /root/.agy/webui
 
 # Install official Google Antigravity (AGY) Linux CLI with proxy certificate handling
 RUN echo "insecure" > /root/.curlrc \
@@ -38,12 +44,12 @@ RUN echo "insecure" > /root/.curlrc \
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Environment variables
-ENV WORKSPACE_DIR=/workspace
-ENV DATA_DIR=/opt/data
-ENV SSL_CERT_FILE=/opt/data/system_certs.pem
-ENV REQUESTS_CA_BUNDLE=/opt/data/system_certs.pem
-ENV NODE_EXTRA_CA_CERTS=/opt/data/system_certs.pem
-ENV CURL_CA_BUNDLE=/opt/data/system_certs.pem
+ENV WORKSPACE_DIR=/workspace \
+    DATA_DIR=/opt/data \
+    SSL_CERT_FILE=/opt/data/system_certs.pem \
+    REQUESTS_CA_BUNDLE=/opt/data/system_certs.pem \
+    NODE_EXTRA_CA_CERTS=/opt/data/system_certs.pem \
+    CURL_CA_BUNDLE=/opt/data/system_certs.pem
 
 WORKDIR /workspace
 
