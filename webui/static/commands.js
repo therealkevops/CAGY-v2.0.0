@@ -10,6 +10,8 @@ const COMMANDS=[
   {name:'learn',            desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
   {name:'memorize',         desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
   {name:'vault',            desc:'Antigravity: Open Knowledge Vault & Graph memory panel', fn:cmdVault, noEcho:true},
+  {name:'analytics',        desc:'Antigravity: Inspect prompt token economics and memory efficiency', fn:cmdAnalytics, noEcho:true},
+  {name:'efficiency',       desc:'Antigravity: Alias for /analytics',                                  fn:cmdAnalytics, noEcho:true},
   {name:'browser',          desc:'Antigravity: Web browsing and URL content extraction', fn:cmdPassToAgent, arg:'[url or research query]'},
   {name:'swarm',            desc:'Antigravity: Inspect autonomous subagents swarm and execution trees', fn:cmdSwarm, noEcho:true},
   {name:'artifacts',        desc:'Antigravity: Open code preview, interactive diffs and generated artifacts panel', fn:cmdArtifacts, noEcho:true},
@@ -404,6 +406,12 @@ function cmdClear(){
 function cmdVault(){
   if(typeof switchPanel==='function'){
     switchPanel('vault', {fromRailClick:true});
+  }
+}
+
+function cmdAnalytics(){
+  if(typeof switchPanel==='function'){
+    switchPanel('analytics', {fromRailClick:true});
   }
 }
 

@@ -13,9 +13,9 @@ let _pendingSettingsTargetPanel = null; // destination selected while settings h
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', skills: 'tab_skills',
   mcp: 'tab_mcp', subagents: 'tab_subagents', workspaces: 'tab_workspaces',
-  settings: 'tab_settings', vault: 'tab_vault',
+  settings: 'tab_settings', vault: 'tab_vault', analytics: 'tab_analytics',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','workspaces','plugin','vault'];
+const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','workspaces','plugin','vault','analytics'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -423,6 +423,9 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'vault') {
     if (typeof loadVault === 'function') await loadVault();
     if (typeof resizeGraphCanvas === 'function') resizeGraphCanvas(true);
+  }
+  if (nextPanel === 'analytics') {
+    if (typeof loadAnalyticsPanel === 'function') await loadAnalyticsPanel();
   }
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {

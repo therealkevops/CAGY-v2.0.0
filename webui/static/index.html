@@ -161,6 +161,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="subagents" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarms" data-i18n-title="tab_subagents" aria-label="Subagents"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills & Rules" data-i18n-title="tab_skills" aria-label="Skills"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="vault" onclick="switchPanel('vault',{fromRailClick:true})" data-tooltip="Knowledge Vault & Graph" data-i18n-title="tab_vault" aria-label="Vault"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="analytics" onclick="switchPanel('analytics',{fromRailClick:true})" data-tooltip="Token Economics & Memory Efficiency" data-i18n-title="tab_analytics" aria-label="Analytics"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></button>
     <div class="rail-spacer"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeDesktop" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
   </nav>
@@ -175,6 +176,7 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="subagents" data-label="Swarm" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarm" data-i18n-title="tab_subagents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="skills" data-label="Skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills & Rules" data-i18n-title="tab_skills"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="vault" data-label="Vault" onclick="switchPanel('vault',{fromRailClick:true})" data-tooltip="Knowledge Vault" data-i18n-title="tab_vault"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="analytics" data-label="Efficiency" onclick="switchPanel('analytics',{fromRailClick:true})" data-tooltip="Token Economics & Memory Efficiency" data-i18n-title="tab_analytics"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></button>
       <!-- Settings button mirrored here for mobile (rail is desktop-only via @media >=768px). Keep in sync with rail entry. -->
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" style="position:relative"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeMobile" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
     </div>
@@ -274,6 +276,31 @@
         <div class="vault-tag-filter" id="vaultTagFilter" style="display:none"></div>
         <div class="vault-note-list" id="vaultNoteList">
           <div style="padding:12px;color:var(--muted);font-size:12px">Loading vault...</div>
+        </div>
+      </div>
+    </div>
+    <!-- Analytics panel (sidebar metrics & session picker) -->
+    <div class="panel-view" id="panelAnalytics">
+      <div class="panel-head">
+        <span data-i18n="tab_analytics">Efficiency & ROI</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="loadAnalyticsPanel(true)" data-tooltip="Refresh Metrics" aria-label="Refresh Metrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        </div>
+      </div>
+      <div class="analytics-sidebar-content">
+        <div class="analytics-sidebar-kpi">
+          <div class="analytics-sidebar-item"><span class="analytics-sidebar-val" id="analyticsSideTokens">0</span><span class="analytics-sidebar-lbl">Session Tokens</span></div>
+          <div class="analytics-sidebar-item"><span class="analytics-sidebar-val" id="analyticsSideCost">$0.00</span><span class="analytics-sidebar-lbl">Est. Spend</span></div>
+          <div class="analytics-sidebar-item"><span class="analytics-sidebar-val" id="analyticsSideMlr">1.0x</span><span class="analytics-sidebar-lbl">Vault Leverage</span></div>
+        </div>
+        <div class="analytics-session-picker-wrap">
+          <label class="analytics-picker-lbl">Scope</label>
+          <select id="analyticsSessionSelect" class="settings-select" onchange="onAnalyticsSessionChange(this.value)">
+            <option value="">Current Active Session</option>
+          </select>
+        </div>
+        <div class="analytics-sidebar-summary" id="analyticsSidebarSummary">
+          <!-- Populated by JS -->
         </div>
       </div>
     </div>
@@ -809,6 +836,15 @@
           </div>
         </div>
       </div>
+    </div>
+    <div id="mainAnalytics" class="main-view">
+      <div class="main-view-header">
+        <div class="main-view-title" id="analyticsHeaderTitle">Token Economics & Memory Efficiency</div>
+        <div class="main-view-actions">
+          <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="loadAnalyticsPanel(true)" data-tooltip="Refresh Metrics" aria-label="Refresh Metrics"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
+        </div>
+      </div>
+      <div class="main-view-body" id="analyticsMainBody"></div>
     </div>
     <div id="mainSettings" class="main-view">
       <div class="settings-main">
@@ -1435,6 +1471,7 @@
 <script src="static/skills_wizard.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/slash_palette.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vault.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/analytics.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>

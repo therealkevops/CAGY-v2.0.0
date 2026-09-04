@@ -78,6 +78,7 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 | **Chat & Pairing Canvas** | `/chat` (Default) | Real-time streaming conversation, syntax highlighting, and inline tool inspection. |
 | **Inline Slash Popover** | `/` in Composer | Rich floating command popover with icons, category pills, and signature workflows. |
 | **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph with 1-Hop/2-Hop depth filtering and tag search. |
+| **Token Economics & Memory ROI** | `/analytics` or Left Rail | Real-time context accumulation curves, memory leverage (MLR), avoided context debt, and model cost comparisons. |
 | **Agent Auto-Memorization** | `/memorize` or `🧠` Button | Instantly extract user preferences, conventions, or ADRs into the Knowledge Vault. |
 | **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
 | **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets & test probes. |
@@ -142,6 +143,16 @@ graph LR
 ### 5. Obsidian Desktop Interoperability
 Because all notes are saved as plain UTF-8 Markdown on the host filesystem under `./knowledge/`, you can open this folder directly as an existing vault in the official **[Obsidian](https://obsidian.md)** desktop app on macOS/Windows/Linux.
 
+### 6. Token Economics & Memory ROI Dashboard (`/analytics`)
+Inspect prompt token cost efficiency and the exact leverage of your Knowledge Vault:
+- **Real-Time Token & Spend Tracking**: Instant USD cost estimations based on official API pricing tiers ($0.075/1M input, $0.30/1M output on Gemini 3.8 Flash), generation throughput (tok/s), and active prompt size.
+- **Context Accumulation Curve**: Visual SVG growth graph plotting prompt tokens per conversation turn against the **Context Debt Threshold (25,000 tokens)**. Hover over turn nodes to view prompt size, response size, and generation speed.
+- **Memory Leverage Ratio (MLR)**: Quantifies how many words of architectural notes in the vault are compressed into lean turn-0 rule tokens (`total_vault_words / compiled_rule_tokens`).
+- **Cumulative Avoided Context Debt**: Calculates estimated turns and prompt tokens saved across all sessions by having permanent turn-0 vault recall instead of repetitively re-prompting context.
+- **Context Diet Advisor**: Provides real-time guidance when context grows beyond 25k tokens, with 1-click actions to `/memorize` key architectural decisions and start a `/new` clean session with 0 context debt.
+- **Multi-Model Pricing Matrix**: Real-time cost comparison showing what the current session would cost on Gemini 3.8 Flash, Gemini 1.5 Pro (16.6x), and Claude 3.5 Sonnet (40x).
+- **Inline Message Telemetry**: Default-enabled per-message token chips in assistant message footers displaying turn prompt tokens, output tokens, generation duration, and throughput (tok/s). Toggle anytime via `/usage`.
+
 ---
 
 ## Modern Composer Slash Popover & Signature Workflows (`/`)
@@ -162,6 +173,8 @@ Typing `/` in the chat composer displays an inline floating popover with Lucide 
   /swarm                       AGENTS     Inspect autonomous subagents swarm and execution trees
   /artifacts                   TOOLS      Open code preview, interactive diffs and generated artifacts
   /quota                       SYSTEM     View live Gemini & model quota balances and reset timers
+  /analytics                   SYSTEM     Inspect prompt token economics and memory efficiency
+  /efficiency                  SYSTEM     Alias for /analytics
   /effort [low|med|high]       SYSTEM     Set reasoning effort depth for thinking models
   /status                      SYSTEM     Display container runtime & EDR containment diagnostics
   /skills                      CUSTOM     Browse active and built-in workspace skills

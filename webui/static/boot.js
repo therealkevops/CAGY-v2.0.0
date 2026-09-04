@@ -3222,7 +3222,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     // Persist default workspace so the blank new-chat page can show it
     // and workspace actions (New file/folder) work before the first session (#804).
     if(s.default_workspace) S._profileDefaultWorkspace=s.default_workspace;
-    window._showTokenUsage=!!s.show_token_usage;
+    window._showTokenUsage=s.show_token_usage!==false;
     window._showQuotaChip=s.show_quota_chip===true;
     window._showConversationOutline=s.show_conversation_outline===true;
     document.documentElement.dataset.conversationOutline=window._showConversationOutline?'enabled':'disabled';
@@ -3385,7 +3385,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     if(typeof _applyTtsEnabled==='function') _applyTtsEnabled(localStorage.getItem('agy-tts-enabled')==='true');
   }catch(e){
     window._sendKey='enter';
-    window._showTokenUsage=false;
+    window._showTokenUsage=true;
     window._showQuotaChip=false;
     window._showConversationOutline=false;
     document.documentElement.dataset.conversationOutline='disabled';

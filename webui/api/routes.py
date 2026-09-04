@@ -13955,6 +13955,15 @@ def handle_get(handler, parsed) -> bool:
             path = path[len("knowledge/"):]
         return j(handler, get_note(get_vault_dir(), path))
 
+    # ── Token Economics & Memory Analytics (GET) ──
+    if parsed.path == "/api/analytics/efficiency":
+        try:
+            from api.analytics import compute_efficiency_metrics
+        except ImportError:
+            from webui.api.analytics import compute_efficiency_metrics
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        sid = qs.get("session_id", [None])[0]
+        return j(handler, compute_efficiency_metrics(session_id=sid))
 
     # ── Checkpoints / Rollback (GET) ──
     if parsed.path == "/api/rollback/list":
