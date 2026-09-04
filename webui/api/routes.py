@@ -585,6 +585,7 @@ def _request_session_visibility_exempt(method: str, path: str | None) -> bool:
     # generic request-session guard.
     return path in {
         "/api/session/import",
+        "/api/session/import/workspace",
         "/api/session/import_cli",
         "/api/chat/start",
     }
@@ -13387,6 +13388,20 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/session/export":
         return _handle_session_export(handler, parsed)
 
+    if parsed.path == "/api/session/workspace_exports":
+        qs = parse_qs(parsed.query)
+        workspace = qs.get("workspace", [None])[0]
+        subfolder = qs.get("subfolder", [None])[0]
+        try:
+            from api.session_workspace_export import list_workspace_session_exports
+            res = list_workspace_session_exports(workspace_path=workspace, subfolder=subfolder)
+            return j(handler, res)
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except Exception as e:
+            logger.exception("Failed to list workspace session exports")
+            return bad(handler, f"Internal error listing workspace exports: {e}", 500)
+
     if parsed.path == "/api/workspaces":
         return j(
             handler,
@@ -16617,6 +16632,14 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/session/import":
         return _handle_session_import(handler, body)
 
+    # ── Session export to workspace (POST) ──
+    if parsed.path == "/api/session/export/workspace":
+        return _handle_session_export_workspace(handler, body)
+
+    # ── Session import from workspace (POST) ──
+    if parsed.path == "/api/session/import/workspace":
+        return _handle_session_import_workspace(handler, body)
+
     # ── Self-update (POST) ──
     if parsed.path == "/api/updates/apply":
         target = body.get("target", "")
@@ -17173,6 +17196,52 @@ def _handle_session_export(handler, parsed):
     handler.end_headers()
     handler.wfile.write(payload.encode("utf-8"))
     return True
+
+
+def _handle_session_export_workspace(handler, body):
+    """Export a session directly to the workspace filesystem."""
+    if not body or not isinstance(body, dict):
+        return bad(handler, "Request body must be a JSON object")
+    sid = body.get("session_id", "")
+    if not sid:
+        return bad(handler, "session_id is required")
+    try:
+        s = get_session(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    active_profile = get_active_profile_name()
+    if not _profiles_match(getattr(s, "profile", None), active_profile):
+        return bad(handler, "Session not found", 404)
+    safe = public_session_projection(s.__dict__)
+
+    workspace = body.get("workspace") or getattr(s, "workspace", None)
+    subfolder = body.get("subfolder", "transcripts")
+    fmt = body.get("format", "md")
+    filename = body.get("filename")
+    content = body.get("content")
+    theme = body.get("theme", "dark")
+    palette = body.get("palette")
+    if not isinstance(palette, dict):
+        palette = None
+
+    try:
+        from api.session_workspace_export import export_session_to_workspace
+        res = export_session_to_workspace(
+            session_data=safe,
+            workspace_path=workspace,
+            subfolder=subfolder,
+            format=fmt,
+            filename=filename,
+            content=content,
+            theme=theme,
+            palette=palette,
+        )
+        return j(handler, res)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        logger.exception("Failed to export session to workspace")
+        return bad(handler, f"Failed to export session: {e}", 500)
 
 
 def _session_search_message_text(message):
@@ -27297,8 +27366,8 @@ def _handle_session_import(handler, body):
     title = body.get("title", "Imported session")
     try:
         workspace = str(resolve_trusted_workspace(body.get("workspace", str(DEFAULT_WORKSPACE))))
-    except (TypeError, ValueError) as e:
-        return bad(handler, str(e))
+    except (TypeError, ValueError):
+        workspace = str(resolve_trusted_workspace(str(DEFAULT_WORKSPACE)))
     model = body.get("model", DEFAULT_MODEL)
     s = Session(
         title=title,
@@ -27322,6 +27391,30 @@ def _handle_session_import(handler, body):
             "session": public_session_projection(s.compact() | {"messages": s.messages}),
         },
     )
+
+
+def _handle_session_import_workspace(handler, body):
+    """Import a session from a JSON file residing within a trusted workspace."""
+    if not body or not isinstance(body, dict):
+        return bad(handler, "Request body must be a JSON object")
+    file_path = body.get("path")
+    if not file_path:
+        return bad(handler, "path is required")
+    try:
+        from api.session_workspace_export import validate_workspace_file_for_import
+        validated_path = validate_workspace_file_for_import(file_path)
+        with open(validated_path, "r", encoding="utf-8") as f:
+            session_json = json.load(f)
+        if not isinstance(session_json, dict):
+            return bad(handler, "File does not contain a valid JSON session object")
+        return _handle_session_import(handler, session_json)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except json.JSONDecodeError as e:
+        return bad(handler, f"Invalid JSON format in file: {e}", 400)
+    except Exception as e:
+        logger.exception("Failed to import session from workspace file")
+        return bad(handler, f"Failed to import session: {e}", 500)
 
 
 def _mask_secrets(obj):

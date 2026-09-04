@@ -866,13 +866,99 @@
                 <div class="settings-section-meta" id="agySessionMeta" data-i18n="active_conversation_none">No active conversation selected.</div>
               </div>
             </div>
-            <div class="action-grid">
-              <button class="settings-action-btn" id="btnDownload" title="Download as Markdown" data-i18n-title="download_transcript"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> <span data-i18n="transcript">Transcript</span></button>
-              <button class="settings-action-btn" id="btnExportJSON" title="Export full session as JSON" data-i18n-title="export_session_json_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg> <span data-i18n="export_session_json">JSON</span></button>
-              <button class="settings-action-btn" id="btnExportHTML" title="Export as a self-contained HTML page" data-i18n-title="export_session_html_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l-2 2 2 2"/><path d="M15 13l2 2-2 2"/></svg> <span data-i18n="export_session_html">HTML</span></button>
-              <button class="settings-action-btn" id="btnImportJSON" title="Import session from JSON" data-i18n-title="import_session_json_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> <span data-i18n="import">Import</span></button>
-              <button class="settings-action-btn danger" id="btnClearConvModal" onclick="clearConversation()" title="Clear all messages in this conversation" data-i18n-title="clear_conversation_btn_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 1 2 2 2v2"/></svg> <span data-i18n="clear">Clear</span></button>
+
+            <!-- Workspace Storage Destination Card -->
+            <div class="conv-ws-card">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px;color:var(--text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span>Workspace Storage Destination</span>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+                Designate a target workspace and subfolder where session transcripts, dumps, and reports will be saved directly on the container filesystem.
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Target Workspace</label>
+                  <select id="convTargetWorkspaceSelect" class="settings-select" style="width:100%;height:34px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;" onchange="_onConvDestinationChanged()"></select>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Subfolder</label>
+                  <input type="text" id="convTargetSubfolderInput" class="settings-input" style="width:100%;height:34px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;box-sizing:border-box;" value="transcripts" placeholder="transcripts" oninput="_onConvDestinationChanged()">
+                </div>
+              </div>
+              <div class="conv-path-preview">
+                <span id="convTargetPathPreviewText">Target: /workspace/transcripts/agy-session.[md|json|html]</span>
+                <button type="button" class="btn-xs" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;font-weight:600;" onclick="_copyConvTargetPath()" title="Copy target path">Copy</button>
+              </div>
+              <div id="convWsExportFeedback" style="display:none;margin-top:10px;padding:8px 12px;border-radius:6px;font-size:12px;"></div>
             </div>
+
+            <!-- Save to Workspace (Filesystem) -->
+            <div style="margin-bottom:18px;">
+              <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span>Save to Workspace (Filesystem)</span>
+              </div>
+              <div class="action-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+                <button class="settings-action-btn primary-btn" id="btnSaveWsMarkdown" onclick="saveSessionToWorkspace('md')" title="Save Markdown transcript directly to the workspace filesystem">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline></svg>
+                  <span>Save Transcript (.md)</span>
+                </button>
+                <button class="settings-action-btn primary-btn" id="btnSaveWsJSON" onclick="saveSessionToWorkspace('json')" title="Save full session dump JSON directly to the workspace filesystem">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg>
+                  <span>Save Session (.json)</span>
+                </button>
+                <button class="settings-action-btn primary-btn" id="btnSaveWsHTML" onclick="saveSessionToWorkspace('html')" title="Save self-contained HTML visual report directly to the workspace filesystem">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l-2 2 2 2"/><path d="M15 13l2 2-2 2"/></svg>
+                  <span>Save HTML (.html)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Download to Local Computer (Browser) -->
+            <div style="margin-bottom:18px;">
+              <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download to Local Computer (Browser)</span>
+              </div>
+              <div class="action-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+                <button class="settings-action-btn" id="btnDownload" title="Download as Markdown" data-i18n-title="download_transcript"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> <span data-i18n="transcript">Transcript (.md)</span></button>
+                <button class="settings-action-btn" id="btnExportJSON" title="Export full session as JSON" data-i18n-title="export_session_json_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg> <span data-i18n="export_session_json">JSON (.json)</span></button>
+                <button class="settings-action-btn" id="btnExportHTML" title="Export as a self-contained HTML page" data-i18n-title="export_session_html_tooltip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l-2 2 2 2"/><path d="M15 13l2 2-2 2"/></svg> <span data-i18n="export_session_html">HTML (.html)</span></button>
+              </div>
+            </div>
+
+            <!-- Import Session -->
+            <div style="margin-bottom:18px;">
+              <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span>Import Session</span>
+                </div>
+                <button type="button" class="btn-xs" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text);" onclick="loadWorkspaceSessionExports()" title="Refresh workspace exports">
+                  ↻ Refresh Files
+                </button>
+              </div>
+              <div id="convWsExportsContainer" style="margin-bottom:10px;">
+                <div id="convWsExportsList" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;"></div>
+              </div>
+              <button class="settings-action-btn" id="btnImportJSON" title="Upload session JSON from your computer" data-i18n-title="import_session_json_tooltip" style="width:100%;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload JSON from Computer...</span>
+              </button>
+            </div>
+
+            <!-- Danger Zone -->
+            <div style="border-top:1px solid var(--border);padding-top:14px;">
+              <div style="font-size:12px;font-weight:600;color:var(--error,#e53935);margin-bottom:8px;">
+                Danger Zone
+              </div>
+              <button class="settings-action-btn danger" id="btnClearConvModal" onclick="clearConversation()" title="Clear all messages in this conversation" data-i18n-title="clear_conversation_btn_tooltip">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 1 2 2 2v2"/></svg>
+                <span data-i18n="clear">Clear Active Conversation</span>
+              </button>
+            </div>
+
             <input type="file" id="importFileInput" accept=".json" style="display:none">
           </div>
           <div class="settings-pane" id="settingsPaneAppearance">

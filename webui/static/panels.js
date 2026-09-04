@@ -3598,7 +3598,12 @@ function _syncAgyPanelSessionActions(){
   };
   setDisabled('btnDownload',!hasSession||visibleMessages===0);
   setDisabled('btnExportJSON',!hasSession);
+  setDisabled('btnExportHTML',!hasSession);
+  setDisabled('btnSaveWsMarkdown',!hasSession||visibleMessages===0);
+  setDisabled('btnSaveWsJSON',!hasSession);
+  setDisabled('btnSaveWsHTML',!hasSession);
   setDisabled('btnClearConvModal',!hasSession||visibleMessages===0);
+  if(typeof _updateConvDestinationPreview==='function') _updateConvDestinationPreview();
 }
 
 // Thin wrapper: settings now live in the main content area. External callers
@@ -6266,6 +6271,7 @@ async function _gatewayAction(action){
 const _origSwitchSettings=switchSettingsSection;
 switchSettingsSection=function(name, opts){
   _origSwitchSettings(name, opts);
+  if(name==='conversation') _initConversationWorkspaceSelector();
   if(name==='preferences') updateNotificationPermissionStatus();
   if(name==='system'){loadMcpServers();loadMcpTools();}
 };
@@ -6408,3 +6414,267 @@ function updateNotificationPermissionStatus(){
   }
   if(btnWrap) btnWrap.title=label;
 }
+
+// ── Conversation Workspace Destination & Exports ─────────────────────────────
+
+function _convEsc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function _formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+async function _initConversationWorkspaceSelector() {
+  const select = $('convTargetWorkspaceSelect');
+  if (!select) return;
+
+  if (!_workspaceList || !_workspaceList.length) {
+    await loadWorkspaceList();
+  }
+
+  const currentVal = select.value;
+  select.innerHTML = '';
+  const currentWs = S.session?.workspace || '';
+
+  const list = (_workspaceList && _workspaceList.length) ? _workspaceList : [{ path: currentWs || '/workspace', name: 'Workspace' }];
+  let matchedCurrent = false;
+
+  list.forEach(w => {
+    const p = typeof w === 'string' ? w : w.path;
+    const name = typeof w === 'string' ? w : (w.name || w.path);
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = `${name} (${p})`;
+    if (p === currentWs || (!matchedCurrent && p === currentVal)) {
+      opt.selected = true;
+      matchedCurrent = true;
+    }
+    select.appendChild(opt);
+  });
+
+  if (!matchedCurrent && select.options.length > 0) {
+    select.options[0].selected = true;
+  }
+
+  _updateConvDestinationPreview();
+  loadWorkspaceSessionExports();
+}
+
+function _onConvDestinationChanged() {
+  _updateConvDestinationPreview();
+  loadWorkspaceSessionExports();
+}
+
+function _updateConvDestinationPreview() {
+  const select = $('convTargetWorkspaceSelect');
+  const subInput = $('convTargetSubfolderInput');
+  const previewText = $('convTargetPathPreviewText');
+  if (!previewText) return;
+
+  const ws = select?.value || S.session?.workspace || '/workspace';
+  const sub = (subInput?.value || '').trim();
+  const sid = S.session?.session_id || 'session';
+  const cleanSub = sub ? sub.replace(/^\/+|\/+$/g, '') : '';
+
+  const folderPath = cleanSub ? `${ws}/${cleanSub}` : ws;
+  previewText.textContent = `Target: ${folderPath}/agy-${sid}.[md|json|html]`;
+  previewText.dataset.fullDir = folderPath;
+}
+
+function _copyConvTargetPath() {
+  const previewText = $('convTargetPathPreviewText');
+  const path = previewText?.dataset?.fullDir || previewText?.textContent || '';
+  if (!path) return;
+  const clean = path.replace(/^Target:\s*/, '').replace(/\/agy-.*$/, '');
+  navigator.clipboard.writeText(clean).then(() => {
+    showToast('Destination path copied to clipboard');
+  }).catch(() => {
+    showToast(`Path: ${clean}`);
+  });
+}
+
+async function saveSessionToWorkspace(format) {
+  if (!S.session) {
+    showToast('No active conversation to save', 'warning');
+    return;
+  }
+  const select = $('convTargetWorkspaceSelect');
+  const subInput = $('convTargetSubfolderInput');
+  const feedback = $('convWsExportFeedback');
+
+  const ws = select?.value || S.session?.workspace || '';
+  const sub = (subInput?.value || '').trim();
+  const sid = S.session.session_id;
+
+  const btnId = format === 'md' ? 'btnSaveWsMarkdown' : (format === 'json' ? 'btnSaveWsJSON' : 'btnSaveWsHTML');
+  const btn = $(btnId);
+  const origHtml = btn ? btn.innerHTML : '';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('disabled');
+    btn.innerHTML = `<span class="spin">⏳</span> Saving...`;
+  }
+
+  if (feedback) {
+    feedback.style.display = 'none';
+  }
+
+  const payload = {
+    session_id: sid,
+    workspace: ws,
+    subfolder: sub,
+    format: format,
+  };
+
+  if (format === 'md') {
+    payload.content = typeof transcript === 'function' ? transcript() : undefined;
+  } else if (format === 'html') {
+    payload.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    const cs = getComputedStyle(document.documentElement);
+    const read = (...names) => { for (const n of names) { const v = cs.getPropertyValue(n).trim(); if (v) return v; } return ''; };
+    const palette = {
+      'bg': read('--bg'),
+      'panel': read('--surface', '--bg'),
+      'panel2': read('--code-bg', '--surface'),
+      'border': read('--border'),
+      'text': read('--text'),
+      'muted': read('--muted', '--text'),
+      'accent': read('--accent'),
+      'code-bg': read('--code-bg'),
+      'code-border': read('--border2', '--border'),
+      'code-text': read('--text'),
+    };
+    const clean = {};
+    for (const k in palette) { if (palette[k]) clean[k] = palette[k]; }
+    payload.palette = clean;
+  }
+
+  try {
+    const res = await api('/api/session/export/workspace', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (res && res.ok) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(16, 185, 129, 0.12)';
+        feedback.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        feedback.style.color = 'var(--text)';
+        feedback.innerHTML = `<strong>✓ Saved ${res.filename}</strong> (${_formatBytes(res.size_bytes)})<div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--muted);margin-top:2px">${_convEsc(res.path)}</div>`;
+      }
+      showToast(`Saved to workspace: ${res.filename}`);
+      loadWorkspaceSessionExports();
+    } else {
+      throw new Error(res?.error || 'Failed to save to workspace');
+    }
+  } catch (err) {
+    if (feedback) {
+      feedback.style.display = 'block';
+      feedback.style.background = 'rgba(239, 68, 68, 0.12)';
+      feedback.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+      feedback.style.color = '#ef4444';
+      feedback.textContent = `Export failed: ${err.message || err}`;
+    }
+    showToast(`Export failed: ${err.message || err}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('disabled');
+      btn.innerHTML = origHtml;
+    }
+  }
+}
+
+async function loadWorkspaceSessionExports() {
+  const listEl = $('convWsExportsList');
+  if (!listEl) return;
+
+  const select = $('convTargetWorkspaceSelect');
+  const subInput = $('convTargetSubfolderInput');
+  const ws = select?.value || S.session?.workspace || '';
+  const sub = (subInput?.value || '').trim();
+
+  if (!ws) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0">No workspace selected.</div>`;
+    return;
+  }
+
+  try {
+    const qs = `workspace=${encodeURIComponent(ws)}&subfolder=${encodeURIComponent(sub)}`;
+    const data = await api(`/api/session/workspace_exports?${qs}`);
+    const exports = data?.exports || [];
+
+    if (!exports.length) {
+      listEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:6px 0">No session exports found in this folder. Use "Save to Workspace" above to create one.</div>`;
+      return;
+    }
+
+    let html = '';
+    exports.forEach(item => {
+      const badgeClass = item.format === 'json' ? 'badge-json' : (item.format === 'md' ? 'badge-md' : 'badge-html');
+      const timeStr = item.mtime ? new Date(item.mtime * 1000).toLocaleString() : '';
+      const sizeStr = _formatBytes(item.size_bytes);
+      const titleStr = item.title ? ` · <em>${_convEsc(item.title)}</em>` : '';
+      const msgCountStr = item.message_count ? ` · ${item.message_count} msgs` : '';
+
+      html += `
+        <div class="workspace-export-item">
+          <div style="min-width:0;flex:1;margin-right:8px;">
+            <div style="display:flex;align-items:center;gap:6px;overflow:hidden;">
+              <span class="export-format-badge ${badgeClass}">${item.format}</span>
+              <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);">${_convEsc(item.filename)}</strong>
+              <span style="font-size:11px;color:var(--muted);white-space:nowrap;">(${sizeStr})</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${timeStr}${titleStr}${msgCountStr}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${item.importable ? `
+              <button type="button" class="btn-xs primary-btn" onclick="importWorkspaceSession('${_convEsc(item.path)}')" style="padding:3px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--accent);color:var(--accent-contrast, #fff);border:none;font-weight:600;">
+                Import
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+    listEl.innerHTML = html;
+  } catch (err) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:6px 0">Unable to scan directory: ${_convEsc(err.message || String(err))}</div>`;
+  }
+}
+
+async function importWorkspaceSession(filePath) {
+  if (!filePath) return;
+  try {
+    const res = await api('/api/session/import/workspace', {
+      method: 'POST',
+      body: JSON.stringify({ path: filePath }),
+    });
+    if (res && res.ok && res.session) {
+      await loadSession(res.session.session_id);
+      await renderSessionList();
+      if (_currentPanel === 'settings') switchPanel('chat');
+      showToast(t('session_imported') || 'Session imported successfully');
+    } else {
+      throw new Error(res?.error || 'Failed to import session from workspace');
+    }
+  } catch (err) {
+    showToast(`Import failed: ${err.message || err}`, 'error');
+  }
+}
+
