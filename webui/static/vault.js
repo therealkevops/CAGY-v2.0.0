@@ -17,6 +17,7 @@ let _isPanning = false;
 let _dragNode = null;
 let _hoverNode = null;
 let _lastMousePos = { x: 0, y: 0 };
+let _vaultResizeObserver = null;
 
 const FOLDER_COLORS = {
   user: '#3b82f6',         // Blue
@@ -162,6 +163,13 @@ function openVaultNoteInRightSidebar(note, openInEditor = true) {
   } else if (typeof toggleWorkspacePanel === 'function') {
     toggleWorkspacePanel(true);
   }
+
+  // Follow the panel expansion transition smoothly to avoid canvas warping
+  requestAnimationFrame(() => {
+    resizeGraphCanvas(false);
+    setTimeout(() => resizeGraphCanvas(false), 120);
+    setTimeout(() => resizeGraphCanvas(true), 260);
+  });
 
   // 3. Render rich Markdown preview in right panel (cached for when returning from edit)
   if (typeof renderMarkdownPreviewContent === 'function') {
@@ -378,14 +386,21 @@ function initVaultGraph(nodes, edges) {
   startGraphSimulation();
 }
 
-function resizeGraphCanvas() {
+function resizeGraphCanvas(restartPhysics = false) {
   const canvas = document.getElementById('vaultGraphCanvas');
-  if (!canvas) return;
+  if (!canvas || !canvas.parentElement) return;
   const rect = canvas.parentElement.getBoundingClientRect();
-  if (rect.width > 0 && rect.height > 0) {
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    triggerGraphRepaint();
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  if (w > 0 && h > 0) {
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      drawGraph();
+      if (restartPhysics) {
+        triggerGraphRepaint();
+      }
+    }
   }
 }
 
@@ -542,7 +557,42 @@ function setupCanvasListeners(canvas) {
   if (canvas._hasListeners) return;
   canvas._hasListeners = true;
 
-  window.addEventListener('resize', resizeGraphCanvas);
+  window.addEventListener('resize', () => resizeGraphCanvas(false));
+
+  // 1. Observe parent container with ResizeObserver so any layout changes
+  // (sidebar expands, collapses, or is dragged) immediately adapt canvas pixel dimensions
+  // without stretching or warping the node shapes.
+  if (window.ResizeObserver && canvas.parentElement) {
+    if (_vaultResizeObserver) _vaultResizeObserver.disconnect();
+    _vaultResizeObserver = new ResizeObserver(() => {
+      resizeGraphCanvas(false);
+    });
+    _vaultResizeObserver.observe(canvas.parentElement);
+  }
+
+  // 2. Track smooth CSS width transitions on .rightpanel to guarantee real-time 1:1
+  // aspect ratio updates during animation, preventing canvas warping/squashing.
+  const rightpanel = document.querySelector('.rightpanel');
+  if (rightpanel && !rightpanel._hasVaultTransition) {
+    rightpanel._hasVaultTransition = true;
+    let animId = null;
+    const track = () => {
+      resizeGraphCanvas(false);
+      animId = requestAnimationFrame(track);
+    };
+    rightpanel.addEventListener('transitionrun', () => {
+      cancelAnimationFrame(animId);
+      animId = requestAnimationFrame(track);
+    });
+    rightpanel.addEventListener('transitionend', () => {
+      cancelAnimationFrame(animId);
+      resizeGraphCanvas(true);
+    });
+    rightpanel.addEventListener('transitioncancel', () => {
+      cancelAnimationFrame(animId);
+      resizeGraphCanvas(false);
+    });
+  }
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();

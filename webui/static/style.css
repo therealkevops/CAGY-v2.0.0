@@ -6403,6 +6403,7 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   width: 100%;
   height: 100%;
   display: block;
+  touch-action: none;
 }
 .vault-graph-legend {
   position: absolute;

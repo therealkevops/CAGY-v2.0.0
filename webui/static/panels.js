@@ -422,6 +422,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
   if (nextPanel === 'vault') {
     if (typeof loadVault === 'function') await loadVault();
+    if (typeof resizeGraphCanvas === 'function') resizeGraphCanvas(true);
   }
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {

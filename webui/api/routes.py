@@ -14297,8 +14297,15 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == "/api/vault/sync":
         from api.vault import sync_vault_to_rules, get_vault_dir
-        ws_path = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        return j(handler, sync_vault_to_rules(get_vault_dir(), ws_path))
+        ws_root = None
+        for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+            val = os.environ.get(var)
+            if val and Path(val).exists():
+                ws_root = Path(val)
+                break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        return j(handler, sync_vault_to_rules(get_vault_dir(ws_root), ws_root))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule
