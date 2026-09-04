@@ -13,9 +13,9 @@ let _pendingSettingsTargetPanel = null; // destination selected while settings h
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', skills: 'tab_skills',
   mcp: 'tab_mcp', subagents: 'tab_subagents', workspaces: 'tab_workspaces',
-  settings: 'tab_settings',
+  settings: 'tab_settings', vault: 'tab_vault',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','workspaces','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','mcp','subagents','workspaces','plugin','vault'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -420,6 +420,9 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'mcp') await loadMcpHub();
   if (nextPanel === 'subagents') await loadSubagents();
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
+  if (nextPanel === 'vault') {
+    if (typeof loadVault === 'function') await loadVault();
+  }
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {
     switchSettingsSection(_currentSettingsSection);

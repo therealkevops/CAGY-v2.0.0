@@ -956,6 +956,7 @@ const LOCALES = {
     tab_skills: 'Skills',
     tab_mcp: 'MCP Hub',
     tab_subagents: 'Subagents',
+    tab_vault: 'Vault',
     tab_artifacts: 'Artifacts',
     tab_memory: 'Memory',
     tab_workspaces: 'Spaces',

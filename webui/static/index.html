@@ -160,6 +160,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="mcp" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Hub" data-i18n-title="tab_mcp" aria-label="MCP Hub"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="subagents" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarms" data-i18n-title="tab_subagents" aria-label="Subagents"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills & Rules" data-i18n-title="tab_skills" aria-label="Skills"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="vault" onclick="switchPanel('vault',{fromRailClick:true})" data-tooltip="Knowledge Vault & Graph" data-i18n-title="tab_vault" aria-label="Vault"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
     <div class="rail-spacer"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeDesktop" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
   </nav>
@@ -173,6 +174,7 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="mcp" data-label="MCP" onclick="switchPanel('mcp',{fromRailClick:true})" data-tooltip="MCP Server Hub" data-i18n-title="tab_mcp"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6m0 0a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4zm0 10v4m-3 0h6"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="subagents" data-label="Swarm" onclick="switchPanel('subagents',{fromRailClick:true})" data-tooltip="Subagent Swarm" data-i18n-title="tab_subagents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><line x1="12" y1="8" x2="19" y2="15"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="skills" data-label="Skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills & Rules" data-i18n-title="tab_skills"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="vault" data-label="Vault" onclick="switchPanel('vault',{fromRailClick:true})" data-tooltip="Knowledge Vault" data-i18n-title="tab_vault"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
       <!-- Settings button mirrored here for mobile (rail is desktop-only via @media >=768px). Keep in sync with rail entry. -->
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" style="position:relative"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeMobile" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
     </div>
@@ -250,6 +252,29 @@
       </div>
       <div class="panel-head-sub" data-i18n="workspace_desc">Add and switch workspaces for your sessions.</div>
       <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+    </div>
+    <!-- Knowledge Vault panel -->
+    <div class="panel-view" id="panelVault">
+      <div class="panel-head">
+        <span data-i18n="tab_vault">Knowledge Vault</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="loadVault(true)" data-tooltip="Refresh Vault" aria-label="Refresh Vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="promptCreateVaultNote()" data-tooltip="New Note" aria-label="New Note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
+      </div>
+      <div class="vault-sidebar-content">
+        <div class="vault-metrics-card">
+          <div class="vault-metric-item"><span class="vault-metric-val" id="vaultMetricNotes">0</span><span class="vault-metric-label">Notes</span></div>
+          <div class="vault-metric-item"><span class="vault-metric-val" id="vaultMetricEdges">0</span><span class="vault-metric-label">Links</span></div>
+        </div>
+        <div class="vault-search sidebar-search">
+          <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input id="vaultSearchInput" type="search" placeholder="Search notes..." oninput="filterVaultNotes(this.value)" autocomplete="off">
+        </div>
+        <div class="vault-note-list" id="vaultNoteList">
+          <div style="padding:12px;color:var(--muted);font-size:12px">Loading vault...</div>
+        </div>
+      </div>
     </div>
     <!-- Settings panel (menu list; actual panes render in .main) -->
     <div class="panel-view" id="panelSettings">
@@ -756,6 +781,38 @@
         <svg class="main-view-empty-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         <div class="main-view-empty-title" data-i18n="workspaces_empty_title">Select a space</div>
         <div class="main-view-empty-sub" data-i18n="workspaces_empty_sub">Pick a space from the sidebar to view its files and settings, or add a new one.</div>
+      </div>
+    </div>
+    <div id="mainVault" class="main-view">
+      <div class="main-view-header">
+        <div class="main-view-title" id="vaultHeaderTitle">Knowledge Graph & Vault Memory</div>
+        <div class="main-view-actions">
+          <div class="vault-view-toggle">
+            <button type="button" class="vault-view-toggle-btn active" data-mode="split" onclick="switchVaultView('split')">Split</button>
+            <button type="button" class="vault-view-toggle-btn" data-mode="graph" onclick="switchVaultView('graph')">Graph Only</button>
+            <button type="button" class="vault-view-toggle-btn" data-mode="editor" onclick="switchVaultView('editor')">Note Only</button>
+          </div>
+          <button type="button" class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="resetGraphView()" data-tooltip="Reset Zoom & Pan" aria-label="Reset Zoom & Pan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+          <button type="button" id="btnSyncVaultRules" class="panel-head-btn primary has-tooltip has-tooltip--bottom" onclick="syncVaultRules()" data-tooltip="Compile Vault to Antigravity Rules" aria-label="Compile Vault to Rules"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sync Rules</button>
+        </div>
+      </div>
+      <div class="main-view-body" id="vaultMainBody">
+        <div class="vault-layout-wrap">
+          <div class="vault-graph-panel" id="vaultGraphBox">
+            <canvas id="vaultGraphCanvas"></canvas>
+            <div class="vault-graph-legend">
+              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#3b82f6"></span> User</span>
+              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</span>
+              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</span>
+              <span class="vault-legend-item"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Journal</span>
+            </div>
+          </div>
+          <div class="vault-editor-panel" id="vaultEditorBox">
+            <div id="vaultEditorContainer">
+              <div class="vault-editor-empty">Select or create a note to view and edit its contents and backlinks.</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="mainSettings" class="main-view">
@@ -1379,6 +1436,7 @@
 <script src="static/diff_viewer.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/skills_wizard.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/slash_palette.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/vault.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>

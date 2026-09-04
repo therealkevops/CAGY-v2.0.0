@@ -37,6 +37,7 @@ class TestSyntaxAndImports(unittest.TestCase):
             "api.updates",
             "api.artifacts",
             "api.subagents",
+            "api.vault",
             "api.workspace",
             "api.onboarding",
             "api.plugins",

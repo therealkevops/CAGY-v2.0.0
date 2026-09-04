@@ -13943,6 +13943,16 @@ def handle_get(handler, parsed) -> bool:
             ws_path = Path.cwd()
         return j(handler, get_file_diff_against_head(ws_path, path))
 
+    # ── Knowledge Vault & Graph Memory (GET) ──
+    if parsed.path in ("/api/vault/graph", "/api/vault/data"):
+        from api.vault import scan_vault, get_vault_dir
+        return j(handler, scan_vault(get_vault_dir()))
+    if parsed.path == "/api/vault/note":
+        from api.vault import get_note, get_vault_dir
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        path = qs.get("path", [""])[0]
+        return j(handler, get_note(get_vault_dir(), path))
+
 
     # ── Checkpoints / Rollback (GET) ──
     if parsed.path == "/api/rollback/list":
@@ -14264,6 +14274,25 @@ def handle_post(handler, parsed) -> bool:
         modified = body.get("modified", "")
         filename = body.get("filename", "")
         return j(handler, compute_structured_diff(original, modified, filename=filename))
+
+    # ── Knowledge Vault & Graph Memory (POST) ──
+    if parsed.path == "/api/vault/note":
+        from api.vault import save_note, get_vault_dir
+        body = _read_json_body(handler) or {}
+        path = body.get("path", "")
+        content = body.get("content", "")
+        return j(handler, save_note(get_vault_dir(), path, content))
+
+    if parsed.path == "/api/vault/delete":
+        from api.vault import delete_note, get_vault_dir
+        body = _read_json_body(handler) or {}
+        path = body.get("path", "")
+        return j(handler, delete_note(get_vault_dir(), path))
+
+    if parsed.path == "/api/vault/sync":
+        from api.vault import sync_vault_to_rules, get_vault_dir
+        ws_path = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        return j(handler, sync_vault_to_rules(get_vault_dir(), ws_path))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule
