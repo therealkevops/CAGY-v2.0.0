@@ -14,11 +14,13 @@ By encapsulating both the WebUI server and the native Linux `agy` CLI binary ins
 
 - **Full EDR & Process Shielding**: All shell executions, python scripts, file manipulations, and agent tool calls run exclusively inside the container's isolated Linux namespace.
 - **Native Antigravity Engine**: Uses the official Google Antigravity Linux binary (`agy`) with automated lifecycle management.
+- **Obsidian-Style Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) with bi-directional `[[wikilinks]]`, backlinks resolution, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
+- **Agent-Assisted Memory & Auto-Learning (`/memorize`)**: 1-click `🧠 Memorize` message actions and `/memorize` slash command that auto-categorize insights into ADRs (`decisions/adr_XXX`), user preferences, and architecture notes, auto-link existing entities with `[[wikilinks]]`, and sync to `.gemini/rules/` before every conversation turn.
 - **Subagent Swarms Visualizer (`/swarm`)**: Real-time DAG hierarchy viewer, execution timeline, and inspector for delegated multi-agent subtasks (`invoke_subagent`).
-- **Model Context Protocol (MCP) Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets for PostgreSQL, SQLite, Puppeteer (Browser), and Git servers.
+- **Model Context Protocol (MCP) Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets for GitHub, Docker, Fetch, Memory, PostgreSQL, SQLite, and Puppeteer servers with live latency probes.
+- **Artifact & Code Preview Canvas with Visual Diffs**: Tri-mode viewer (`[ Code | Diff | Live Preview ]`) featuring side-by-side Git diffs against HEAD, sandboxed live HTML/SVG canvas previews, and session-less direct-to-editor file manipulation.
 - **Skill & Rule Scaffolder Wizard (`/skills`)**: Visual builder for `.gemini/rules/*.md` and `skills/<name>/SKILL.md`.
-- **Integrated Artifacts & Workspace Drawer**: Collapsible right-hand pane with live file tree, code diff preview, and markdown artifact viewer.
-- **Command Palette (`Cmd + K`)**: Quick access to all views, panels, and slash commands (`/goal`, `/schedule`, `/browser`, `/plan`, `/grill-me`).
+- **Command Palette (`Cmd + K`)**: Quick access to all views, panels, settings, and slash commands (`/goal`, `/plan`, `/memorize`, `/vault`, `/swarm`, `/mcp`, `/skills`, `/grill-me`).
 - **Corporate SSL Certificate Trust**: Automatically exports host root certificates into `./container_data/system_certs.pem` to prevent corporate proxy or TLS inspection errors.
 - **Persistent State**: Sessions, transcripts, tokens, and journals persist cleanly across container rebuilds in `./container_data/`.
 
@@ -73,11 +75,74 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 | View / Feature | Shortcut / Route | Description |
 | :--- | :--- | :--- |
 | **Chat & Pairing Canvas** | `/chat` (Default) | Real-time streaming conversation, syntax highlighting, and inline tool inspection. |
+| **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph and second brain with bi-directional wikilinks. |
+| **Agent Auto-Memorization** | `/memorize` or `🧠` Button | Instantly extract user preferences, conventions, or ADRs into the Knowledge Vault. |
 | **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
-| **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets. |
+| **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets & test probes. |
+| **Workspace, Diffs & Canvas** | Right Sidebar / `/artifacts` | Tri-mode drawer (`[ Code | Diff | Live Preview ]`) with side-by-side git diffs and live canvas. |
 | **Skills & Rules Scaffolder** | `/skills` or Left Rail | Domain skills manager and visual rule generator. |
-| **Workspace & Artifacts** | Right Drawer Button | Inspect files in `/workspace` and render generated markdown artifacts. |
 | **Command Palette** | `Cmd + K` / `Ctrl + K` | Universal search for commands, panels, settings, and workflows. |
+
+---
+
+## Obsidian-Style Knowledge Vault & Graph Memory
+
+CAGY features an integrated **Obsidian-compatible Knowledge Vault** at `/workspace/knowledge/` (mounted directly from `./knowledge/` on the host).
+
+```mermaid
+graph LR
+    subgraph Knowledge Vault on Disk
+        U["knowledge/user/<br>profile.md, conventions.md"]
+        A["knowledge/architecture/<br>cagy_unified.md"]
+        D["knowledge/decisions/<br>adr_001_cagy_fork.md"]
+    end
+
+    subgraph 2D Graph & Engine
+        G["Force-Directed 2D Graph Canvas (/vault)"]
+        M["Engine: Wikilinks & Backlinks"]
+        U & A & D <--> G
+        U & A & D <--> M
+    end
+
+    subgraph Native Antigravity Rules
+        R[".gemini/rules/knowledge_vault.md"]
+        M -->|Auto-Compile| R
+        R --> GCLI["Gemini (agy CLI Engine)"]
+    end
+```
+
+### 1. Vault Directory Taxonomy
+- **`knowledge/user/`**: Developer profile, tone preferences, coding conventions, and workflow rules.
+- **`knowledge/architecture/`**: System topology, container execution models, cloud infrastructure, and network design.
+- **`knowledge/decisions/`**: Architecture Decision Records (`adr_XXX_<name>.md`) tracking choices, trade-offs, and deprecations.
+- **`knowledge/notes/`**: Research topics, conceptual summaries, and reference guides.
+
+### 2. Bi-Directional Wikilinks & 2D Force-Directed Graph (`/vault`)
+- Notes use standard Obsidian `[[Note Name]]`, `[[folder/note]]`, or `[[target|Alias]]` links.
+- The **2D Graph Canvas** simulates a real-time particle-spring physics layout:
+  - Node sizes scale dynamically with connection density (in-degree + out-degree).
+  - Category-based color coding (`user`: blue, `architecture`: cyan, `decisions`: purple, `notes`: green).
+  - Hover glow, pan, mouse-wheel zoom, and aspect-ratio synchronization preventing distortion when resizing sidebars.
+  - Clicking any note or graph node opens it directly in the right-sidebar Markdown editor.
+
+### 3. Agent-Assisted Memorization (`/memorize` & `🧠` Button)
+- **`/memorize <insight>`**: Automatically classifies the takeaway into the appropriate directory, assigns sequential ADR numbers for decisions, synthesizes wikilinks to matching existing vault entities, and recompiles native rules.
+- **`/memorize` (No Arguments)**: Prompts Gemini to synthesize recent conversation turns into atomic vault notes.
+- **1-Click Message Action**: Click the `🧠` bookmark icon on any assistant message to immediately extract and persist the insight into the vault with toast feedback.
+- **Pre-Turn Rule Sync**: The CLI runner (`run_agent.py`) re-compiles `.gemini/rules/knowledge_vault.md` before every conversation turn, ensuring the model retains full context across all sessions.
+
+### 4. Obsidian Desktop Interoperability
+Because all notes are saved as plain UTF-8 Markdown on the host filesystem under `./knowledge/`, you can open this folder directly as an existing vault in the official **[Obsidian](https://obsidian.md)** desktop app on macOS/Windows/Linux.
+
+---
+
+## Artifact & Code Preview Canvas with Visual Diffs
+
+The right-hand workspace panel provides a unified file inspector and artifact rendering canvas:
+
+- **Mode 1: Code Viewer & Editor**: Syntax-highlighted view of workspace files with direct editing and saving. Operates without requiring an active chat session.
+- **Mode 2: Side-by-Side Visual Diff**: Computes line-by-line structured diffs against Git HEAD (`difflib.SequenceMatcher`), displaying additions, deletions, line gutters, and unified scroll.
+- **Mode 3: Live Preview Canvas**: Sandboxed `<iframe>` environment for rendering live HTML, CSS, JavaScript, SVG, and interactive diagrams with an **Expand Canvas** modal.
 
 ---
 
@@ -158,16 +223,26 @@ We provide two update pathways:
 │   ├── gemini/            # Antigravity CLI auth tokens, settings, and brain logs
 │   │   └── antigravity-cli/brain/  # Subagent transcripts and artifacts
 │   └── system_certs.pem   # Exported host SSL root certificates
-├── skills/                # Antigravity domain skills (e.g. agy-webui-bridge)
+├── knowledge/             # Obsidian-compatible Knowledge Vault & Second Brain
+│   ├── user/              # Developer profile and coding conventions
+│   ├── architecture/      # System architecture and container topologies
+│   ├── decisions/         # Architecture Decision Records (ADRs)
+│   └── notes/             # Research notes and domain reference guides
+├── skills/                # Antigravity domain skills
+│   ├── agy-webui-bridge/  # CLI bridge contract & compatibility validator
+│   └── knowledge-vault/   # Knowledge Vault authoring & protocol guidelines
 ├── webui/                 # WebUI frontend & backend bridge
-│   ├── static/            # Static assets (HTML, CSS, JS, Katex)
-│   ├── api/               # API endpoints (subagents, mcp_hub, skills, artifacts)
+│   ├── static/            # Static assets (HTML, CSS, JS, Katex, Smd)
+│   ├── api/               # API endpoints (vault, subagents, mcp_hub, diff_viewer)
 │   ├── run_agent.py       # Antigravity CLI event-streaming bridge adapter
 │   └── server.py          # WebUI HTTP daemon entrypoint
-├── .gemini/rules/         # Agent workspace confinement and design system rules
+├── tests/                 # Hermetic automated test suite & mock CLI
+├── .gemini/rules/         # Native rules (knowledge_vault, container_confinement)
 ├── GEMINI.md              # Container execution namespace configuration
-├── Dockerfile             # Unified Debian container with Linux agy and supervisor
+├── Dockerfile             # Multi-stage Debian container with Linux agy, uv, and supervisor
 ├── docker-compose.yml     # Compose service specification and volume mounts
+├── build-image.sh         # Multi-arch image builder and verification tool
+├── run-tests.sh           # Test suite runner (host, container, compatibility)
 ├── setup.sh               # Initial setup and certificate exporter
 ├── update.sh              # Update script (fast in-place or full rebuild)
 └── agy-container.sh       # Unified container CLI manager
