@@ -23,6 +23,44 @@ let _hoverNode = null;
 let _lastMousePos = { x: 0, y: 0 };
 let _vaultResizeObserver = null;
 
+let _currentGraphSpacing = 'spacious';
+try {
+  const savedSpacing = localStorage.getItem('agy-vault-spacing');
+  if (savedSpacing && ['compact', 'spacious', 'relaxed'].includes(savedSpacing)) {
+    _currentGraphSpacing = savedSpacing;
+  }
+} catch (_) {}
+
+const SPACING_CONFIGS = {
+  compact: {
+    repulsion: 3200,
+    springLen: 170,
+    springK: 0.045,
+    damping: 0.83,
+    centerPull: 0.006,
+    minDistance: 50,
+    spawnRadius: 180
+  },
+  spacious: {
+    repulsion: 7500,
+    springLen: 270,
+    springK: 0.035,
+    damping: 0.85,
+    centerPull: 0.0025,
+    minDistance: 80,
+    spawnRadius: 280
+  },
+  relaxed: {
+    repulsion: 15000,
+    springLen: 400,
+    springK: 0.025,
+    damping: 0.88,
+    centerPull: 0.0012,
+    minDistance: 115,
+    spawnRadius: 400
+  }
+};
+
 const FOLDER_COLORS = {
   user: '#3b82f6',         // Blue
   architecture: '#10b981', // Emerald green
@@ -50,6 +88,10 @@ async function loadVault(force = false) {
     _allGraphEdges = data.edges || [];
 
     updateVaultMetrics(data.stats || {});
+    const sBtns = document.querySelectorAll('#vaultSpacingFilter .vault-depth-btn');
+    sBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.spacing === _currentGraphSpacing);
+    });
     renderVaultTagFilter((data.stats && data.stats.all_tags) || []);
     renderVaultSidebarList(data.nodes || []);
     initVaultGraph(data.nodes || [], data.edges || []);
@@ -667,8 +709,9 @@ function applyGraphDepthFilter() {
       nodeMap[n.id] = existing;
       return existing;
     }
+    const config = SPACING_CONFIGS[_currentGraphSpacing] || SPACING_CONFIGS.spacious;
     const angle = (i / Math.max(nodesToRender.length, 1)) * 2 * Math.PI;
-    const dist = 140 + Math.random() * 90;
+    const dist = (config.spawnRadius || 280) + Math.random() * 120;
     const gNode = {
       id: n.id,
       title: n.title,
@@ -725,23 +768,25 @@ function resizeGraphCanvas(restartPhysics = false) {
 function startGraphSimulation() {
   _vaultSimRunning = true;
   let iterations = 0;
-  const maxIterations = 300;
+  const maxIterations = 350;
 
   function step() {
     if (!_vaultSimRunning) return;
 
-    // Physics constants
-    const repulsion = 1100;
-    const springLen = 130;
-    const springK = 0.04;
-    const damping = 0.83;
-    const centerPull = 0.012;
+    // Physics constants dynamically derived from active spacing preset
+    const config = SPACING_CONFIGS[_currentGraphSpacing] || SPACING_CONFIGS.spacious;
+    const repulsion = config.repulsion;
+    const springLen = config.springLen;
+    const springK = config.springK;
+    const damping = config.damping;
+    const centerPull = config.centerPull;
+    const minDistance = config.minDistance;
 
     const canvas = document.getElementById('vaultGraphCanvas');
     const cx = canvas ? canvas.width / 2 : 400;
     const cy = canvas ? canvas.height / 2 : 300;
 
-    // 1. Repulsion between all node pairs
+    // 1. Repulsion between all node pairs + hard collision buffer
     for (let i = 0; i < _graphNodes.length; i++) {
       const n1 = _graphNodes[i];
       for (let j = i + 1; j < _graphNodes.length; j++) {
@@ -749,7 +794,18 @@ function startGraphSimulation() {
         const dx = n2.x - n1.x;
         const dy = n2.y - n1.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const f = repulsion / (dist * dist);
+
+        // Hard collision resolution: immediately push overlapping nodes apart
+        if (dist < minDistance) {
+          const overlap = (minDistance - dist) * 0.5;
+          const nx = (dx / dist) * overlap;
+          const ny = (dy / dist) * overlap;
+          if (n1 !== _dragNode) { n1.x -= nx; n1.y -= ny; }
+          if (n2 !== _dragNode) { n2.x += nx; n2.y += ny; }
+        }
+
+        // Softened Coulomb repulsion for wide, spacious spread
+        const f = repulsion / (dist * Math.pow(dist, 0.72) + 60);
         const fx = (dx / dist) * f;
         const fy = (dy / dist) * f;
 
@@ -759,7 +815,7 @@ function startGraphSimulation() {
         n2.vy += fy;
       }
 
-      // Center gravity
+      // Gentle center gravity
       n1.vx += (cx - n1.x) * centerPull;
       n1.vy += (cy - n1.y) * centerPull;
     }
@@ -807,6 +863,26 @@ function triggerGraphRepaint() {
   if (!_vaultSimRunning) {
     startGraphSimulation();
   }
+}
+
+function setGraphSpacing(spacing) {
+  if (!SPACING_CONFIGS[spacing]) spacing = 'spacious';
+  _currentGraphSpacing = spacing;
+  try {
+    localStorage.setItem('agy-vault-spacing', spacing);
+  } catch (_) {}
+
+  const btns = document.querySelectorAll('#vaultSpacingFilter .vault-depth-btn');
+  btns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.spacing === _currentGraphSpacing);
+  });
+
+  startGraphSimulation();
+}
+
+function zoomGraph(factor) {
+  _vaultZoom = Math.max(0.2, Math.min(4.0, _vaultZoom * factor));
+  drawGraph();
 }
 
 function drawGraph() {
@@ -861,11 +937,41 @@ function drawGraph() {
     ctx.lineWidth = 1.6;
     ctx.stroke();
 
-    // Node label
-    ctx.fillStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.88)';
-    ctx.font = isSelected ? 'bold 11px system-ui, sans-serif' : '10.5px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(n.title, n.x, n.y + n.radius + 14);
+    // Node label with pill background to prevent text clash & overlap
+    const isMajor = (n.connections && n.connections >= 2) || isSelected || isHovered;
+    const showLabel = _vaultZoom >= 0.65 || isMajor;
+
+    if (showLabel) {
+      const labelText = n.title && n.title.length > 28 ? (n.title.slice(0, 26) + '…') : (n.title || '');
+      ctx.font = isSelected ? 'bold 11px system-ui, sans-serif' : (isHovered ? '600 11px system-ui, sans-serif' : '10px system-ui, sans-serif');
+      const textWidth = ctx.measureText(labelText).width;
+      const textHeight = 15;
+      const labelX = n.x - textWidth / 2 - 5;
+      const labelY = n.y + n.radius + 6;
+
+      // Draw translucent pill backdrop
+      ctx.fillStyle = isSelected
+        ? 'rgba(2, 136, 168, 0.9)'
+        : (isHovered ? 'rgba(30, 41, 59, 0.92)' : 'rgba(15, 23, 42, 0.75)');
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(labelX, labelY, textWidth + 10, textHeight, 4);
+      } else {
+        ctx.rect(labelX, labelY, textWidth + 10, textHeight);
+      }
+      ctx.fill();
+
+      if (isSelected || isHovered) {
+        ctx.strokeStyle = isSelected ? '#ffffff' : 'var(--accent, #0288a8)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // Draw text
+      ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.92)');
+      ctx.textAlign = 'center';
+      ctx.fillText(labelText, n.x, labelY + 11);
+    }
   });
 
   ctx.restore();
