@@ -16,5 +16,9 @@
     "ai-agent",
     "webui"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/therealkevops/CAGY-v2.0.0.git"
+  },
   "license": "MIT"
 }

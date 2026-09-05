@@ -43,8 +43,8 @@ Before setting up CAGY, ensure you have:
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/<your-username>/cagy-docker.git
-cd cagy-docker
+git clone https://github.com/therealkevops/CAGY-v2.0.0.git
+cd CAGY-v2.0.0
 ```
 
 ### Step 2: Run Initial Setup & Certificate Generator
@@ -282,7 +282,7 @@ CAGY features an optimized multi-stage `Dockerfile` with multi-architecture supp
 ./build-image.sh --multi-arch
 
 # Build and push multi-arch image to container registry
-./build-image.sh --push ghcr.io/<owner>/cagy
+./build-image.sh --push ghcr.io/therealkevops/cagy
 ```
 
 ### Standalone Container Execution (Zero Host Mounts)
@@ -294,7 +294,7 @@ CAGY images can run completely standalone without requiring volume mounts, packa
 docker run -d -p 8989:8989 cagy:latest
 
 # Or run directly from GitHub Container Registry
-docker run -d -p 8989:8989 ghcr.io/<owner>/cagy:latest
+docker run -d -p 8989:8989 ghcr.io/therealkevops/cagy:latest
 ```
 
 When running via `docker-compose.yml`, host volume mounts (`./:/workspace` and `./container_data/:/workspace/container_data/`) dynamically overlay the container filesystem to provide local live-reloading and state persistence.
