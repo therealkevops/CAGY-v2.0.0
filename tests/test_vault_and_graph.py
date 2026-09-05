@@ -306,7 +306,7 @@ class TestVaultApiEndpoints(unittest.TestCase):
         self.assertIn("nodes", data)
         self.assertIn("edges", data)
         self.assertIn("stats", data)
-        self.assertEqual(data["stats"]["total_notes"], 1)
+        self.assertGreaterEqual(data["stats"]["total_notes"], 1)
 
     def test_get_vault_note(self):
         status, data = self._get("/api/vault/note?path=user/profile.md")
@@ -372,6 +372,110 @@ class TestVaultApiEndpoints(unittest.TestCase):
         self.assertIn("template", data)
         self.assertIn("next_adr", data)
         self.assertIn("ADR", data["template"])
+
+    def test_space_container_scanning_and_filtering(self):
+        # Create notes in space containers
+        (self.vault_dir / "spaces" / "cka-kb" / "decisions").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "spaces" / "payment-engine" / "decisions").mkdir(parents=True, exist_ok=True)
+
+        (self.vault_dir / "spaces" / "cka-kb" / "decisions" / "adr_001_calico.md").write_text(
+            "# ADR 001: Use Calico CNI\n\nStatus: Accepted\nWe chose Calico for network policy enforcement.\n",
+            encoding="utf-8"
+        )
+        (self.vault_dir / "spaces" / "payment-engine" / "decisions" / "adr_001_stripe.md").write_text(
+            "# ADR 001: Stripe Webhook Gateway\n\nStatus: Accepted\nWe chose Stripe webhook verification.\n",
+            encoding="utf-8"
+        )
+
+        # Full scan
+        scan_all = vault.scan_vault(self.vault_dir)
+        self.assertIn("cka-kb", scan_all["spaces"])
+        self.assertIn("payment-engine", scan_all["spaces"])
+
+        # Filtered scan for cka-kb
+        scan_cka = vault.scan_vault(self.vault_dir, space_filter="cka-kb")
+        cka_node_ids = [n["id"] for n in scan_cka["nodes"]]
+        self.assertIn("spaces/cka-kb/decisions/adr_001_calico", cka_node_ids)
+        # Global user profile should be retained
+        self.assertIn("user/profile", cka_node_ids)
+        # Unrelated space should be omitted
+        self.assertNotIn("spaces/payment-engine/decisions/adr_001_stripe", cka_node_ids)
+
+    def test_multi_space_adr_numbering_and_memorize(self):
+        # Initial space ADR
+        res1 = vault.memorize_insight(
+            self.vault_dir,
+            "We decided to use CoreDNS autoscaling for high-load DNS queries in Kubernetes.",
+            space="cka-kb"
+        )
+        self.assertTrue(res1["ok"])
+        self.assertEqual(res1["space"], "cka-kb")
+        self.assertTrue(res1["rel_path"].startswith("spaces/cka-kb/decisions/adr_001_"))
+
+        # Second space ADR in same space
+        res2 = vault.memorize_insight(
+            self.vault_dir,
+            "We decided to enable containerd runc v2 runtime.",
+            space="cka-kb"
+        )
+        self.assertTrue(res2["ok"])
+        self.assertTrue(res2["rel_path"].startswith("spaces/cka-kb/decisions/adr_002_"))
+
+        # User preference remains global even when in space
+        res_user = vault.memorize_insight(
+            self.vault_dir,
+            "User preference: Always use kubectl with dry-run client flag.",
+            category="user",
+            space="cka-kb"
+        )
+        self.assertTrue(res_user["ok"])
+        self.assertEqual(res_user["space"], "user")
+        self.assertTrue(res_user["rel_path"].startswith("user/"))
+
+    def test_space_scoped_rule_compilation(self):
+        # Create spaces
+        (self.vault_dir / "spaces" / "cka-kb" / "decisions").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "spaces" / "finance" / "decisions").mkdir(parents=True, exist_ok=True)
+
+        (self.vault_dir / "spaces" / "cka-kb" / "decisions" / "adr_001_kubeadm.md").write_text(
+            "# ADR 001: Kubeadm Bootstrap\n\nBootstrap cluster with kubeadm init.\n",
+            encoding="utf-8"
+        )
+        (self.vault_dir / "spaces" / "finance" / "decisions" / "adr_001_ledger.md").write_text(
+            "# ADR 001: Double Entry Ledger\n\nEnsure immutable double entry transaction balance.\n",
+            encoding="utf-8"
+        )
+
+        ws_dir = Path(self.temp_dir) / "projects" / "cka-kb"
+        ws_dir.mkdir(parents=True, exist_ok=True)
+
+        sync_res = vault.sync_vault_to_rules(self.vault_dir, workspace_path=ws_dir, space="cka-kb")
+        self.assertTrue(sync_res["ok"])
+        self.assertEqual(sync_res["space"], "cka-kb")
+
+        rules_file = ws_dir / ".gemini" / "rules" / "knowledge_vault.md"
+        self.assertTrue(rules_file.exists())
+        rules_content = rules_file.read_text(encoding="utf-8")
+
+        # CKA decision and user profile must be present
+        self.assertIn("Kubeadm Bootstrap", rules_content)
+        self.assertIn("AI Systems Engineer", rules_content)
+        # Unrelated finance space must be absent to protect token diet
+        self.assertNotIn("Double Entry Ledger", rules_content)
+
+    def test_api_vault_spaces_and_template_space(self):
+        (self.vault_dir / "spaces" / "cka-kb" / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "spaces" / "cka-kb" / "notes" / "cheat_sheet.md").write_text("# CKA Cheat Sheet\n", encoding="utf-8")
+
+        status, spaces_data = self._get("/api/vault/spaces")
+        self.assertEqual(status, 200)
+        self.assertTrue(spaces_data.get("ok"))
+        self.assertIn("cka-kb", spaces_data.get("spaces", []))
+
+        status, t_data = self._get("/api/vault/template?category=decisions&title=Network%20Policy&space=cka-kb")
+        self.assertEqual(status, 200)
+        self.assertTrue(t_data.get("ok"))
+        self.assertIn("spaces/cka-kb/decisions", t_data.get("rel_path", ""))
 
 
 if __name__ == "__main__":

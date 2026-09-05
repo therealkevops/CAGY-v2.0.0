@@ -2,9 +2,21 @@
 
 > [!IMPORTANT]
 > This context is automatically compiled from the workspace Knowledge Vault (`/workspace/knowledge/`).
+> Active Scope: **Global**
 > Retain these principles, user preferences, and architectural decisions across all turns.
 
 ## User Preferences & Profile
+### User Profile & Identity
+# User Profile & Identity
+
+- **Role**: Lead Cloud & Systems Architect (Senior Nutanix, AWS & Linux Infrastructure Engineer)
+- **Communication Style**: Direct, highly analytical, concise. Prefer clean architecture, explicit rationale, and executable verification steps.
+- **Operating Environment**: macOS host paired with Docker Debian container (`agy-unified`) mounted at `/workspace`.
+- **Primary Tooling**: Google Antigravity CLI (`agy`), Python 3.11+, modern Node.js, `uv`/`uvx` MCP ecosystem, and Git.
+- **Linked Context**:
+  - See [[user/conventions]] for core codebase rules.
+  - See [[architecture/cagy_unified]] for execution namespace details.
+
 ### Engineering Conventions & Standards
 # Engineering Conventions & Standards
 
@@ -19,17 +31,6 @@ Guidelines enforced across the CAGY project:
 3. **Multi-Architecture Integrity**:
    - Maintain full compatibility with `linux/amd64` and `linux/arm64` via Docker Buildx.
    - See [[decisions/adr_001_cagy_fork]] for context on decoupling legacy code.
-
-### User Profile & Identity
-# User Profile & Identity
-
-- **Role**: Lead Cloud & Systems Architect (Senior Nutanix, AWS & Linux Infrastructure Engineer)
-- **Communication Style**: Direct, highly analytical, concise. Prefer clean architecture, explicit rationale, and executable verification steps.
-- **Operating Environment**: macOS host paired with Docker Debian container (`agy-unified`) mounted at `/workspace`.
-- **Primary Tooling**: Google Antigravity CLI (`agy`), Python 3.11+, modern Node.js, `uv`/`uvx` MCP ecosystem, and Git.
-- **Linked Context**:
-  - See [[user/conventions]] for core codebase rules.
-  - See [[architecture/cagy_unified]] for execution namespace details.
 
 ## Architectural Principles
 ### CAGY Architecture & Execution Model

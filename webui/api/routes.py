@@ -13961,7 +13961,12 @@ def handle_get(handler, parsed) -> bool:
     # ── Knowledge Vault & Graph Memory (GET) ──
     if parsed.path in ("/api/vault/graph", "/api/vault/data"):
         from api.vault import scan_vault, get_vault_dir
-        return j(handler, scan_vault(get_vault_dir()))
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        space = qs.get("space", [None])[0]
+        return j(handler, scan_vault(get_vault_dir(), space_filter=space))
+    if parsed.path == "/api/vault/spaces":
+        from api.vault import list_spaces, get_vault_dir
+        return j(handler, {"ok": True, "spaces": list_spaces(get_vault_dir())})
     if parsed.path == "/api/vault/note":
         from api.vault import get_note, get_vault_dir
         qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
@@ -13975,11 +13980,12 @@ def handle_get(handler, parsed) -> bool:
         q = qs.get("q", [""])[0]
         folder = qs.get("folder", [None])[0]
         tag = qs.get("tag", [None])[0]
+        space = qs.get("space", [None])[0]
         try:
             limit = int(qs.get("limit", ["50"])[0])
         except ValueError:
             limit = 50
-        return j(handler, search_vault(get_vault_dir(), query=q, folder=folder, tag=tag, limit=limit))
+        return j(handler, search_vault(get_vault_dir(), query=q, folder=folder, tag=tag, limit=limit, space=space))
     if parsed.path == "/api/vault/health":
         from api.vault import get_vault_health, get_vault_dir
         return j(handler, get_vault_health(get_vault_dir()))
@@ -13988,9 +13994,10 @@ def handle_get(handler, parsed) -> bool:
         qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
         category = qs.get("category", ["notes"])[0]
         title = qs.get("title", [""])[0]
+        space = qs.get("space", [None])[0]
         vdir = get_vault_dir()
-        next_adr = get_next_adr_number(vdir) if category == "decisions" else None
-        return j(handler, get_note_template(category=category, title=title, next_adr=next_adr))
+        next_adr = get_next_adr_number(vdir, space=space) if category == "decisions" else None
+        return j(handler, get_note_template(category=category, title=title, next_adr=next_adr, space=space))
 
     # ── Token Economics & Memory Analytics (GET) ──
     if parsed.path == "/api/analytics/efficiency":
@@ -14342,32 +14349,44 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, delete_note(get_vault_dir(), path))
 
     if parsed.path == "/api/vault/sync":
-        from api.vault import sync_vault_to_rules, get_vault_dir
-        ws_root = None
-        for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-            val = os.environ.get(var)
-            if val and Path(val).exists():
-                ws_root = Path(val)
-                break
+        from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        ws_param = body.get("workspace") or qs.get("workspace", [None])[0]
+        space_param = body.get("space") or qs.get("space", [None])[0]
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
         if not ws_root:
             ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        return j(handler, sync_vault_to_rules(get_vault_dir(ws_root), ws_root))
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, sync_vault_to_rules(get_vault_dir(ws_root), ws_root, space=space_param))
 
     if parsed.path == "/api/vault/memorize":
-        from api.vault import memorize_insight, get_vault_dir
+        from api.vault import memorize_insight, get_vault_dir, infer_space_from_workspace
         body = _read_json_body(handler) or {}
         text = str(body.get("text", "")).strip()
         category = body.get("category")
         title = body.get("title")
-        ws_root = None
-        for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-            val = os.environ.get(var)
-            if val and Path(val).exists():
-                ws_root = Path(val)
-                break
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
         if not ws_root:
             ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        return j(handler, memorize_insight(get_vault_dir(ws_root), text, category=category, title=title, workspace_path=ws_root))
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, memorize_insight(get_vault_dir(ws_root), text, category=category, title=title, workspace_path=ws_root, space=space_param))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule

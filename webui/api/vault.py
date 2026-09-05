@@ -42,12 +42,42 @@ def extract_tags(content: str) -> List[str]:
                 tags.add(tag)
     return sorted(tags)
 
+def extract_space_from_rel_path(rel_path: str) -> str:
+    """
+    Determine the space container of a note based on its relative path.
+    - spaces/<space_id>/... -> <space_id>
+    - user/... -> user (global user profile)
+    - architecture/..., decisions/..., notes/... -> global
+    """
+    clean = str(rel_path).replace("\\", "/").strip().lstrip("/")
+    parts = clean.split("/")
+    if len(parts) > 1 and parts[0] == "spaces":
+        return parts[1]
+    if parts[0] == "user":
+        return "user"
+    return "global"
+
+def infer_space_from_workspace(workspace_path: Optional[Path] = None) -> str:
+    """
+    Infer space identifier from workspace path.
+    e.g. /workspace/projects/cka-kb -> cka-kb
+         /workspace -> global
+    """
+    if not workspace_path:
+        return "global"
+    p = Path(workspace_path).resolve()
+    for parent in [p, *p.parents]:
+        if parent.parent and parent.parent.name in ("projects", "spaces", "workspaces"):
+            return parent.name
+    return "global"
+
 def get_vault_dir(workspace_path: Optional[Path] = None) -> Path:
     """Resolve knowledge vault directory."""
     if workspace_path:
-        v = (workspace_path / "knowledge").resolve()
-        return v
-    
+        local_v = (Path(workspace_path) / "knowledge").resolve()
+        if local_v.exists():
+            return local_v
+
     for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
         val = os.environ.get(var)
         if val and Path(val).exists():
@@ -73,10 +103,11 @@ def _normalize_id(link: str) -> str:
         clean = clean[:-3]
     return clean
 
-def scan_vault(vault_path: Path) -> Dict[str, Any]:
+def scan_vault(vault_path: Path, space_filter: Optional[str] = None) -> Dict[str, Any]:
     """
     Recursively scan all markdown files in vault, extract wikilinks,
-    compute backlinks, and build the nodes and edges for the Knowledge Graph.
+    compute backlinks, tag spaces, and build the nodes and edges for the Knowledge Graph.
+    Supports filtering by space (e.g. space_filter="cka-kb" or "global").
     """
     if not vault_path.exists():
         vault_path.mkdir(parents=True, exist_ok=True)
@@ -106,6 +137,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
         folder = p.parent.relative_to(vault_path).as_posix()
         if folder == ".":
             folder = "root"
+        space = extract_space_from_rel_path(rel)
 
         try:
             content = p.read_text(encoding="utf-8", errors="replace")
@@ -143,6 +175,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             "title": title,
             "path": rel,
             "folder": folder,
+            "space": space,
             "size_bytes": size,
             "mtime": mtime,
             "links": resolved_links,
@@ -171,6 +204,7 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
             "title": info["title"],
             "path": info["path"],
             "folder": info["folder"],
+            "space": info.get("space", "global"),
             "tags": info.get("tags", []),
             "size_bytes": info["size_bytes"],
             "mtime": info["mtime"],
@@ -196,11 +230,33 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
     # Sort nodes by total connections descending
     nodes.sort(key=lambda n: n["total_connections"], reverse=True)
 
-    # Health analysis: orphans & unresolved links
-    node_ids = {n["id"] for n in nodes}
-    orphans = [n["id"] for n in nodes if n["total_connections"] == 0]
+    # Discover all distinct spaces
+    discovered_spaces = {n.get("space", "global") for n in nodes if n.get("space") not in ("user",)}
+    all_spaces = ["global", *sorted(s for s in discovered_spaces if s != "global")]
+
+    # Optional Space filtering
+    if space_filter and space_filter not in ("all", ""):
+        clean_sf = space_filter.strip().lower()
+        if clean_sf == "global":
+            allowed_spaces = {"global", "user"}
+        else:
+            allowed_spaces = {clean_sf, "user"}
+
+        filtered_nodes = [n for n in nodes if n.get("space") in allowed_spaces]
+        filtered_ids = {n["id"] for n in filtered_nodes}
+        filtered_edges = [
+            e for e in edges
+            if e["source"] in filtered_ids and (e["target"] in filtered_ids or not e.get("exists", False))
+        ]
+    else:
+        filtered_nodes = nodes
+        filtered_edges = edges
+
+    # Health analysis: orphans & unresolved links on the filtered graph
+    node_ids = {n["id"] for n in filtered_nodes}
+    orphans = [n["id"] for n in filtered_nodes if n["total_connections"] == 0]
     unresolved_map: Dict[str, List[str]] = {}
-    for edge in edges:
+    for edge in filtered_edges:
         if not edge.get("exists", False) or edge["target"] not in node_ids:
             unresolved_map.setdefault(edge["target"], []).append(edge["source"])
     unresolved_links = [
@@ -208,14 +264,18 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
         for target, sources in sorted(unresolved_map.items(), key=lambda x: len(x[1]), reverse=True)
     ]
 
-    all_tags = sorted({t for n in nodes for t in n.get("tags", [])})
+    all_tags = sorted({t for n in filtered_nodes for t in n.get("tags", [])})
 
     return {
-        "nodes": nodes,
-        "edges": edges,
+        "nodes": filtered_nodes,
+        "edges": filtered_edges,
+        "spaces": all_spaces,
+        "active_space": space_filter or "all",
         "stats": {
-            "total_notes": len(nodes),
-            "total_edges": len(edges),
+            "total_notes": len(filtered_nodes),
+            "total_edges": len(filtered_edges),
+            "spaces_count": len(all_spaces),
+            "spaces": all_spaces,
             "orphan_count": len(orphans),
             "orphans": orphans,
             "unresolved_count": len(unresolved_links),
@@ -331,17 +391,26 @@ def delete_note(vault_path: Path, rel_path: str) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e), "ok": False}
 
-def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None) -> Dict[str, Any]:
+def sync_vault_to_rules(
+    vault_path: Path,
+    workspace_path: Optional[Path] = None,
+    space: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Compile core knowledge from vault (User profile, conventions, architectural decisions)
     into native Antigravity rules (.gemini/rules/knowledge_vault.md) so Gemini learns
     and retains context across all turns.
+    Supports space scoping to eliminate token bloat and context contamination across spaces.
     """
     if not vault_path.exists():
         return {"error": "Vault does not exist", "ok": False}
 
     if workspace_path is None:
         workspace_path = vault_path.parent
+
+    if space is None and workspace_path:
+        space = infer_space_from_workspace(workspace_path)
+    active_space = (space or "global").strip().lower()
 
     rules_dir = workspace_path / ".gemini" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)
@@ -355,12 +424,13 @@ def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None)
         "",
         "> [!IMPORTANT]",
         "> This context is automatically compiled from the workspace Knowledge Vault (`/workspace/knowledge/`).",
+        f"> Active Scope: **{active_space.title()}**",
         "> Retain these principles, user preferences, and architectural decisions across all turns.",
         ""
     ]
 
-    # Priority 1: User Profile
-    user_notes = [n for n in nodes if n["folder"] == "user"]
+    # Priority 1: User Profile (Global - always included across all spaces)
+    user_notes = [n for n in nodes if n.get("space") == "user" or n["folder"] == "user"]
     if user_notes:
         compiled_sections.append("## User Preferences & Profile")
         for n in user_notes:
@@ -370,8 +440,12 @@ def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None)
                 compiled_sections.append(note_data["content"].strip())
                 compiled_sections.append("")
 
-    # Priority 2: Architectural Principles
-    arch_notes = [n for n in nodes if n["folder"] == "architecture"]
+    # Priority 2: Architectural Principles (Scoped to active space if set, else global)
+    if active_space != "global":
+        arch_notes = [n for n in nodes if n.get("space") == active_space and "architecture" in n["folder"]]
+    else:
+        arch_notes = [n for n in nodes if n.get("space") == "global" and n["folder"] == "architecture"]
+
     if arch_notes:
         compiled_sections.append("## Architectural Principles")
         for n in arch_notes:
@@ -381,8 +455,12 @@ def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None)
                 compiled_sections.append(note_data["content"].strip())
                 compiled_sections.append("")
 
-    # Priority 3: Architecture Decision Records (ADRs)
-    decisions = [n for n in nodes if n["folder"] == "decisions"]
+    # Priority 3: Architecture Decision Records (ADRs) (Scoped to active space if set, else global)
+    if active_space != "global":
+        decisions = [n for n in nodes if n.get("space") == active_space and "decisions" in n["folder"]]
+    else:
+        decisions = [n for n in nodes if n.get("space") == "global" and n["folder"] == "decisions"]
+
     if decisions:
         compiled_sections.append("## Key Architectural Decisions")
         for n in decisions:
@@ -392,13 +470,30 @@ def sync_vault_to_rules(vault_path: Path, workspace_path: Optional[Path] = None)
                 compiled_sections.append(note_data["content"].strip())
                 compiled_sections.append("")
 
+    # Priority 4: Space-Specific Notes & Guides
+    domain_notes = []
+    if active_space != "global":
+        domain_notes = [
+            n for n in nodes
+            if n.get("space") == active_space and ("notes" in n["folder"] or n["folder"] == f"spaces/{active_space}")
+        ]
+        if domain_notes:
+            compiled_sections.append(f"## {active_space.title()} Domain Knowledge & Guides")
+            for n in domain_notes:
+                note_data = get_note(vault_path, n["path"])
+                if note_data.get("content"):
+                    compiled_sections.append(f"### {note_data.get('title', n['id'])}")
+                    compiled_sections.append(note_data["content"].strip())
+                    compiled_sections.append("")
+
     rule_content = "\n".join(compiled_sections).strip() + "\n"
     target_rule.write_text(rule_content, encoding="utf-8")
 
     return {
         "ok": True,
         "rule_file": str(target_rule),
-        "total_compiled_notes": len(user_notes) + len(arch_notes) + len(decisions),
+        "space": active_space,
+        "total_compiled_notes": len(user_notes) + len(arch_notes) + len(decisions) + len(domain_notes),
         "bytes_written": len(rule_content.encode("utf-8")),
         "timestamp": time.time()
     }
@@ -409,10 +504,12 @@ def memorize_insight(
     category: Optional[str] = None,
     title: Optional[str] = None,
     workspace_path: Optional[Path] = None,
+    space: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Extract, auto-categorize, interlink, and save an insight, decision, or convention
     into the Knowledge Vault, and immediately re-compile rules.
+    Supports space containers (e.g. space="cka-kb").
     """
     text = (text or "").strip()
     if not text:
@@ -421,6 +518,10 @@ def memorize_insight(
     vault_path.mkdir(parents=True, exist_ok=True)
     if workspace_path is None:
         workspace_path = vault_path.parent
+
+    if not space:
+        space = infer_space_from_workspace(workspace_path)
+    active_space = (space or "global").strip().lower()
 
     lower_text = text.lower()
 
@@ -458,18 +559,7 @@ def memorize_insight(
         raw_slug = f"insight_{int(time.time())}"
 
     if cat == "decisions":
-        decisions_dir = vault_path / "decisions"
-        decisions_dir.mkdir(parents=True, exist_ok=True)
-        existing_adrs = list(decisions_dir.glob("adr_*.md"))
-        max_num = 0
-        for adr in existing_adrs:
-            m = re.match(r'adr_(\d+)', adr.name)
-            if m:
-                try:
-                    max_num = max(max_num, int(m.group(1)))
-                except ValueError:
-                    pass
-        next_num = max_num + 1
+        next_num = get_next_adr_number(vault_path, space=active_space if active_space != "global" else None)
         clean_slug = re.sub(r'^adr_\d+_?', '', raw_slug).strip('_')
         if not clean_slug:
             clean_slug = "decision"
@@ -480,11 +570,18 @@ def memorize_insight(
         filename = f"{raw_slug}.md"
         note_title = derived_title
 
+    # Target relative path: user preferences are always global
+    if cat == "user":
+        target_rel = f"user/{filename}"
+    elif active_space != "global":
+        target_rel = f"spaces/{active_space}/{cat}/{filename}"
+    else:
+        target_rel = f"{cat}/{filename}"
+
     # 4. Wikilink Cross-Referencing
     scan = scan_vault(vault_path)
     existing_nodes = scan.get("nodes", [])
     discovered_links = []
-    target_rel = f"{cat}/{filename}"
 
     for n in existing_nodes:
         nid = n["id"]
@@ -506,11 +603,18 @@ def memorize_insight(
         content_parts.append(f"# {note_title}\n")
         if cat == "decisions":
             content_parts.append(f"- **Date**: {today}\n- **Status**: Accepted\n")
+            if active_space != "global":
+                content_parts.append(f"- **Space**: {active_space}\n")
             content_parts.append("## Context & Decision\n")
         elif cat == "user":
             content_parts.append(f"- **Date**: {today}\n- **Category**: User Preferences & Conventions\n")
         elif cat == "architecture":
             content_parts.append(f"- **Date**: {today}\n- **Category**: Architecture & Infrastructure\n")
+            if active_space != "global":
+                content_parts.append(f"- **Space**: {active_space}\n")
+        else:
+            if active_space != "global":
+                content_parts.append(f"- **Date**: {today}\n- **Space**: {active_space}\n")
 
     content_parts.append(text)
 
@@ -526,7 +630,7 @@ def memorize_insight(
     if not save_res.get("ok"):
         return save_res
 
-    sync_res = sync_vault_to_rules(vault_path, workspace_path)
+    sync_res = sync_vault_to_rules(vault_path, workspace_path, space=active_space)
 
     return {
         "ok": True,
@@ -534,16 +638,23 @@ def memorize_insight(
         "rel_path": target_rel,
         "title": note_title,
         "category": cat,
+        "space": active_space if cat != "user" else "user",
         "links_discovered": len(discovered_links),
         "references": discovered_links,
         "rules_synced": sync_res.get("ok", False),
         "timestamp": time.time()
     }
 
+def get_next_adr_number(vault_path: Path, space: Optional[str] = None) -> int:
+    """Derive the next sequential ADR number (e.g. 3 for adr_003_...), scoped to space if provided."""
+    if not vault_path:
+        vault_path = get_vault_dir()
 
-def get_next_adr_number(vault_path: Path) -> int:
-    """Derive the next sequential ADR number (e.g. 3 for adr_003_...)."""
-    decisions_dir = vault_path / "decisions"
+    if space and space not in ("global", "user", "all"):
+        decisions_dir = vault_path / "spaces" / space / "decisions"
+    else:
+        decisions_dir = vault_path / "decisions"
+
     if not decisions_dir.exists():
         return 1
     existing = list(decisions_dir.glob("adr_*.md"))
@@ -557,26 +668,32 @@ def get_next_adr_number(vault_path: Path) -> int:
                 pass
     return max_num + 1
 
-
-def get_note_template(category: str, title: str, next_adr: Optional[int] = None) -> Dict[str, str]:
+def get_note_template(category: str, title: str, next_adr: Optional[int] = None, space: Optional[str] = None) -> Dict[str, Any]:
     """Generate path, suggested filename, and starter template for a category."""
     clean_cat = (category or "notes").strip().lower()
     clean_title = (title or "Untitled Note").strip()
     raw_slug = re.sub(r'[^a-zA-Z0-9_\-]+', '_', clean_title.lower()).strip('_') or "note"
     today = time.strftime("%Y-%m-%d")
+    active_space = (space or "global").strip().lower()
 
     if clean_cat == "decisions":
         num = next_adr if next_adr is not None else 1
         clean_slug = re.sub(r'^adr_\d+_?', '', raw_slug).strip('_') or "decision"
         filename = f"adr_{num:03d}_{clean_slug}.md"
-        rel_path = f"decisions/{filename}"
+        if active_space != "global":
+            rel_path = f"spaces/{active_space}/decisions/{filename}"
+        else:
+            rel_path = f"decisions/{filename}"
         header_title = f"ADR {num:03d}: {clean_title.replace('_', ' ').title()}"
         content = f"""# {header_title}
 
 - **Date**: {today}
 - **Status**: Proposed
 - **Deciders**: Antigravity Core Team
-
+"""
+        if active_space != "global":
+            content += f"- **Space**: {active_space}\n"
+        content += """
 ## Context & Problem Statement
 What is the context, architectural challenge, or motivation driving this decision?
 
@@ -602,13 +719,19 @@ Chosen option: **Option 1**, because ...
 """
     elif clean_cat == "architecture":
         filename = f"{raw_slug}.md"
-        rel_path = f"architecture/{filename}"
+        if active_space != "global":
+            rel_path = f"spaces/{active_space}/architecture/{filename}"
+        else:
+            rel_path = f"architecture/{filename}"
         content = f"""# {clean_title}
 
 - **Category**: Architecture & System Design
 - **Last Updated**: {today}
 - **Status**: Active
-
+"""
+        if active_space != "global":
+            content += f"- **Space**: {active_space}\n"
+        content += """
 ## System Overview
 High-level overview of the component, runtime model, or subsystem.
 
@@ -643,20 +766,24 @@ Document tone, workflow patterns, and toolchain defaults.
     else:
         clean_cat = "notes"
         filename = f"{raw_slug}.md"
-        rel_path = f"notes/{filename}"
+        if active_space != "global":
+            rel_path = f"spaces/{active_space}/notes/{filename}"
+        else:
+            rel_path = f"notes/{filename}"
         content = f"""# {clean_title}
 
 - **Created**: {today}
 - **Tags**: #notes
-
+"""
+        if active_space != "global":
+            content += f"- **Space**: {active_space}\n"
+        content += """
 ## Overview
-Summary of research, guide, or notes.
+Notes, domain documentation, and reference material.
 
 ## Key Takeaways
-- 
-
-## Related Concepts
-- 
+- Point 1
+- Point 2
 """
 
     return {
@@ -666,10 +793,16 @@ Summary of research, guide, or notes.
         "filename": filename,
         "rel_path": rel_path,
         "full_rel_path": f"knowledge/{rel_path}",
+        "space": active_space if clean_cat != "user" else "user",
         "template": content.strip() + "\n",
         "template_content": content.strip() + "\n",
         "next_adr": next_adr
     }
+
+def list_spaces(vault_path: Path) -> List[str]:
+    """List all detected spaces in the knowledge vault."""
+    scan = scan_vault(vault_path)
+    return scan.get("spaces", ["global"])
 
 
 def search_vault(
@@ -677,11 +810,13 @@ def search_vault(
     query: str,
     folder: Optional[str] = None,
     tag: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
+    space: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Full-text keyword and snippet search across all vault markdown notes.
     Returns matched notes with highlighted excerpt snippets, line numbers, and match scores.
+    Supports space scoping (e.g. space="cka-kb" or space="global").
     """
     if not vault_path.exists():
         return {"query": query, "results": [], "total_matches": 0, "ok": True}
@@ -690,6 +825,7 @@ def search_vault(
     terms = [t for t in q.split() if t]
     filter_folder = (folder or "").strip().lower()
     filter_tag = (tag or "").strip().lower().lstrip("#")
+    filter_space = (space or "").strip().lower()
 
     results = []
     md_files = list(vault_path.rglob("*.md"))
@@ -699,6 +835,13 @@ def search_vault(
         note_folder = p.parent.relative_to(vault_path).as_posix()
         if note_folder == ".":
             note_folder = "root"
+
+        note_space = extract_space_from_rel_path(rel)
+        if filter_space and filter_space != "all":
+            if filter_space == "global" and note_space not in ("global", "user"):
+                continue
+            elif filter_space != "global" and note_space not in (filter_space, "user"):
+                continue
 
         if filter_folder and filter_folder != "all" and note_folder != filter_folder:
             continue
@@ -777,6 +920,7 @@ def search_vault(
             "title": title,
             "path": rel,
             "folder": note_folder,
+            "space": note_space,
             "tags": tags,
             "score": score,
             "snippets": snippets,

@@ -6697,6 +6697,32 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   font-style: italic;
 }
 
+/* ── Vault Space Container Dropdown ── */
+.vault-space-selector-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.vault-space-dropdown {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 8px;
+  height: 26px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+.vault-space-dropdown:hover {
+  background: var(--hover-bg);
+  border-color: var(--border);
+}
+.vault-space-dropdown:focus {
+  border-color: var(--accent);
+}
+
 /* ── Vault Neighborhood Depth Filter ── */
 .vault-depth-filter {
   display: inline-flex;

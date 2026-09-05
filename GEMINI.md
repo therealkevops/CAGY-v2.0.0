@@ -14,8 +14,9 @@
   - `knowledge/architecture/`: System topology, container execution models, cloud infrastructure, and network design.
   - `knowledge/decisions/`: Architecture Decision Records (`adr_XXX_<name>.md`) tracking structural choices and trade-offs.
   - `knowledge/notes/`: Domain guides, research topics, and reference documentation.
-- **Interlinking & 2D Graph**: Uses standard bi-directional Obsidian wikilinks (`[[target]]` or `[[target|Alias]]`). Visualized as an interactive 2D physics force-directed graph on `/vault`.
-- **Pre-Turn Rule Compilation**: `run_agent.py` automatically synchronizes all vault notes into `.gemini/rules/knowledge_vault.md` before every conversation turn, providing permanent cross-session recall.
+  - `knowledge/spaces/<space_id>/`: Space containers partitioning project-specific ADRs (`decisions/adr_XXX_<name>.md`), architecture, and domain notes.
+- **Interlinking & 2D Graph**: Uses standard bi-directional Obsidian wikilinks (`[[target]]` or `[[target|Alias]]`). Visualized as an interactive 2D physics force-directed graph on `/vault` with space filtering dropdown and visual space node clustering.
+- **Pre-Turn Rule Compilation**: `run_agent.py` automatically synchronizes global user profile + active space notes into `.gemini/rules/knowledge_vault.md` before every conversation turn, providing permanent recall while preventing cross-space context contamination.
 - **Active Learning & `/memorize`**:
-  - When the user runs `/memorize [insight]` or clicks the `🧠` bookmark icon on a message, the engine (`webui/api/vault.py`) auto-classifies the note, derives sequential ADR numbering for decisions, synthesizes wikilinks to matching entities, saves the file, and re-compiles rules.
+  - When the user runs `/memorize [insight]` or clicks the `🧠` bookmark icon on a message, the engine (`webui/api/vault.py`) auto-classifies the note, routes decisions into the active space (`spaces/<space_id>/decisions/adr_XXX`), derives sequential ADR numbering per space, synthesizes wikilinks, saves the file, and re-compiles rules. User preferences (`category=user`) remain global.
   - When the user runs `/memorize` with no arguments, synthesize the key architectural takeaways, decisions, or conventions from recent conversation turns into vault notes.

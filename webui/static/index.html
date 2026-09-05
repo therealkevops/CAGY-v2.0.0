@@ -818,6 +818,12 @@
       <div class="main-view-header">
         <div class="main-view-title" id="vaultHeaderTitle">Knowledge Graph & Vault Memory</div>
         <div class="main-view-actions">
+          <div class="vault-space-selector-wrap" title="Active Knowledge Space Container">
+            <select id="vaultSpaceSelect" class="vault-space-dropdown" onchange="onVaultSpaceChange(this.value)">
+              <option value="all">🌐 All Spaces</option>
+              <option value="global">👤 Global / User</option>
+            </select>
+          </div>
           <div class="vault-depth-filter" id="vaultDepthFilter" title="Neighborhood Filter">
             <button type="button" class="vault-depth-btn active" data-depth="all" onclick="setGraphDepthFilter('all')">All</button>
             <button type="button" class="vault-depth-btn" data-depth="1" onclick="setGraphDepthFilter('1')">1-Hop</button>
@@ -844,6 +850,7 @@
             <button type="button" class="vault-legend-btn" data-folder="architecture" onclick="toggleVaultLegendFolder('architecture')"><span class="vault-legend-dot" style="background:#10b981"></span> Architecture</button>
             <button type="button" class="vault-legend-btn" data-folder="decisions" onclick="toggleVaultLegendFolder('decisions')"><span class="vault-legend-dot" style="background:#f59e0b"></span> Decisions</button>
             <button type="button" class="vault-legend-btn" data-folder="notes" onclick="toggleVaultLegendFolder('notes')"><span class="vault-legend-dot" style="background:#8b5cf6"></span> Notes</button>
+            <button type="button" class="vault-legend-btn" data-folder="spaces" onclick="toggleVaultLegendFolder('spaces')"><span class="vault-legend-dot" style="background:#ec4899"></span> Spaces</button>
           </div>
         </div>
       </div>

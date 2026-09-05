@@ -12,6 +12,7 @@ let _vaultData = { nodes: [], edges: [], stats: {} };
 let _allGraphNodes = [];
 let _allGraphEdges = [];
 let _currentGraphDepth = 'all'; // 'all', '1', '2'
+let _activeSpaceFilter = 'all'; // 'all' | 'global' | '<space_id>'
 let _activeTagFilter = null;
 let _activeVaultNote = null;
 let _vaultSimRunning = false;
@@ -74,6 +75,7 @@ const FOLDER_COLORS = {
   decisions: '#f59e0b',    // Amber gold
   notes: '#8b5cf6',        // Purple
   journal: '#8b5cf6',      // Purple
+  spaces: '#ec4899',       // Pink / Magenta
   root: '#0288a8',         // Cyan / accent
   other: '#6b7280'         // Gray
 };
@@ -88,7 +90,10 @@ async function loadVault(force = false) {
   }
 
   try {
-    const res = await fetch('/api/vault/graph');
+    const url = (_activeSpaceFilter && _activeSpaceFilter !== 'all')
+      ? `/api/vault/graph?space=${encodeURIComponent(_activeSpaceFilter)}`
+      : '/api/vault/graph';
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _vaultData = data;
@@ -96,6 +101,7 @@ async function loadVault(force = false) {
     _allGraphEdges = data.edges || [];
 
     updateVaultMetrics(data.stats || {});
+    updateVaultSpaceDropdown(data.spaces || ['global'], data.active_space || _activeSpaceFilter);
     const sBtns = document.querySelectorAll('#vaultSpacingFilter .vault-depth-btn');
     sBtns.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.spacing === _currentGraphSpacing);
@@ -112,6 +118,26 @@ async function loadVault(force = false) {
       listEl.innerHTML = `<div style="padding:12px;color:#ef4444;font-size:12px">Failed to load vault: ${escapeHtml(err.message)}</div>`;
     }
   }
+}
+
+function updateVaultSpaceDropdown(spaces, activeSpace) {
+  const sel = document.getElementById('vaultSpaceSelect');
+  if (!sel) return;
+  const currentVal = activeSpace || _activeSpaceFilter || 'all';
+  const spaceList = Array.isArray(spaces) ? spaces : ['global'];
+  let html = '<option value="all">🌐 All Spaces</option><option value="global">👤 Global / User</option>';
+  spaceList.forEach(s => {
+    if (s && s !== 'global' && s !== 'all') {
+      html += `<option value="${escapeAttr(s)}">📁 ${escapeHtml(s)}</option>`;
+    }
+  });
+  sel.innerHTML = html;
+  sel.value = currentVal;
+}
+
+function onVaultSpaceChange(space) {
+  _activeSpaceFilter = String(space || 'all');
+  loadVault(true);
 }
 
 function updateVaultMetrics(stats) {
@@ -376,7 +402,12 @@ function renderVaultSidebarList(nodes, filterText = '') {
 
   listEl.innerHTML = filtered.map(n => {
     const isSel = _activeVaultNote && (_activeVaultNote.path === n.path || _activeVaultNote.id === n.id);
-    const color = FOLDER_COLORS[n.folder] || FOLDER_COLORS.other;
+    const isSpaceNote = n.space && n.space !== 'global' && n.space !== 'user';
+    const color = isSpaceNote ? (FOLDER_COLORS.spaces || '#ec4899') : (FOLDER_COLORS[n.folder] || FOLDER_COLORS.other);
+    const spaceBadge = isSpaceNote
+      ? `<span class="vault-folder-tag" style="background:rgba(236,72,153,0.15);color:#ec4899;border:1px solid rgba(236,72,153,0.3)">📁 ${escapeHtml(n.space)}</span>`
+      : '';
+    const displayFolder = isSpaceNote ? n.folder.replace(/^spaces\/[^/]+\/?/, '') : n.folder;
     const tagsHtml = (Array.isArray(n.tags) && n.tags.length > 0)
       ? `<div class="vault-item-tags">${n.tags.map(t => `<span class="vault-item-tag" onclick="event.stopPropagation();setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
@@ -387,7 +418,8 @@ function renderVaultSidebarList(nodes, filterText = '') {
           <span class="vault-item-title">${escapeHtml(n.title)}</span>
         </div>
         <div class="vault-item-meta">
-          <span class="vault-folder-tag">${escapeHtml(n.folder)}</span>
+          ${spaceBadge}
+          <span class="vault-folder-tag">${escapeHtml(displayFolder || 'root')}</span>
           <span>${n.links_count} links · ${n.backlinks_count} backlinks</span>
         </div>
         ${tagsHtml}
@@ -644,7 +676,9 @@ async function updateVaultCategorySelection() {
 
   if (_selectedVaultCategory === 'decisions') {
     try {
-      const res = await fetch('/api/vault/template?category=decisions&title=Sample');
+      const activeSpace = (_activeSpaceFilter && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
+      const spaceParam = activeSpace !== 'global' ? `&space=${encodeURIComponent(activeSpace)}` : '';
+      const res = await fetch(`/api/vault/template?category=decisions&title=Sample${spaceParam}`);
       if (res.ok) {
         const data = await res.json();
         _nextAdrNumber = data.next_adr || 1;
@@ -662,17 +696,29 @@ function updateVaultNotePathPreview() {
 
   const title = (titleInput ? titleInput.value : '').trim() || 'untitled';
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'note';
+  const activeSpace = (_activeSpaceFilter && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
 
   let relPath = '';
-  if (_selectedVaultCategory === 'decisions') {
-    const numStr = String(_nextAdrNumber || 1).padStart(3, '0');
-    relPath = `knowledge/decisions/adr_${numStr}_${slug}.md`;
-  } else if (_selectedVaultCategory === 'architecture') {
-    relPath = `knowledge/architecture/${slug}.md`;
-  } else if (_selectedVaultCategory === 'user') {
+  if (_selectedVaultCategory === 'user') {
     relPath = `knowledge/user/${slug}.md`;
+  } else if (activeSpace !== 'global') {
+    if (_selectedVaultCategory === 'decisions') {
+      const numStr = String(_nextAdrNumber || 1).padStart(3, '0');
+      relPath = `knowledge/spaces/${activeSpace}/decisions/adr_${numStr}_${slug}.md`;
+    } else if (_selectedVaultCategory === 'architecture') {
+      relPath = `knowledge/spaces/${activeSpace}/architecture/${slug}.md`;
+    } else {
+      relPath = `knowledge/spaces/${activeSpace}/notes/${slug}.md`;
+    }
   } else {
-    relPath = `knowledge/notes/${slug}.md`;
+    if (_selectedVaultCategory === 'decisions') {
+      const numStr = String(_nextAdrNumber || 1).padStart(3, '0');
+      relPath = `knowledge/decisions/adr_${numStr}_${slug}.md`;
+    } else if (_selectedVaultCategory === 'architecture') {
+      relPath = `knowledge/architecture/${slug}.md`;
+    } else {
+      relPath = `knowledge/notes/${slug}.md`;
+    }
   }
 
   pathPreview.value = relPath;
@@ -697,7 +743,9 @@ async function submitVaultNewNote() {
   if (btn) btn.disabled = true;
 
   try {
-    const tRes = await fetch(`/api/vault/template?category=${encodeURIComponent(_selectedVaultCategory)}&title=${encodeURIComponent(title)}`);
+    const activeSpace = (_activeSpaceFilter && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
+    const spaceParam = activeSpace !== 'global' ? `&space=${encodeURIComponent(activeSpace)}` : '';
+    const tRes = await fetch(`/api/vault/template?category=${encodeURIComponent(_selectedVaultCategory)}&title=${encodeURIComponent(title)}${spaceParam}`);
     let content = `# ${title}\n\n`;
     if (tRes.ok) {
       const tData = await tRes.json();
@@ -1047,13 +1095,16 @@ function applyGraphDepthFilter() {
       title: n.title,
       path: n.path,
       folder: n.folder,
+      space: n.space || 'global',
       connections: totalConn,
       x: canvas.width / 2 + Math.cos(angle) * dist,
       y: canvas.height / 2 + Math.sin(angle) * dist,
       vx: (Math.random() - 0.5) * 2,
       vy: (Math.random() - 0.5) * 2,
       radius: Math.max(9, Math.min(26, 8 + Math.round(Math.sqrt(totalConn) * 5))),
-      color: FOLDER_COLORS[n.folder] || FOLDER_COLORS.other
+      color: (n.space && n.space !== 'global' && n.space !== 'user')
+        ? (FOLDER_COLORS.spaces || '#ec4899')
+        : (FOLDER_COLORS[n.folder] || FOLDER_COLORS.other)
     };
     nodeMap[n.id] = gNode;
     return gNode;
@@ -1253,7 +1304,8 @@ function drawGraph() {
 
   // Draw nodes
   _graphNodes.forEach(n => {
-    const isFolderDisabled = _disabledLegendFolders.has(n.folder);
+    const isFolderDisabled = _disabledLegendFolders.has(n.folder) ||
+      (_disabledLegendFolders.has('spaces') && (n.space && n.space !== 'global' && n.space !== 'user'));
     ctx.globalAlpha = isFolderDisabled ? 0.12 : 1.0;
 
     const isSelected = _activeVaultNote && (_activeVaultNote.id === n.id || _activeVaultNote.path === n.path);

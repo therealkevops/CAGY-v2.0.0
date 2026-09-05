@@ -144,10 +144,11 @@ class AIAgent:
 
             # Sync Knowledge Vault & Long-Term Memory
             try:
-                from api.vault import sync_vault_to_rules, get_vault_dir
+                from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
                 vdir = get_vault_dir(self.workspace)
+                space = infer_space_from_workspace(self.workspace)
                 if vdir.exists():
-                    sync_vault_to_rules(vdir, self.workspace)
+                    sync_vault_to_rules(vdir, self.workspace, space=space)
             except Exception:
                 pass
             
