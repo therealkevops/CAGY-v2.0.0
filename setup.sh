@@ -65,12 +65,18 @@ fi
 echo "✓ SSL certificate bundle configured in ./container_data/system_certs.pem"
 
 # Sync host Antigravity credentials to container volume if present
+HAS_EXISTING_CREDS=false
 if [ -d "$HOME/.gemini/antigravity-cli" ]; then
     echo "Syncing existing Antigravity CLI credentials to container volume..."
     mkdir -p ./container_data/gemini/antigravity-cli ./container_data/gemini/config
     rsync -a --exclude="brain" --exclude="log" --exclude="*.log" "$HOME/.gemini/antigravity-cli/" ./container_data/gemini/antigravity-cli/ 2>/dev/null || true
     [ -d "$HOME/.gemini/config" ] && rsync -a "$HOME/.gemini/config/" ./container_data/gemini/config/ 2>/dev/null || true
-    echo "✓ Existing Antigravity credentials synced"
+    if [ -f "./container_data/gemini/antigravity-cli/antigravity-oauth-token" ] || [ -f "./container_data/gemini/config/antigravity-oauth-token" ]; then
+        HAS_EXISTING_CREDS=true
+        echo "✓ Existing Antigravity Google OAuth token synced successfully."
+    else
+        echo "✓ Host configuration directory synced (browser login may still be required inside container)."
+    fi
 fi
 
 # Create initial .env from template if missing
@@ -86,7 +92,21 @@ echo "Building AGY container image..."
 $COMPOSE_CMD build
 
 echo ""
-echo "=== Setup Complete! ==="
-echo "1. Authenticate once in container:   ./agy-container.sh cli agy"
-echo "2. Start WebUI background daemon:   ./agy-container.sh up"
-echo "3. Open browser:                    http://localhost:8989"
+echo "======================================================"
+echo "                   Setup Complete!                    "
+echo "======================================================"
+if [ "$HAS_EXISTING_CREDS" = false ] && [ ! -f "./container_data/gemini/antigravity-cli/antigravity-oauth-token" ]; then
+    echo "🔑 FIRST-TIME GOOGLE AUTHENTICATION REQUIRED:"
+    echo "   macOS stores tokens in Keychain, which containers"
+    echo "   cannot access. Authenticate once in the container:"
+    echo ""
+    echo "   ./agy-container.sh cli agy"
+    echo ""
+    echo "   (Open the Google URL in browser, approve access,"
+    echo "    then press Ctrl+C to return to host terminal)"
+    echo "------------------------------------------------------"
+fi
+echo "🚀 To start the WebUI background daemon:"
+echo "   ./agy-container.sh up"
+echo "   Open http://localhost:8989"
+echo "======================================================"

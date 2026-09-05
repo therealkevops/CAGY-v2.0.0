@@ -60,7 +60,11 @@ The setup script exports host root SSL certificates (vital for corporate TLS ins
 ```
 
 ### Step 3: One-Time Google Authentication in the Container
-Because macOS uses Keychain while Linux uses secure file-based token storage, run the interactive container CLI once to authenticate:
+
+> [!IMPORTANT]
+> **Why is this required on first clone?**
+> On macOS, the host `agy` CLI stores its Google OAuth credentials in the encrypted **macOS Keychain**, which Docker Linux containers cannot access for host security reasons. Running this one-time command opens the standard Google OAuth sign-in URL in your browser and saves a persistent Linux container-compatible token into `./container_data/gemini/antigravity-cli/antigravity-oauth-token`, which survives all future container restarts, updates, and rebuilds.
+
 ```bash
 ./agy-container.sh cli agy
 ```

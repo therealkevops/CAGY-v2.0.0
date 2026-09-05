@@ -433,11 +433,45 @@ class AIAgent:
                 try:
                     err_output = proc.stderr.read().strip()
                     if err_output:
-                        assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
+                        auth_keywords = ["auth", "login", "credential", "unauthorized", "token", "oauth"]
+                        if any(k in err_output.lower() for k in auth_keywords):
+                            assistant_text = (
+                                "⚠️ **Google Authentication Required**\n\n"
+                                "The Antigravity agent in the container needs to authenticate with Google:\n"
+                                f"```\n{err_output}\n```\n\n"
+                                "👉 **How to fix:**\n"
+                                "Run the one-time authentication command in your host terminal:\n"
+                                "```bash\n"
+                                "./agy-container.sh cli agy\n"
+                                "```\n"
+                                "Follow the browser prompt to complete sign-in. Your credentials will be saved in `./container_data/gemini/` and persist across restarts."
+                            )
+                        else:
+                            assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
                         if self.stream_delta_callback:
                             self.stream_delta_callback(assistant_text)
                 except Exception:
                     pass
+
+            # Detect auth failure messages streamed into assistant_text
+            if not tool_calls and assistant_text:
+                auth_stdout_keywords = ["please authenticate", "login required", "no valid credentials", "oauth2: token expired", "re-authenticate", "authentication required"]
+                if any(k in assistant_text.lower() for k in auth_stdout_keywords):
+                    auth_notice = (
+                        "\n\n---\n"
+                        "👉 **Google Authentication Required:**\n"
+                        "Run the one-time authentication command in your host terminal:\n"
+                        "```bash\n"
+                        "./agy-container.sh cli agy\n"
+                        "```\n"
+                        "Follow the browser sign-in prompt. Your credentials will be saved in `./container_data/gemini/`."
+                    )
+                    assistant_text += auth_notice
+                    if self.stream_delta_callback:
+                        try:
+                            self.stream_delta_callback(auth_notice)
+                        except Exception:
+                            pass
 
             try:
                 if proc.stdout:

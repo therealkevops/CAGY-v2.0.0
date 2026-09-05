@@ -82,6 +82,12 @@ case "$COMMAND" in
         $COMPOSE_CMD up -d --remove-orphans
         echo "✓ AGY container daemon running in background."
         echo "🌐 Antigravity WebUI is available at: http://localhost:8989"
+        if [ ! -f "./container_data/gemini/antigravity-cli/antigravity-oauth-token" ] && [ ! -f "./container_data/gemini/config/antigravity-oauth-token" ]; then
+            echo ""
+            echo "🔑 Notice: Google authentication token not found in ./container_data/gemini/."
+            echo "   If this is your first time, authenticate once inside the container:"
+            echo "   ./agy-container.sh cli agy"
+        fi
         ;;
     web|ui)
         echo "Starting Antigravity WebUI..."
