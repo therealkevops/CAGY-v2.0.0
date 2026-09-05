@@ -6898,24 +6898,146 @@ body.vault-relations-resizing {
   font-weight: 600;
 }
 
-/* ── Vault Tag Filter Bar ── */
-.vault-tag-filter {
+/* ── Vault Tag Filter Pane (Collapsible & Resizable) ── */
+.vault-tag-pane {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.vault-tag-pane.collapsed .vault-tag-pane-body,
+.vault-tag-pane.collapsed .vault-tag-pane-resizer {
+  display: none !important;
+}
+
+/* Header */
+.vault-tag-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  transition: background 0.15s ease, color 0.15s ease;
+  min-height: 27px;
+  border-bottom: 1px solid transparent;
+}
+.vault-tag-pane:not(.collapsed) .vault-tag-pane-header {
+  border-bottom-color: var(--border-subtle);
+}
+.vault-tag-pane-header:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.vault-tag-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.vault-tag-count-badge {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+}
+.vault-tag-pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vault-tag-active-pill {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vault-tag-active-pill .clear-btn {
+  cursor: pointer;
+  font-weight: bold;
+  opacity: 0.8;
+  padding: 0 2px;
+}
+.vault-tag-active-pill .clear-btn:hover {
+  opacity: 1;
+}
+.vault-tag-chevron {
+  font-size: 8px;
+  color: var(--muted);
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+/* Body & Pills */
+.vault-tag-pane-body {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 8px 4px 8px;
+  gap: 5px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.vault-tag-search-box {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.vault-tag-search-box svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.vault-tag-search-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  font-size: 10.5px;
+  width: 100%;
+  font-family: inherit;
+  padding: 0;
+}
+.vault-tag-pills-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 4px 10px 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: 2px;
+  align-content: flex-start;
 }
 .vault-tag-pill {
-  font-size: 10.5px;
+  font-size: 10px;
   font-family: var(--font-mono);
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: var(--radius-pill);
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
+  white-space: nowrap;
 }
 .vault-tag-pill:hover {
   border-color: var(--accent);
@@ -6926,6 +7048,38 @@ body.vault-relations-resizing {
   border-color: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
+}
+.vault-tag-pill-count {
+  opacity: 0.7;
+  font-size: 8.5px;
+  margin-left: 2px;
+}
+
+/* Resizer */
+.vault-tag-pane-resizer {
+  height: 6px;
+  width: 100%;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  background: var(--surface-subtle);
+  border-top: 1px solid var(--border-subtle);
+}
+.vault-tag-pane-resizer .vault-resizer-line {
+  width: 28px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-subtle);
+  transition: all 0.15s ease;
+}
+.vault-tag-pane-resizer:hover .vault-resizer-line,
+.vault-tag-pane-resizer.resizing .vault-resizer-line {
+  background: var(--accent);
+  width: 44px;
+  height: 3px;
 }
 
 /* ── Sidebar Note Item Tags ── */

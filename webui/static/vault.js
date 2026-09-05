@@ -342,21 +342,182 @@ async function setVaultHealthFilter(filter) {
   }
 }
 
+let _isVaultTagPaneCollapsed = true; // Default collapsed so notes list gets full height
+let _vaultTagPaneHeight = 90;
+let _vaultTagPillQuery = '';
+let _vaultTagResizerInit = false;
+
+try {
+  const savedTagCollapsed = localStorage.getItem('agy_vault_tag_pane_collapsed');
+  if (savedTagCollapsed !== null) {
+    _isVaultTagPaneCollapsed = savedTagCollapsed === '1';
+  }
+  const savedTagH = parseInt(localStorage.getItem('agy_vault_tag_pane_height'), 10);
+  if (!isNaN(savedTagH) && savedTagH >= 45 && savedTagH <= 320) {
+    _vaultTagPaneHeight = savedTagH;
+  }
+} catch (_) {}
+
+function toggleVaultTagPaneCollapse() {
+  _isVaultTagPaneCollapsed = !_isVaultTagPaneCollapsed;
+  try {
+    localStorage.setItem('agy_vault_tag_pane_collapsed', _isVaultTagPaneCollapsed ? '1' : '0');
+  } catch (_) {}
+  applyVaultTagPaneState();
+}
+
+function applyVaultTagPaneState() {
+  const pane = document.getElementById('vaultTagPane');
+  if (!pane) return;
+  if (_isVaultTagPaneCollapsed) {
+    pane.classList.add('collapsed');
+  } else {
+    pane.classList.remove('collapsed');
+    const body = document.getElementById('vaultTagPaneBody');
+    if (body) {
+      body.style.height = `${_vaultTagPaneHeight}px`;
+    }
+  }
+  const chev = document.getElementById('vaultTagChevron');
+  if (chev) {
+    chev.textContent = _isVaultTagPaneCollapsed ? '▶' : '▼';
+  }
+}
+
+function filterVaultTagPills(val) {
+  _vaultTagPillQuery = (val || '').trim().toLowerCase().replace(/^#/, '');
+  renderVaultTagFilter(_vaultData.stats && _vaultData.stats.all_tags);
+}
+
+function initVaultTagPaneResizer() {
+  if (_vaultTagResizerInit) return;
+  const resizer = document.getElementById('vaultTagPaneResizer');
+  const body = document.getElementById('vaultTagPaneBody');
+  const pane = document.getElementById('vaultTagPane');
+  if (!resizer || !body || !pane) return;
+  _vaultTagResizerInit = true;
+
+  let isDragging = false;
+  let startY = 0;
+  let startH = 0;
+
+  resizer.addEventListener('pointerdown', e => {
+    if (_isVaultTagPaneCollapsed) return;
+    isDragging = true;
+    startY = e.clientY;
+    startH = body.getBoundingClientRect().height || _vaultTagPaneHeight;
+    resizer.classList.add('resizing');
+    body.classList.add('resizing');
+    document.body.classList.add('vault-relations-resizing');
+    resizer.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  resizer.addEventListener('pointermove', e => {
+    if (!isDragging) return;
+    const dy = e.clientY - startY;
+    const nextH = Math.max(45, Math.min(320, startH + dy));
+    body.style.height = `${nextH}px`;
+    _vaultTagPaneHeight = nextH;
+  });
+
+  const stopDrag = e => {
+    if (!isDragging) return;
+    isDragging = false;
+    resizer.classList.remove('resizing');
+    body.classList.remove('resizing');
+    document.body.classList.remove('vault-relations-resizing');
+    try {
+      resizer.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    try {
+      localStorage.setItem('agy_vault_tag_pane_height', String(Math.round(_vaultTagPaneHeight)));
+    } catch (_) {}
+  };
+
+  resizer.addEventListener('pointerup', stopDrag);
+  resizer.addEventListener('pointercancel', stopDrag);
+
+  resizer.addEventListener('dblclick', e => {
+    e.preventDefault();
+    toggleVaultTagPaneCollapse();
+  });
+}
+
 function renderVaultTagFilter(allTags) {
-  const container = document.getElementById('vaultTagFilter');
-  if (!container) return;
-  if (!allTags || !allTags.length) {
-    container.style.display = 'none';
-    container.innerHTML = '';
+  const pane = document.getElementById('vaultTagPane');
+  if (!pane) return;
+
+  const tags = Array.isArray(allTags) ? allTags : [];
+  if (!tags.length) {
+    pane.style.display = 'none';
     return;
   }
-  container.style.display = 'flex';
-  let html = `<button type="button" class="vault-tag-pill ${!_activeTagFilter ? 'active' : ''}" onclick="setVaultTagFilter(null)">All</button>`;
-  allTags.forEach(t => {
-    const isAct = _activeTagFilter === t;
-    html += `<button type="button" class="vault-tag-pill ${isAct ? 'active' : ''}" onclick="setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}</button>`;
+  pane.style.display = 'flex';
+  applyVaultTagPaneState();
+
+  const countBadge = document.getElementById('vaultTagTotalCount');
+  if (countBadge) countBadge.textContent = tags.length;
+
+  // Active badge in header
+  const activeBadge = document.getElementById('vaultTagActiveBadge');
+  if (activeBadge) {
+    if (_activeTagFilter) {
+      activeBadge.style.display = 'inline-flex';
+      activeBadge.className = 'vault-tag-active-pill';
+      activeBadge.innerHTML = `#${escapeHtml(_activeTagFilter)} <span class="clear-btn" onclick="event.stopPropagation(); setVaultTagFilter(null)" title="Clear tag filter">✕</span>`;
+    } else {
+      activeBadge.style.display = 'none';
+      activeBadge.innerHTML = '';
+    }
+  }
+
+  // Calculate tag frequency across all nodes
+  const nodes = _vaultData.nodes || [];
+  const tagCounts = {};
+  nodes.forEach(n => {
+    if (Array.isArray(n.tags)) {
+      n.tags.forEach(t => {
+        const k = t.toLowerCase();
+        tagCounts[k] = (tagCounts[k] || 0) + 1;
+      });
+    }
   });
-  container.innerHTML = html;
+
+  // Filter tags by search query if user typed into filter input
+  let displayedTags = tags;
+  if (_vaultTagPillQuery) {
+    displayedTags = tags.filter(t => t.toLowerCase().includes(_vaultTagPillQuery));
+  }
+
+  // Sort tags: active tag first, then frequency descending, then alphabetical
+  displayedTags.sort((a, b) => {
+    const actA = _activeTagFilter && _activeTagFilter.toLowerCase() === a.toLowerCase() ? 1 : 0;
+    const actB = _activeTagFilter && _activeTagFilter.toLowerCase() === b.toLowerCase() ? 1 : 0;
+    if (actA !== actB) return actB - actA;
+    const cA = tagCounts[a.toLowerCase()] || 0;
+    const cB = tagCounts[b.toLowerCase()] || 0;
+    if (cB !== cA) return cB - cA;
+    return a.localeCompare(b);
+  });
+
+  const pillsContainer = document.getElementById('vaultTagPillsList');
+  if (!pillsContainer) return;
+
+  let html = `<button type="button" class="vault-tag-pill ${!_activeTagFilter ? 'active' : ''}" onclick="setVaultTagFilter(null)">All <span class="vault-tag-pill-count">${nodes.length}</span></button>`;
+
+  displayedTags.forEach(t => {
+    const isAct = _activeTagFilter && _activeTagFilter.toLowerCase() === t.toLowerCase();
+    const count = tagCounts[t.toLowerCase()] || 0;
+    html += `<button type="button" class="vault-tag-pill ${isAct ? 'active' : ''}" onclick="setVaultTagFilter('${escapeAttr(t)}')">#${escapeHtml(t)}${count > 1 ? `<span class="vault-tag-pill-count">${count}</span>` : ''}</button>`;
+  });
+
+  if (!displayedTags.length && _vaultTagPillQuery) {
+    html = `<div style="padding:6px;font-size:11px;color:var(--muted)">No tags match "${escapeHtml(_vaultTagPillQuery)}"</div>`;
+  }
+
+  pillsContainer.innerHTML = html;
+  initVaultTagPaneResizer();
 }
 
 function setVaultTagFilter(tag) {
