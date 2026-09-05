@@ -23,6 +23,8 @@ By encapsulating both the WebUI server and the native Linux `agy` CLI binary ins
 - **Git-Backed Workspace Checkpoints & Safe Rollback**: The Spaces manager natively surfaces Git commits as immutable checkpoints with commit patch diffs and zero-risk rollback (auto-stashing any in-flight uncommitted work before restoring).
 - **Skill & Rule Scaffolder Wizard (`/skills`)**: Visual builder for `.gemini/rules/*.md` and `skills/<name>/SKILL.md`.
 - **Command Palette (`Cmd + K`)**: Quick access to all views, panels, settings, and slash commands (`/goal`, `/plan`, `/memorize`, `/vault`, `/swarm`, `/mcp`, `/skills`, `/grill-me`).
+- **Workspace Destination Selector & Sandboxed Session Management**: Export conversation transcripts and sessions directly into workspace subdirectories as `.md`, `.json`, or `.html` with real-time path previews, anti-traversal security sandboxing, and a 1-click Workspace Session Browser for instant history recall and imports.
+- **Standalone Portable Container**: Fully baked container image (`cagy:latest`) capable of running completely standalone without host volume mounts on any Docker-capable host or cloud VM.
 - **Corporate SSL Certificate Trust**: Automatically exports host root certificates into `./container_data/system_certs.pem` to prevent corporate proxy or TLS inspection errors.
 - **Persistent State**: Sessions, transcripts, tokens, and journals persist cleanly across container rebuilds in `./container_data/`.
 
@@ -84,6 +86,7 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 | **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
 | **MCP Server Hub** | `/mcp` or Left Rail | Catalog of active tools and servers configured in `mcp.json` with quick presets & test probes. |
 | **Workspace, Diffs & Canvas** | Right Sidebar / `/artifacts` | Tri-mode drawer (`[ Code | Diff | Live Preview ]`) with side-by-side git diffs and live canvas. |
+| **Workspace Session Archiving** | Conversation Settings | Configure destination subfolder, export transcripts (`.md`/`.json`/`.html`), and browse/import workspace sessions. |
 | **Spaces & Git Checkpoints** | Workspaces Panel | Native Git commit checkpoints with commit diff modal and non-destructive auto-stash rollback. |
 | **Wikilink Autocomplete** | `[[` in Editor | Instant note search & insertion (`[[id\|title]]`) directly inside the Markdown editor. |
 | **Skills & Rules Scaffolder** | `/skills` or Left Rail | Domain skills manager and visual rule generator. |
@@ -219,6 +222,18 @@ The right-hand workspace panel provides a unified file inspector and artifact re
 
 ---
 
+## Workspace Destination Selector & Session Archiving
+
+Save, archive, and reload conversation histories directly within your active workspace:
+
+- **Configurable Workspace Subdirectories**: In **Conversation Settings**, select your active workspace and choose a target subfolder (e.g. `docs/sessions/`, `transcripts/`, or `notes/`).
+- **Live Path Preview**: Renders an instant live path indicator showing the absolute disk location where files will be written.
+- **Multi-Format Export**: Export any session with 1 click as formatted Markdown (`.md`), raw JSON session objects (`.json`), or standalone styled HTML (`.html`).
+- **Workspace Session Browser**: Discover exported session transcripts stored within the target subfolder, inspect message counts and timestamps, and import prior sessions back into the active chat with 1 click.
+- **Strict Directory Traversal Protection**: Enforces canonical path verification to ensure file writes and reads remain strictly bounded within the chosen workspace.
+
+---
+
 ## Managing & Updating Services
 
 ### Daily Operations
@@ -269,6 +284,20 @@ CAGY features an optimized multi-stage `Dockerfile` with multi-architecture supp
 # Build and push multi-arch image to container registry
 ./build-image.sh --push ghcr.io/<owner>/cagy
 ```
+
+### Standalone Container Execution (Zero Host Mounts)
+
+CAGY images can run completely standalone without requiring volume mounts, packaging the entire WebUI server and toolchain inside the container:
+
+```bash
+# Run standalone container on local machine or cloud server
+docker run -d -p 8989:8989 cagy:latest
+
+# Or run directly from GitHub Container Registry
+docker run -d -p 8989:8989 ghcr.io/<owner>/cagy:latest
+```
+
+When running via `docker-compose.yml`, host volume mounts (`./:/workspace` and `./container_data/:/workspace/container_data/`) dynamically overlay the container filesystem to provide local live-reloading and state persistence.
 
 ### Updating Antigravity CLI
 
