@@ -4,15 +4,19 @@
 [![Platform: Linux / macOS / WSL2](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20WSL2-teal.svg)](https://docker.com)
 [![Engine: Antigravity 2.0](https://img.shields.io/badge/Engine-Antigravity%202.0-orange.svg)](https://deepmind.google)
 
-A complete, fully containerized execution environment and browser WebUI for **Google Antigravity (AGY)**.
+A secure, fully containerized execution environment and browser WebUI for **Google Antigravity (AGY)**.
 
-By encapsulating both the WebUI server and the native Linux `agy` CLI binary inside an isolated Debian container, all process spawning, bash tool executions, script runs, and file modifications remain completely shielded from host-level endpoint detection (e.g. SentinelOne, SecureWorks, or CrowdStrike on macOS/Windows) while providing a rich, responsive pair-programming web experience.
+By encapsulating both the WebUI server and the native Linux `agy` CLI binary inside an isolated Debian container, CAGY provides autonomous coding agents with a **sandboxed, reproducible workspace**:
+
+- **Safer Blast Radius**: All agent shell executions, script runs, package installations, and file modifications execute strictly inside an isolated container boundary, protecting your host machine from unintended system changes or broken dependencies.
+- **Reproducible Developer Toolchain**: Pre-configured environment bundling Node.js 22, Python 3.11, Git, Ripgrep, `uv`/`uvx`, and the Google `agy` CLI, guaranteeing identical behavior across macOS, Linux, and Windows (WSL2).
+- **Zero-Drift Host Portability**: Run locally or deploy across servers, laptops, or cloud VMs with zero environment configuration drift or host-level tool conflicts.
 
 ---
 
 ## Key Features
 
-- **Full EDR & Process Shielding**: All shell executions, python scripts, file manipulations, and agent tool calls run exclusively inside the container's isolated Linux namespace.
+- **Sandboxed Agent Execution & Blast Radius Control**: Autonomous terminal commands, script executions, package installs, and agent tool calls run safely isolated inside the container's Linux namespace.
 - **Native Antigravity Engine**: Uses the official Google Antigravity Linux binary (`agy`) with automated lifecycle management.
 - **Obsidian-Style Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) with bi-directional `[[wikilinks]]`, editor autocomplete, neighborhood depth filtering (`[ All | 1-Hop | 2-Hop ]`), `#tag` extraction, backlinks resolution, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
 - **Agent-Assisted Memory & Auto-Learning (`/memorize`)**: 1-click `🧠 Memorize` message actions and `/memorize` slash command that auto-categorize insights into ADRs (`decisions/adr_XXX`), user preferences, and architecture notes, auto-link existing entities with `[[wikilinks]]`, and sync to `.gemini/rules/` before every conversation turn.
@@ -201,7 +205,7 @@ Typing `/` in the chat composer displays an inline floating popover with Lucide 
   /analytics                   SYSTEM     Inspect prompt token economics and memory efficiency
   /efficiency                  SYSTEM     Alias for /analytics
   /effort [low|med|high]       SYSTEM     Set reasoning effort depth for thinking models
-  /status                      SYSTEM     Display container runtime & EDR containment diagnostics
+  /status                      SYSTEM     Display container runtime & sandbox isolation diagnostics
   /skills                      CUSTOM     Browse active and built-in workspace skills
   /mcp                         CUSTOM     Inspect configured Model Context Protocol servers
   /new                         SESSION    Start a new conversation

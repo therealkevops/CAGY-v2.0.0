@@ -23,7 +23,7 @@ const COMMANDS=[
   {name:'usage',            desc:'Antigravity: Alias for /quota',                                         fn:cmdQuota, noEcho:true},
   {name:'effort',           desc:'Antigravity: Set reasoning effort (low, medium, high)',                fn:cmdEffort, arg:'[low|medium|high]', noEcho:true},
   {name:'mode',             desc:'Antigravity: Set agent execution mode (accept-edits, plan)',            fn:cmdMode,   arg:'[plan|accept-edits]', noEcho:true},
-  {name:'status',           desc:'Antigravity: Display container runtime & EDR containment diagnostics', fn:cmdStatus, noEcho:true},
+  {name:'status',           desc:'Antigravity: Display container runtime & sandbox isolation diagnostics', fn:cmdStatus, noEcho:true},
   {name:'skills',           desc:'Antigravity: Browse active and built-in workspace skills',             fn:cmdSkills, noEcho:true},
   {name:'mcp',              desc:'Antigravity: Inspect configured Model Context Protocol servers',        fn:cmdMcp,    noEcho:true},
   // Session Controls
@@ -540,7 +540,7 @@ async function cmdStatus(){
 
 | Attribute | Status |
 | :--- | :--- |
-| **EDR Shield** | ${shieldBadge} |
+| **Sandbox Isolation** | ${shieldBadge} |
 | **AGY Binary** | \`${data.agy_bin || 'agy'}\` |
 | **Workspace Root** | \`${data.workspace || '/workspace'}\` |
 | **System** | \`${data.system || 'Linux'}\` |
@@ -548,7 +548,7 @@ async function cmdStatus(){
 | **Active Mode** | \`${data.mode || 'accept-edits'}\` |
 | **Reasoning Effort**| \`${data.effort || 'medium'}\` |
 
-> 🔒 *When running inside Docker, all file manipulations, bash subprocesses, and tool executions are completely shielded from host-level EDRs.*`;
+> 🛡️ *When running inside Docker, all file manipulations, bash subprocesses, and tool executions run in an isolated sandbox, keeping your host system safe and clean.*`;
     S.messages.push({role:'assistant', content});
     renderMessages();
   } catch(err){
