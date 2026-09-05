@@ -85,6 +85,26 @@ class TestRunAgent(unittest.TestCase):
         # Verify deltas received
         self.assertGreater(len(deltas), 0)
 
+    def test_ai_agent_timeout_handling(self):
+        """Verify AIAgent intercepts watchdog timeout from stderr and notifies user."""
+        os.environ["AGY_CLI_PATH"] = str(MOCK_AGY)
+        os.environ["AGY_PRINT_TIMEOUT"] = "45m"
+        self.addCleanup(lambda: os.environ.pop("AGY_CLI_PATH", None))
+        self.addCleanup(lambda: os.environ.pop("AGY_PRINT_TIMEOUT", None))
+
+        agent = run_agent.AIAgent(
+            workspace=str(REPO_ROOT),
+        )
+
+        result = agent.run_conversation("TRIGGER_TIMEOUT_ERROR", session_id="timeout_sess_1")
+        self.assertIsNotNone(result)
+        messages = result.get("messages", [])
+        assistant_msg = next((m for m in reversed(messages) if m.get("role") == "assistant"), None)
+        self.assertIsNotNone(assistant_msg)
+        content = assistant_msg.get("content", "")
+        self.assertIn("Execution Timeout", content)
+        self.assertIn("45m", content)
+
 
 if __name__ == "__main__":
     unittest.main()

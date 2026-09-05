@@ -10,6 +10,7 @@ services:
     environment:
       - DATA_DIR=/opt/data
       - WORKSPACE_DIR=/workspace
+      - AGY_PRINT_TIMEOUT=60m
       - SSL_CERT_FILE=/opt/data/system_certs.pem
       - REQUESTS_CA_BUNDLE=/opt/data/system_certs.pem
       - NODE_EXTRA_CA_CERTS=/opt/data/system_certs.pem

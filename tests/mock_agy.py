@@ -51,6 +51,9 @@ Commands:
                 p_idx = args.index("--print")
                 if p_idx + 1 < len(args):
                     prompt_text = f"Mock reply to: {args[p_idx + 1]}"
+                    if "TRIGGER_TIMEOUT_ERROR" in args[p_idx + 1]:
+                        sys.stderr.write("E0905 06:45:14.319511    1 printmode.go:521] Print mode: timed out after 1495 polls\n")
+                        sys.exit(1)
 
             # Emit stream-json events
             events = [

@@ -259,6 +259,7 @@ class AIAgent:
             user_prompt = "Hello"
 
         agy_bin = self._find_agy_bin()
+        print_timeout = kwargs.get("print_timeout") or os.environ.get("AGY_PRINT_TIMEOUT", "60m")
         cmd = [
             agy_bin,
             "--print", user_prompt,
@@ -266,6 +267,8 @@ class AIAgent:
             "--dangerously-skip-permissions",
             "--add-dir", str(self.workspace)
         ]
+        if print_timeout:
+            cmd.extend(["--print-timeout", str(print_timeout)])
 
         if self.conversation_id:
             cmd.extend(["--conversation", self.conversation_id])
@@ -429,29 +432,47 @@ class AIAgent:
 
             proc.wait()
 
-            if not assistant_text and not tool_calls and proc.stderr:
+            err_output = ""
+            if proc.stderr:
                 try:
                     err_output = proc.stderr.read().strip()
-                    if err_output:
-                        auth_keywords = ["auth", "login", "credential", "unauthorized", "token", "oauth"]
-                        if any(k in err_output.lower() for k in auth_keywords):
-                            assistant_text = (
-                                "⚠️ **Google Authentication Required**\n\n"
-                                "The Antigravity agent in the container needs to authenticate with Google:\n"
-                                f"```\n{err_output}\n```\n\n"
-                                "👉 **How to fix:**\n"
-                                "Run the one-time authentication command in your host terminal:\n"
-                                "```bash\n"
-                                "./agy-container.sh cli agy\n"
-                                "```\n"
-                                "Follow the browser prompt to complete sign-in. Your credentials will be saved in `./container_data/gemini/` and persist across restarts."
-                            )
-                        else:
-                            assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
-                        if self.stream_delta_callback:
-                            self.stream_delta_callback(assistant_text)
                 except Exception:
-                    pass
+                    err_output = ""
+
+            # Check for watchdog timeout in stderr
+            timeout_keywords = ["print mode: timed out", "timed out after", "timeout expired", "stream timed out"]
+            if err_output and any(k in err_output.lower() for k in timeout_keywords):
+                timeout_notice = (
+                    "\n\n---\n"
+                    f"⚠️ **Antigravity Execution Timeout** (`--print-timeout {print_timeout}`)\n\n"
+                    "The turn reached the watchdog timeout limit during long-running execution and was halted.\n"
+                    "- **Resume**: Type `/continue` or send your next prompt to pick up directly from the last saved state.\n"
+                    f"- **Extend Timeout**: You can increase this limit by setting `AGY_PRINT_TIMEOUT=120m` in your environment or `.env`."
+                )
+                assistant_text += timeout_notice
+                if self.stream_delta_callback:
+                    try:
+                        self.stream_delta_callback(timeout_notice)
+                    except Exception:
+                        pass
+            elif not assistant_text and not tool_calls and err_output:
+                auth_keywords = ["auth", "login", "credential", "unauthorized", "token", "oauth"]
+                if any(k in err_output.lower() for k in auth_keywords):
+                    assistant_text = (
+                        "⚠️ **Google Authentication Required**\n\n"
+                        "The Antigravity agent in the container needs to authenticate with Google:\n"
+                        f"```\n{err_output}\n```\n\n"
+                        "👉 **How to fix:**\n"
+                        "Run the one-time authentication command in your host terminal:\n"
+                        "```bash\n"
+                        "./agy-container.sh cli agy\n"
+                        "```\n"
+                        "Follow the browser prompt to complete sign-in. Your credentials will be saved in `./container_data/gemini/` and persist across restarts."
+                    )
+                else:
+                    assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
+                if self.stream_delta_callback:
+                    self.stream_delta_callback(assistant_text)
 
             # Detect auth failure messages streamed into assistant_text
             if not tool_calls and assistant_text:
