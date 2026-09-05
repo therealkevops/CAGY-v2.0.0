@@ -32,6 +32,19 @@ Guidelines enforced across the CAGY project:
   - See [[architecture/cagy_unified]] for execution namespace details.
 
 ## Architectural Principles
+### CAGY Architecture & Execution Model
+# CAGY Architecture & Execution Model
+
+The Containerized Antigravity (CAGY) platform bridges the official Google Antigravity Linux binary (`agy`) with an agentic WebUI running inside a unified Debian container.
+
+- **Execution Namespace**: Docker container `agy-unified` running Debian Bookworm with mounted workspace at `/workspace`.
+- **Process Supervisor**: `supervisord` manages both `agy-webui` (port 8989) and background CLI streams.
+- **Model Context Protocol (MCP) Hub**: Pre-bundled with `uv`/`uvx` to execute Python and Node MCP servers on demand.
+- **Related Notes**:
+  - Engineered according to [[user/conventions]].
+  - Initial foundation captured in [[decisions/adr_001_cagy_fork]].
+  - Configured for the environment defined in [[user/profile]].
+
 ### Knowledge Vault & 2D Force-Directed Graph Architecture
 # Knowledge Vault & 2D Force-Directed Graph Architecture
 
@@ -88,19 +101,6 @@ knowledge/
 - Governed by standards in [[user/conventions]] and [[user/profile]].
 - Contextualized in [[decisions/adr_002_knowledge_vault_second_brain]].
 - Evaluated by the metrics in [[architecture/token_economics_and_analytics]].
-
-### CAGY Architecture & Execution Model
-# CAGY Architecture & Execution Model
-
-The Containerized Antigravity (CAGY) platform bridges the official Google Antigravity Linux binary (`agy`) with an agentic WebUI running inside a unified Debian container.
-
-- **Execution Namespace**: Docker container `agy-unified` running Debian Bookworm with mounted workspace at `/workspace`.
-- **Process Supervisor**: `supervisord` manages both `agy-webui` (port 8989) and background CLI streams.
-- **Model Context Protocol (MCP) Hub**: Pre-bundled with `uv`/`uvx` to execute Python and Node MCP servers on demand.
-- **Related Notes**:
-  - Engineered according to [[user/conventions]].
-  - Initial foundation captured in [[decisions/adr_001_cagy_fork]].
-  - Configured for the environment defined in [[user/profile]].
 
 ### Token Economics & Memory ROI Analytics Architecture
 # Token Economics & Memory ROI Analytics Architecture

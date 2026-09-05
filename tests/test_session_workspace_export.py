@@ -274,6 +274,7 @@ class TestSessionWorkspaceExportApi(unittest.TestCase):
             self.fail("Expected HTTPError 400 for path traversal")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 400)
+            e.close()
 
 
 if __name__ == "__main__":

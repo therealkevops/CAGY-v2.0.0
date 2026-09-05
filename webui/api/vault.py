@@ -12,11 +12,13 @@ from typing import Dict, Any, List, Set, Optional
 
 WIKILINK_REGEX = re.compile(r'\[\[([^\]\|#]+)(?:#[^\]\|]+)?(?:\|([^\]]+))?\]\]')
 TAG_REGEX = re.compile(r'(?:^|\s)#([a-zA-Z][a-zA-Z0-9_\-/]*)')
+CODE_BLOCK_REGEX = re.compile(r'```[\s\S]*?```|`[^`\n]+`')
 
 def extract_wikilinks(content: str) -> List[Dict[str, Any]]:
-    """Extract all wikilinks [[Target|Alias]] or [[Target#Section|Alias]] from text."""
+    """Extract all wikilinks [[Target|Alias]] or [[Target#Section|Alias]] from text, ignoring code spans."""
+    clean_content = CODE_BLOCK_REGEX.sub('', content)
     links = []
-    for match in WIKILINK_REGEX.finditer(content):
+    for match in WIKILINK_REGEX.finditer(clean_content):
         target = match.group(1).strip()
         alias = match.group(2).strip() if match.group(2) else ""
         links.append({"target": target, "alias": alias})
@@ -118,10 +120,11 @@ def scan_vault(vault_path: Path) -> Dict[str, Any]:
         title = _extract_title(content, p.stem)
         tags = extract_tags(content)
 
-        # Extract all wikilinks
-        raw_links = WIKILINK_REGEX.findall(content)
+        # Extract all wikilinks (ignoring code spans)
+        wikilinks_data = extract_wikilinks(content)
         resolved_links: List[str] = []
-        for raw_target, _display in raw_links:
+        for item in wikilinks_data:
+            raw_target = item["target"]
             norm_target = _normalize_id(raw_target).lower()
             if norm_target in id_map:
                 actual_id = id_map[norm_target]
