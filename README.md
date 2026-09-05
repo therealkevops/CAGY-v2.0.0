@@ -12,6 +12,8 @@ By encapsulating both the WebUI server and the native Linux `agy` CLI binary ins
 - **Reproducible Developer Toolchain**: Pre-configured environment bundling Node.js 22, Python 3.11, Git, Ripgrep, `uv`/`uvx`, and the Google `agy` CLI, guaranteeing identical behavior across macOS, Linux, and Windows (WSL2).
 - **Zero-Drift Host Portability**: Run locally or deploy across servers, laptops, or cloud VMs with zero environment configuration drift or host-level tool conflicts.
 
+> 📖 **Deep-Dive Guide**: For a full technical comparison between the standard upstream AGY harness and CAGY—including mathematical models for **Token Economics, Avoided Context Debt, and Memory Leverage Ratio (MLR)**—see [**ENHANCEMENTS.md**](ENHANCEMENTS.md).
+
 ---
 
 ## Key Features
