@@ -551,8 +551,23 @@ function openVaultNoteInRightSidebar(note, openInEditor = false) {
   renderVaultRelationsInPreview(note);
 }
 
+let _isVaultRelationsCollapsed = true; // Default to collapsed as requested to keep document sidebar spacious
+let _vaultRelationsHeight = 160;
+
+try {
+  const savedCollapsed = localStorage.getItem('agy_vault_relations_collapsed');
+  if (savedCollapsed !== null) {
+    _isVaultRelationsCollapsed = savedCollapsed === '1';
+  }
+  const savedH = parseInt(localStorage.getItem('agy_vault_relations_height'), 10);
+  if (!isNaN(savedH) && savedH >= 70 && savedH <= 600) {
+    _vaultRelationsHeight = savedH;
+  }
+} catch (_) {}
+
 /**
- * Render backlinks and outgoing links at the bottom of the right panel preview.
+ * Render backlinks and outgoing links in a resizable, collapsible tray
+ * at the bottom of the right panel preview.
  */
 function renderVaultRelationsInPreview(note) {
   let container = document.getElementById('previewVaultRelations');
@@ -582,23 +597,164 @@ function renderVaultRelationsInPreview(note) {
     ? outgoing.map(b => `<button type="button" class="vault-chip outgoing" onclick="loadVaultNote('${escapeAttr(b)}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> ${escapeHtml(b)}</button>`).join('')
     : '<span class="vault-empty-text">No outgoing links</span>';
 
+  // Summary pill badges for header
+  const summaryBadges = [];
+  if (tags.length > 0) {
+    summaryBadges.push(`<span class="vault-summary-pill tag" title="${tags.length} tag${tags.length > 1 ? 's' : ''}"># ${tags.length}</span>`);
+  }
+  if (backlinks.length > 0) {
+    summaryBadges.push(`<span class="vault-summary-pill backlinks" title="${backlinks.length} incoming backlink${backlinks.length > 1 ? 's' : ''}">↩ ${backlinks.length}</span>`);
+  }
+  if (outgoing.length > 0) {
+    summaryBadges.push(`<span class="vault-summary-pill outgoing" title="${outgoing.length} outgoing link${outgoing.length > 1 ? 's' : ''}">↗ ${outgoing.length}</span>`);
+  }
+  if (summaryBadges.length === 0) {
+    summaryBadges.push(`<span class="vault-summary-pill empty">0 links</span>`);
+  }
+  const summaryPillsHtml = summaryBadges.join('');
+
   container.innerHTML = `
-    <div class="vault-relations-footer">
-      <div class="vault-relation-block">
-        <span class="vault-relation-title">Tags:</span>
-        <div class="vault-chips-row">${tagsHtml}</div>
+    <div class="vault-relations-resizer" id="vaultRelationsResizer" title="Drag up/down to resize pane • Double-click to toggle collapse">
+      <div class="vault-resizer-line"></div>
+    </div>
+    <div class="vault-relations-header" onclick="toggleVaultRelationsCollapse()" title="Click to collapse / expand relations">
+      <div class="vault-relations-header-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span>Context & Relations</span>
       </div>
-      <div class="vault-relation-block">
-        <span class="vault-relation-title">Linked References (Backlinks):</span>
-        <div class="vault-chips-row">${backlinksHtml}</div>
+      <div class="vault-relations-summary">
+        ${summaryPillsHtml}
       </div>
-      <div class="vault-relation-block">
-        <span class="vault-relation-title">Outgoing Links:</span>
-        <div class="vault-chips-row">${outgoingHtml}</div>
+      <button type="button" class="vault-relations-toggle-btn" id="btnVaultRelationsToggle" onclick="event.stopPropagation(); toggleVaultRelationsCollapse()" aria-label="Toggle Relations Pane" title="${_isVaultRelationsCollapsed ? 'Expand pane' : 'Collapse pane'}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          ${_isVaultRelationsCollapsed ? '<polyline points="18 15 12 9 6 15"/>' : '<polyline points="6 9 12 15 18 9"/>'}
+        </svg>
+      </button>
+    </div>
+    <div class="vault-relations-body" id="vaultRelationsBody">
+      <div class="vault-relations-footer">
+        <div class="vault-relation-block">
+          <span class="vault-relation-title">Tags (${tags.length}):</span>
+          <div class="vault-chips-row">${tagsHtml}</div>
+        </div>
+        <div class="vault-relation-block">
+          <span class="vault-relation-title">Linked References (Backlinks) (${backlinks.length}):</span>
+          <div class="vault-chips-row">${backlinksHtml}</div>
+        </div>
+        <div class="vault-relation-block">
+          <span class="vault-relation-title">Outgoing Links (${outgoing.length}):</span>
+          <div class="vault-chips-row">${outgoingHtml}</div>
+        </div>
       </div>
     </div>
   `;
+
   container.style.display = 'flex';
+  initVaultRelationsResizer();
+  applyVaultRelationsState();
+}
+
+function applyVaultRelationsState() {
+  const container = document.getElementById('previewVaultRelations');
+  if (!container) return;
+  const btn = document.getElementById('btnVaultRelationsToggle');
+  const body = document.getElementById('vaultRelationsBody');
+  const resizer = document.getElementById('vaultRelationsResizer');
+
+  if (_isVaultRelationsCollapsed) {
+    container.classList.add('collapsed');
+    container.style.height = 'auto';
+    if (body) body.style.display = 'none';
+    if (resizer) resizer.style.display = 'none';
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('title', 'Expand tags & backlinks pane');
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+    }
+  } else {
+    container.classList.remove('collapsed');
+    container.style.height = `${_vaultRelationsHeight}px`;
+    if (body) body.style.display = 'flex';
+    if (resizer) resizer.style.display = 'flex';
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'true');
+      btn.setAttribute('title', 'Collapse tags & backlinks pane');
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    }
+  }
+}
+
+function toggleVaultRelationsCollapse() {
+  _isVaultRelationsCollapsed = !_isVaultRelationsCollapsed;
+  try {
+    localStorage.setItem('agy_vault_relations_collapsed', _isVaultRelationsCollapsed ? '1' : '0');
+  } catch (_) {}
+  applyVaultRelationsState();
+}
+
+function initVaultRelationsResizer() {
+  const resizer = document.getElementById('vaultRelationsResizer');
+  const container = document.getElementById('previewVaultRelations');
+  if (!resizer || !container) return;
+
+  let isDragging = false;
+  let startY = 0;
+  let startH = 0;
+
+  resizer.onpointerdown = (e) => {
+    e.preventDefault();
+    isDragging = true;
+    startY = e.clientY;
+    startH = container.getBoundingClientRect().height;
+    try { resizer.setPointerCapture(e.pointerId); } catch (_) {}
+    resizer.classList.add('resizing');
+    container.classList.add('resizing');
+    document.body.classList.add('vault-relations-resizing');
+  };
+
+  resizer.onpointermove = (e) => {
+    if (!isDragging) return;
+    const pArea = document.getElementById('previewArea');
+    const maxH = pArea ? Math.floor(pArea.clientHeight * 0.75) : 450;
+    const delta = startY - e.clientY; // dragging upward expands relations pane
+    let newH = startH + delta;
+
+    if (newH < 50) {
+      _isVaultRelationsCollapsed = true;
+      try { localStorage.setItem('agy_vault_relations_collapsed', '1'); } catch (_) {}
+      applyVaultRelationsState();
+      return;
+    }
+
+    if (_isVaultRelationsCollapsed) {
+      _isVaultRelationsCollapsed = false;
+      try { localStorage.setItem('agy_vault_relations_collapsed', '0'); } catch (_) {}
+      applyVaultRelationsState();
+    }
+
+    newH = Math.max(75, Math.min(newH, maxH));
+    _vaultRelationsHeight = newH;
+    container.style.height = `${newH}px`;
+    try { localStorage.setItem('agy_vault_relations_height', String(newH)); } catch (_) {}
+  };
+
+  const endDrag = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    try { resizer.releasePointerCapture(e.pointerId); } catch (_) {}
+    resizer.classList.remove('resizing');
+    container.classList.remove('resizing');
+    document.body.classList.remove('vault-relations-resizing');
+  };
+
+  resizer.onpointerup = endDrag;
+  resizer.onpointercancel = endDrag;
+
+  resizer.ondblclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleVaultRelationsCollapse();
+  };
 }
 
 /**
