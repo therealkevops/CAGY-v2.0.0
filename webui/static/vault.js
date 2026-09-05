@@ -973,9 +973,64 @@ async function syncVaultRules() {
     const res = await fetch('/api/vault/sync', { method: 'POST' });
     const data = await res.json();
     if (data.ok) {
-      showToast(`Compiled ${data.total_compiled_notes} notes to native Antigravity rules!`, 3000, 'success');
+      const dietBadge = data.diet_mode ? ' (Context Diet Active ⚡)' : '';
+      showToast(`Compiled ${data.total_compiled_notes} notes to native Antigravity rules${dietBadge}!`, 3000, 'success');
     } else {
       showToast(data.error || 'Sync failed', 3000, 'error');
+    }
+  } catch (err) {
+    showToast(err.message, 3000, 'error');
+  } finally {
+    if (btn) {
+      btn.innerHTML = origHtml;
+      btn.disabled = false;
+    }
+  }
+}
+
+/**
+ * Audit vault links, orphans, and broken file references, and auto-heal where possible.
+ */
+async function auditAndHealVault() {
+  const btn = document.getElementById('btnAuditVault');
+  let origHtml = '';
+  if (btn) {
+    origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Auditing...`;
+  }
+
+  try {
+    const spaceParam = _activeSpaceFilter && _activeSpaceFilter !== 'all' ? `?space=${encodeURIComponent(_activeSpaceFilter)}` : '';
+    const lintRes = await fetch(`/api/vault/lint${spaceParam}`);
+    const lintData = await lintRes.json();
+
+    if (!lintData.ok) {
+      showToast(lintData.error || 'Audit failed', 3000, 'error');
+      return;
+    }
+
+    const issues = lintData.issues_count || 0;
+    const healable = lintData.healable_count || 0;
+
+    if (healable > 0) {
+      if (btn) btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Healing...`;
+      const healRes = await fetch('/api/vault/heal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ space: _activeSpaceFilter })
+      });
+      const healData = await healRes.json();
+      if (healData.ok) {
+        showToast(`Auto-healed ${healData.healed_count} broken link(s)!`, 4000, 'success');
+        await loadVault(true);
+      } else {
+        showToast(healData.error || 'Healing failed', 3000, 'error');
+      }
+    } else if (issues === 0) {
+      showToast(`Vault audit clean: all ${lintData.total_notes} notes & links 100% healthy!`, 3500, 'success');
+    } else {
+      showToast(`Audit found ${issues} issue(s) (${lintData.orphan_count} orphans). No auto-heal candidates.`, 4000, 'info');
     }
   } catch (err) {
     showToast(err.message, 3000, 'error');

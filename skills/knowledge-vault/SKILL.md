@@ -54,3 +54,32 @@ When the user issues `/memorize [content]` or asks you to remember or store know
 
 3. **Confirm & Report**:
    - Output a clean confirmation specifying the created/updated file path and the linked connections.
+
+---
+
+## 4. Tiered Context Diet & On-Demand Recall
+
+To prevent token bloat during agent turns, the Knowledge Vault engine automatically applies a **Tiered Context Diet**:
+- **Global Profile (`knowledge/user/`)**: Always compiled in 100% full text across all turns.
+- **Space Notes (`knowledge/spaces/<space_id>/`)**: When candidate space documentation exceeds 20 KB, it compiles into a high-density **Architectural Decisions Matrix** and **Executive Abstracts Map** with bidirectional wikilinks.
+- **On-Demand Recall**: Whenever deep technical specifics or full text are needed for a specific topic, execute:
+  ```bash
+  python3 skills/knowledge-vault/scripts/recall_vault.py "<query>" [--space <space>] [--full]
+  ```
+
+---
+
+## 5. Link Refactoring, Linting & Self-Healing
+
+The vault provides automated integrity auditing and self-healing:
+1. **Audit Vault Links**:
+   ```bash
+   python3 skills/knowledge-vault/scripts/lint_vault.py [--space <space>]
+   ```
+2. **Auto-Heal Broken Links**:
+   ```bash
+   python3 skills/knowledge-vault/scripts/lint_vault.py --heal [--space <space>]
+   ```
+   Automatically corrects broken wikilinks and broken workspace file hyperlinks when an unambiguous candidate file exists.
+3. **Refactor on Rename**:
+   Renaming a note via `/api/vault/rename` or `rename_note()` scans all markdown files across the vault and updates all incoming `[[wikilinks]]` in place.

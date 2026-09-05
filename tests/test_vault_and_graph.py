@@ -239,6 +239,119 @@ class TestVaultEngine(unittest.TestCase):
         self.assertEqual(user_tpl["category"], "user")
         self.assertIn("## Principles & Preferences", user_tpl["template_content"])
 
+    def test_tiered_context_diet_engine(self):
+        # Under threshold test
+        dec_dir = self.vault_dir / "decisions"
+        dec_dir.mkdir(parents=True, exist_ok=True)
+        (dec_dir / "adr_001_small.md").write_text(
+            "# ADR 001: Small Decision\n\n- **Date**: 2026-09-05\n- **Status**: Accepted\n\n## Context & Decision\nAdopt lightweight solution.\n",
+            encoding="utf-8"
+        )
+        res_full = vault.sync_vault_to_rules(self.vault_dir, Path(self.temp_dir), max_full_bytes=50000)
+        self.assertTrue(res_full["ok"])
+        self.assertFalse(res_full["diet_mode"])
+        rule_content_full = (Path(self.temp_dir) / ".gemini" / "rules" / "knowledge_vault.md").read_text(encoding="utf-8")
+        self.assertIn("Small Decision", rule_content_full)
+        self.assertNotIn("Tiered Context Diet Active", rule_content_full)
+
+        # Over threshold test (force diet mode with low max_full_bytes)
+        (dec_dir / "adr_002_large.md").write_text(
+            "# ADR 002: Distributed Storage\n\n- **Date**: 2026-09-05\n- **Status**: Proposed\n\n## Decision Outcome\nAdopt Ceph CSI for volume storage.\n" * 10,
+            encoding="utf-8"
+        )
+        res_diet = vault.sync_vault_to_rules(self.vault_dir, Path(self.temp_dir), max_full_bytes=50)
+        self.assertTrue(res_diet["ok"])
+        self.assertTrue(res_diet["diet_mode"])
+        rule_content_diet = (Path(self.temp_dir) / ".gemini" / "rules" / "knowledge_vault.md").read_text(encoding="utf-8")
+        self.assertIn("Tiered Context Diet Active", rule_content_diet)
+        self.assertIn("Architectural Decisions Matrix", rule_content_diet)
+        self.assertIn("| ADR | Title | Status | Summary & Key Decision |", rule_content_diet)
+        # User preferences must still be 100% full text!
+        self.assertIn("Lead Engineer", rule_content_diet)
+        self.assertIn("Coding Conventions", rule_content_diet)
+
+    def test_refactor_note_links(self):
+        # Setup notes with links
+        (self.vault_dir / "architecture" / "old_service.md").write_text("# Old Service\n", encoding="utf-8")
+        (self.vault_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "notes" / "consumer.md").write_text(
+            "# Consumer\n\nReferences [[architecture/old_service]] and [[architecture/old_service|My Service]] and [[old_service#API]].\n",
+            encoding="utf-8"
+        )
+
+        res = vault.refactor_note_links(self.vault_dir, "architecture/old_service.md", "architecture/new_service.md")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["files_modified"], 1)
+        self.assertGreaterEqual(res["replacements_count"], 3)
+
+        updated_consumer = (self.vault_dir / "notes" / "consumer.md").read_text(encoding="utf-8")
+        self.assertIn("[[architecture/new_service]]", updated_consumer)
+        self.assertIn("[[architecture/new_service|My Service]]", updated_consumer)
+        self.assertIn("[[new_service#API]]", updated_consumer)
+        self.assertNotIn("[[architecture/old_service]]", updated_consumer)
+
+    def test_rename_note_and_refactor(self):
+        (self.vault_dir / "architecture" / "gateway.md").write_text("# API Gateway\n", encoding="utf-8")
+        (self.vault_dir / "user" / "profile.md").write_text(
+            "# Profile\n\nUses [[architecture/gateway]].\n",
+            encoding="utf-8"
+        )
+
+        res = vault.rename_note(self.vault_dir, "architecture/gateway.md", "architecture/api_gateway.md", workspace_path=Path(self.temp_dir))
+        self.assertTrue(res["ok"])
+        self.assertTrue((self.vault_dir / "architecture" / "api_gateway.md").exists())
+        self.assertFalse((self.vault_dir / "architecture" / "gateway.md").exists())
+
+        profile_content = (self.vault_dir / "user" / "profile.md").read_text(encoding="utf-8")
+        self.assertIn("[[architecture/api_gateway]]", profile_content)
+
+    def test_lint_and_heal_vault(self):
+        (self.vault_dir / "architecture" / "auth_service.md").write_text("# Auth Service\n", encoding="utf-8")
+        (self.vault_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "notes" / "client.md").write_text(
+            "# Client Note\n\nCalls [[auth_service]] and also broken file [Guide](file:///workspace/subdocs/missing_guide.md).\n",
+            encoding="utf-8"
+        )
+        # Create candidate file in workspace
+        docs_dir = Path(self.temp_dir) / "subdocs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        (docs_dir / "missing_guide.md").write_text("# Found Guide\n", encoding="utf-8")
+
+        # Break the file link path so lint catches it
+        (self.vault_dir / "notes" / "client.md").write_text(
+            "# Client Note\n\nCalls [[auth_service]] and also broken file [Guide](file:///workspace/wrong_dir/missing_guide.md).\n",
+            encoding="utf-8"
+        )
+
+        lint_res = vault.lint_vault(self.vault_dir, workspace_path=Path(self.temp_dir))
+        self.assertTrue(lint_res["ok"])
+        self.assertGreaterEqual(lint_res["issues_count"], 1)
+        self.assertGreaterEqual(lint_res["healable_count"], 1)
+
+        heal_res = vault.heal_vault(self.vault_dir, workspace_path=Path(self.temp_dir))
+        self.assertTrue(heal_res["ok"])
+        self.assertGreaterEqual(heal_res["healed_count"], 1)
+
+        healed_content = (self.vault_dir / "notes" / "client.md").read_text(encoding="utf-8")
+        self.assertIn("file:///workspace/subdocs/missing_guide.md", healed_content)
+
+    def test_enhanced_search_vault_ranking(self):
+        (self.vault_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "notes" / "kubernetes_intro.md").write_text(
+            "# Kubernetes Intro\n\nGeneral overview of container orchestration.\n",
+            encoding="utf-8"
+        )
+        (self.vault_dir / "notes" / "exact_keyword_target.md").write_text(
+            "# Exact Keyword Target\n\n#specialtag\nKey reference notes.\n",
+            encoding="utf-8"
+        )
+
+        res_tag = vault.search_vault(self.vault_dir, "specialtag")
+        self.assertTrue(res_tag["ok"])
+        self.assertEqual(res_tag["results"][0]["id"], "notes/exact_keyword_target")
+        self.assertGreater(res_tag["results"][0]["score"], 30)
+
+
 
 class TestVaultApiEndpoints(unittest.TestCase):
     """Test HTTP API endpoints for Knowledge Vault and Graph."""
@@ -477,6 +590,32 @@ class TestVaultApiEndpoints(unittest.TestCase):
         self.assertTrue(t_data.get("ok"))
         self.assertIn("spaces/cka-kb/decisions", t_data.get("rel_path", ""))
 
+    def test_api_vault_lint_and_heal_endpoints(self):
+        status, lint_data = self._get("/api/vault/lint")
+        self.assertEqual(status, 200)
+        self.assertTrue(lint_data.get("ok"))
+        self.assertIn("total_notes", lint_data)
+        self.assertIn("issues_count", lint_data)
+
+        status, heal_data = self._post("/api/vault/heal", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(heal_data.get("ok"))
+        self.assertIn("healed_count", heal_data)
+
+    def test_api_vault_rename_endpoint(self):
+        (self.vault_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.vault_dir / "notes" / "old_api_note.md").write_text("# Old Note Title\n", encoding="utf-8")
+
+        status, rename_data = self._post("/api/vault/rename", {
+            "old_path": "notes/old_api_note.md",
+            "new_path": "notes/new_api_note.md"
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(rename_data.get("ok"))
+        self.assertTrue((self.vault_dir / "notes" / "new_api_note.md").exists())
+        self.assertFalse((self.vault_dir / "notes" / "old_api_note.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
+

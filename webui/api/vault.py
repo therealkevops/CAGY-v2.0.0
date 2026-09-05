@@ -391,16 +391,105 @@ def delete_note(vault_path: Path, rel_path: str) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e), "ok": False}
 
+def _extract_adr_summary(content: str) -> Dict[str, str]:
+    """
+    Extract key metadata from an ADR: Status, Date, and concise Decision Outcome or Context.
+    """
+    status = "Accepted"
+    date = ""
+    for line in content.splitlines():
+        line_clean = line.strip()
+        m_status = re.match(r'^[-\*]\s*\*\*Status\*\*:\s*`?([a-zA-Z0-9_\-\s]+)`?', line_clean, re.IGNORECASE)
+        if m_status:
+            status = m_status.group(1).strip()
+        m_date = re.match(r'^[-\*]\s*\*\*Date\*\*:\s*(.+)$', line_clean, re.IGNORECASE)
+        if m_date:
+            date = m_date.group(1).strip()
+
+    outcome_lines = []
+    context_lines = []
+    current_section = None
+
+    for line in content.splitlines():
+        line_strip = line.strip()
+        if line_strip.startswith("## Decision Outcome") or line_strip.startswith("## Context & Decision"):
+            current_section = "outcome"
+            continue
+        elif line_strip.startswith("## Context") or line_strip.startswith("## Context & Problem"):
+            current_section = "context"
+            continue
+        elif line_strip.startswith("## "):
+            current_section = None
+
+        if current_section == "outcome" and line_strip and not line_strip.startswith("#"):
+            if not (line_strip.startswith("- **") and ":" in line_strip and len(line_strip) < 30):
+                outcome_lines.append(line_strip)
+        elif current_section == "context" and line_strip and not line_strip.startswith("#"):
+            if not (line_strip.startswith("- **") and ":" in line_strip and len(line_strip) < 30):
+                context_lines.append(line_strip)
+
+    chosen = " ".join(outcome_lines).strip() if outcome_lines else " ".join(context_lines).strip()
+    if not chosen:
+        paras = []
+        for line in content.splitlines():
+            s = line.strip()
+            if s and not s.startswith("#") and not s.startswith("- ") and not s.startswith("* "):
+                paras.append(s)
+                if len(" ".join(paras)) > 120:
+                    break
+        chosen = " ".join(paras).strip()
+
+    chosen = re.sub(r'\s+', ' ', chosen).strip()
+    clean_summary = chosen.replace("|", "/")
+    if len(clean_summary) > 220:
+        clean_summary = clean_summary[:217].rsplit(" ", 1)[0] + "..."
+
+    return {
+        "status": status,
+        "date": date,
+        "summary": clean_summary or "Architectural decision recorded."
+    }
+
+def _extract_note_abstract(content: str, max_chars: int = 240) -> str:
+    """Extract a concise 2-4 sentence executive abstract from a markdown note."""
+    clean_content = re.sub(r'```[\s\S]*?```', '', content)
+    lines = clean_content.splitlines()
+    abstract_lines = []
+    skip_meta = True
+
+    for line in lines:
+        s = line.strip()
+        if not s or s == "---":
+            continue
+        if s.startswith("#"):
+            continue
+        if skip_meta and (s.startswith("- **") or s.startswith("* **")):
+            continue
+        skip_meta = False
+        abstract_lines.append(s)
+        if len(" ".join(abstract_lines)) >= max_chars:
+            break
+
+    abstract = " ".join(abstract_lines).strip()
+    abstract = re.sub(r'\s+', ' ', abstract)
+    if len(abstract) > max_chars:
+        abstract = abstract[:max_chars - 3].rsplit(" ", 1)[0] + "..."
+    return abstract or "Topic reference and architectural documentation."
+
 def sync_vault_to_rules(
     vault_path: Path,
     workspace_path: Optional[Path] = None,
     space: Optional[str] = None,
+    max_full_bytes: int = 20480,
 ) -> Dict[str, Any]:
     """
     Compile core knowledge from vault (User profile, conventions, architectural decisions)
     into native Antigravity rules (.gemini/rules/knowledge_vault.md) so Gemini learns
     and retains context across all turns.
-    Supports space scoping to eliminate token bloat and context contamination across spaces.
+    Supports space scoping and a Tiered Context Diet Engine:
+    - User Profile & Conventions are ALWAYS 100% full text.
+    - When space knowledge exceeds max_full_bytes (default 20 KB), it is compiled into a high-density
+      Architectural Decisions Matrix + Executive Abstracts Map instead of dumping 50-150 KB into the prompt.
     """
     if not vault_path.exists():
         return {"error": "Vault does not exist", "ok": False}
@@ -429,7 +518,7 @@ def sync_vault_to_rules(
         ""
     ]
 
-    # Priority 1: User Profile (Global - always included across all spaces)
+    # Priority 1: User Profile (Global - always 100% full text across all spaces)
     user_notes = [n for n in nodes if n.get("space") == "user" or n["folder"] == "user"]
     if user_notes:
         compiled_sections.append("## User Preferences & Profile")
@@ -440,35 +529,17 @@ def sync_vault_to_rules(
                 compiled_sections.append(note_data["content"].strip())
                 compiled_sections.append("")
 
-    # Priority 2: Architectural Principles (Scoped to active space if set, else global)
+    # Priority 2: Architectural Principles
     if active_space != "global":
         arch_notes = [n for n in nodes if n.get("space") == active_space and "architecture" in n["folder"]]
     else:
         arch_notes = [n for n in nodes if n.get("space") == "global" and n["folder"] == "architecture"]
 
-    if arch_notes:
-        compiled_sections.append("## Architectural Principles")
-        for n in arch_notes:
-            note_data = get_note(vault_path, n["path"])
-            if note_data.get("content"):
-                compiled_sections.append(f"### {note_data.get('title', n['id'])}")
-                compiled_sections.append(note_data["content"].strip())
-                compiled_sections.append("")
-
-    # Priority 3: Architecture Decision Records (ADRs) (Scoped to active space if set, else global)
+    # Priority 3: Architecture Decision Records (ADRs)
     if active_space != "global":
         decisions = [n for n in nodes if n.get("space") == active_space and "decisions" in n["folder"]]
     else:
         decisions = [n for n in nodes if n.get("space") == "global" and n["folder"] == "decisions"]
-
-    if decisions:
-        compiled_sections.append("## Key Architectural Decisions")
-        for n in decisions:
-            note_data = get_note(vault_path, n["path"])
-            if note_data.get("content"):
-                compiled_sections.append(f"### {note_data.get('title', n['id'])}")
-                compiled_sections.append(note_data["content"].strip())
-                compiled_sections.append("")
 
     # Priority 4: Space-Specific Notes & Guides
     domain_notes = []
@@ -477,13 +548,93 @@ def sync_vault_to_rules(
             n for n in nodes
             if n.get("space") == active_space and ("notes" in n["folder"] or n["folder"] == f"spaces/{active_space}")
         ]
-        if domain_notes:
+
+    # Calculate candidate space notes content size
+    arch_notes_data = [get_note(vault_path, n["path"]) for n in arch_notes]
+    decisions_data = [get_note(vault_path, n["path"]) for n in decisions]
+    domain_notes_data = [get_note(vault_path, n["path"]) for n in domain_notes]
+
+    total_space_bytes = sum(len(d.get("content", "").encode("utf-8")) for d in (*arch_notes_data, *decisions_data, *domain_notes_data))
+    diet_mode = total_space_bytes > max_full_bytes
+
+    if diet_mode:
+        kb_orig = round(total_space_bytes / 1024, 1)
+        kb_limit = round(max_full_bytes / 1024, 1)
+        compiled_sections.append("> [!NOTE]")
+        compiled_sections.append(
+            f"> **Tiered Context Diet Active**: Space knowledge ({kb_orig} KB) exceeds the full-text limit ({kb_limit} KB). "
+            f"Compiled into a high-density Decision Matrix and Executive Abstracts Map to optimize prompt efficiency. "
+            f"To retrieve complete notes on-demand, run `python3 skills/knowledge-vault/scripts/recall_vault.py \"<query>\"`."
+        )
+        compiled_sections.append("")
+
+        # 1. Architectural Decisions Matrix (High Density)
+        if decisions_data:
+            compiled_sections.append("## Architectural Decisions Matrix")
+            compiled_sections.append("| ADR | Title | Status | Summary & Key Decision |")
+            compiled_sections.append("|:---|:---|:---:|:---|")
+            for d in decisions_data:
+                note_id = d.get("id", "")
+                title = d.get("title", note_id)
+                summary_info = _extract_adr_summary(d.get("content", ""))
+                short_adr = Path(note_id).stem.upper().replace("_", " ")
+                m = re.match(r'^(ADR\s*\d+)', short_adr)
+                label = m.group(1) if m else short_adr
+                compiled_sections.append(f"| [[{note_id}|{label}]] | {title} | `{summary_info['status']}` | {summary_info['summary']} |")
+            compiled_sections.append("")
+
+            compiled_sections.append("### Key Architectural Decision Abstracts")
+            for d in decisions_data:
+                note_id = d.get("id", "")
+                title = d.get("title", note_id)
+                summary_info = _extract_adr_summary(d.get("content", ""))
+                compiled_sections.append(f"- **[[{note_id}|{title}]]** (`{summary_info['status']}`): {summary_info['summary']}")
+            compiled_sections.append("")
+
+        # 2. Architectural Principles (Abstracts)
+        if arch_notes_data:
+            compiled_sections.append("## Architectural Principles & System Design (Abstracts)")
+            for d in arch_notes_data:
+                note_id = d.get("id", "")
+                title = d.get("title", note_id)
+                abstract = _extract_note_abstract(d.get("content", ""))
+                compiled_sections.append(f"- **[[{note_id}|{title}]]**: {abstract}")
+            compiled_sections.append("")
+
+        # 3. Domain Knowledge & Guides (Abstracts)
+        if domain_notes_data:
+            compiled_sections.append(f"## {active_space.title()} Domain Knowledge & Guides (Map)")
+            for d in domain_notes_data:
+                note_id = d.get("id", "")
+                title = d.get("title", note_id)
+                abstract = _extract_note_abstract(d.get("content", ""))
+                compiled_sections.append(f"- **[[{note_id}|{title}]]**: {abstract}")
+            compiled_sections.append("")
+
+    else:
+        # Full text mode (under threshold)
+        if arch_notes_data:
+            compiled_sections.append("## Architectural Principles")
+            for d in arch_notes_data:
+                if d.get("content"):
+                    compiled_sections.append(f"### {d.get('title', d.get('id'))}")
+                    compiled_sections.append(d["content"].strip())
+                    compiled_sections.append("")
+
+        if decisions_data:
+            compiled_sections.append("## Key Architectural Decisions")
+            for d in decisions_data:
+                if d.get("content"):
+                    compiled_sections.append(f"### {d.get('title', d.get('id'))}")
+                    compiled_sections.append(d["content"].strip())
+                    compiled_sections.append("")
+
+        if domain_notes_data:
             compiled_sections.append(f"## {active_space.title()} Domain Knowledge & Guides")
-            for n in domain_notes:
-                note_data = get_note(vault_path, n["path"])
-                if note_data.get("content"):
-                    compiled_sections.append(f"### {note_data.get('title', n['id'])}")
-                    compiled_sections.append(note_data["content"].strip())
+            for d in domain_notes_data:
+                if d.get("content"):
+                    compiled_sections.append(f"### {d.get('title', d.get('id'))}")
+                    compiled_sections.append(d["content"].strip())
                     compiled_sections.append("")
 
     rule_content = "\n".join(compiled_sections).strip() + "\n"
@@ -493,7 +644,9 @@ def sync_vault_to_rules(
         "ok": True,
         "rule_file": str(target_rule),
         "space": active_space,
+        "diet_mode": diet_mode,
         "total_compiled_notes": len(user_notes) + len(arch_notes) + len(decisions) + len(domain_notes),
+        "total_space_bytes": total_space_bytes,
         "bytes_written": len(rule_content.encode("utf-8")),
         "timestamp": time.time()
     }
@@ -904,13 +1057,78 @@ def search_vault(
                         "highlighted": highlighted
                     })
 
-        # Boost score for title or tag matches
+        # Scoring with multi-attribute weighted ranking
+        score = 0
+        snippets = []
+        lines = content.splitlines()
+
+        # Exact whole query matches
+        if q and q == lower_title:
+            score += 80
+        elif q and q in lower_title:
+            score += 40
+
+        if q and q == p.stem.lower():
+            score += 60
+        elif q and q in p.stem.lower():
+            score += 30
+
+        # Tag matches
+        for tag_item in tags:
+            clean_ti = tag_item.lower()
+            if q and q == clean_ti:
+                score += 50
+            elif any(t in clean_ti for t in terms):
+                score += 15
+
+        # Individual term matches in title and filename
         for t in terms:
             if t in lower_title:
-                score += 10
-            for tag_item in tags:
-                if t in tag_item.lower():
-                    score += 5
+                score += 25
+            if t in p.stem.lower():
+                score += 15
+
+        # Active space alignment bonus
+        if filter_space and note_space == filter_space:
+            score += 10
+
+        # Line and heading hits
+        content_hits = 0
+        for idx, line in enumerate(lines, start=1):
+            lower_line = line.lower()
+            hit = any(t in lower_line for t in terms) if terms else False
+            if hit:
+                content_hits += 1
+                if content_hits <= 15:
+                    if lower_line.strip().startswith("#"):
+                        score += 12
+                    else:
+                        score += 2
+
+                # Format snippet with <mark> highlighting
+                highlighted = line.strip()
+                if len(highlighted) > 160:
+                    first_idx = len(highlighted)
+                    for t in terms:
+                        pos = highlighted.lower().find(t)
+                        if pos != -1 and pos < first_idx:
+                            first_idx = pos
+                    start_char = max(0, first_idx - 40)
+                    end_char = min(len(highlighted), first_idx + 120)
+                    prefix = "..." if start_char > 0 else ""
+                    suffix = "..." if end_char < len(highlighted) else ""
+                    highlighted = prefix + highlighted[start_char:end_char] + suffix
+
+                for t in terms:
+                    pattern = re.compile(re.escape(t), re.IGNORECASE)
+                    highlighted = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", highlighted)
+
+                if len(snippets) < 4:
+                    snippets.append({
+                        "line": idx,
+                        "text": line.strip(),
+                        "highlighted": highlighted
+                    })
 
         if not terms:
             score = 1
@@ -924,7 +1142,7 @@ def search_vault(
             "tags": tags,
             "score": score,
             "snippets": snippets,
-            "total_snippets": score if terms else 0
+            "total_snippets": content_hits
         })
 
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -973,6 +1191,412 @@ def get_vault_health(vault_path: Path) -> Dict[str, Any]:
         "unresolved_links": unresolved_links,
         "top_hubs": [{"id": h["id"], "title": h["title"], "total_connections": h["total_connections"]} for h in hubs],
         "timestamp": time.time()
+    }
+
+
+def refactor_note_links(
+    vault_path: Path,
+    old_rel_path: str,
+    new_rel_path: str,
+) -> Dict[str, Any]:
+    """
+    Scan all markdown files in vault and refactor any incoming [[wikilinks]]
+    that pointed to old_rel_path so they point to new_rel_path.
+    Handles:
+      [[old_path]] -> [[new_path]]
+      [[old_path|alias]] -> [[new_path|alias]]
+      [[old_path#section]] -> [[new_path#section]]
+      [[old_path#section|alias]] -> [[new_path#section|alias]]
+      [[old_stem]] -> [[new_stem]] (when unambiguous)
+    """
+    if not vault_path.exists():
+        return {"ok": False, "error": "Vault path does not exist"}
+
+    def _clean_slug(p: str) -> str:
+        s = str(p).replace("\\", "/").strip().lstrip("/")
+        return s[:-3] if s.endswith(".md") else s
+
+    old_target = _clean_slug(old_rel_path)
+    new_target = _clean_slug(new_rel_path)
+    if old_target == new_target:
+        return {"ok": True, "files_scanned": 0, "files_modified": 0, "replacements_count": 0, "modified_files": []}
+
+    old_stem = Path(old_target).name
+    new_stem = Path(new_target).name
+
+    md_files = list(vault_path.rglob("*.md"))
+    modified_files = []
+    total_replacements = 0
+
+    link_pattern = re.compile(r'\[\[([^\]\|#]+)(#[^\]\|]+)?(\|[^\]]+)?\]\]')
+
+    for p in md_files:
+        try:
+            rel = p.relative_to(vault_path).as_posix()
+        except ValueError:
+            continue
+        rel_slug = _clean_slug(rel)
+        if rel_slug == old_target:
+            continue
+
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        file_replacements = 0
+
+        def _replace_match(m: re.Match) -> str:
+            nonlocal file_replacements
+            target = m.group(1).strip()
+            section = m.group(2) or ""
+            alias = m.group(3) or ""
+            clean_t = _clean_slug(target)
+
+            new_t = None
+            if clean_t.lower() == old_target.lower():
+                new_t = new_target
+            elif clean_t.lower() == old_stem.lower():
+                new_t = new_stem
+
+            if new_t:
+                file_replacements += 1
+                return f"[[{new_t}{section}{alias}]]"
+            return m.group(0)
+
+        new_content = link_pattern.sub(_replace_match, content)
+
+        # Also replace direct knowledge/... references if present
+        old_vault_sub = f"knowledge/{old_target}.md"
+        new_vault_sub = f"knowledge/{new_target}.md"
+        if old_vault_sub in new_content:
+            file_replacements += new_content.count(old_vault_sub)
+            new_content = new_content.replace(old_vault_sub, new_vault_sub)
+
+        if file_replacements > 0 and new_content != content:
+            p.write_text(new_content, encoding="utf-8")
+            modified_files.append({"path": rel, "replacements": file_replacements})
+            total_replacements += file_replacements
+
+    return {
+        "ok": True,
+        "old_target": old_target,
+        "new_target": new_target,
+        "files_scanned": len(md_files),
+        "files_modified": len(modified_files),
+        "replacements_count": total_replacements,
+        "modified_files": modified_files,
+    }
+
+
+def rename_note(
+    vault_path: Path,
+    old_rel_path: str,
+    new_rel_path: str,
+    workspace_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Rename or move a markdown note file within the vault and refactor all incoming wikilinks.
+    """
+    if not old_rel_path or not new_rel_path:
+        return {"error": "Both old_rel_path and new_rel_path are required", "ok": False}
+
+    clean_old = str(old_rel_path).strip().lstrip("/")
+    if not clean_old.endswith(".md"):
+        clean_old += ".md"
+
+    clean_new = str(new_rel_path).strip().lstrip("/")
+    if not clean_new.endswith(".md"):
+        clean_new += ".md"
+
+    full_old = (vault_path / clean_old).resolve()
+    full_new = (vault_path / clean_new).resolve()
+
+    try:
+        full_old.relative_to(vault_path.resolve())
+        full_new.relative_to(vault_path.resolve())
+    except ValueError:
+        return {"error": "Path traversal not allowed", "ok": False}
+
+    if not full_old.exists() or not full_old.is_file():
+        return {"error": f"Source note not found: {clean_old}", "ok": False}
+
+    if full_new.exists() and full_old != full_new:
+        return {"error": f"Target note already exists: {clean_new}", "ok": False}
+
+    try:
+        full_new.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.move(str(full_old), str(full_new))
+
+        # Refactor incoming links across the entire vault
+        refactor_res = refactor_note_links(vault_path, clean_old, clean_new)
+
+        # Re-sync rules
+        ws = workspace_path if workspace_path is not None else vault_path.parent
+        space = extract_space_from_rel_path(clean_new)
+        sync_vault_to_rules(vault_path, ws, space=space if space != "user" else None)
+
+        return {
+            "ok": True,
+            "old_path": clean_old,
+            "new_path": clean_new,
+            "refactored": refactor_res,
+            "message": f"Successfully renamed {clean_old} to {clean_new} and refactored {refactor_res['replacements_count']} links."
+        }
+    except Exception as e:
+        return {"error": str(e), "ok": False}
+
+
+def _find_workspace_file_candidates(workspace_path: Path, filename: str, max_candidates: int = 5) -> List[Path]:
+    """Find files in workspace matching filename, ignoring build/vcs directories."""
+    candidates = []
+    ignored = {".git", "node_modules", ".cache", "__pycache__", ".pytest_cache", ".venv", "venv"}
+    try:
+        for root, dirs, files in os.walk(workspace_path):
+            dirs[:] = [d for d in dirs if d not in ignored and not d.startswith(".")]
+            if filename in files:
+                candidates.append(Path(root) / filename)
+                if len(candidates) >= max_candidates:
+                    break
+    except Exception:
+        pass
+    return candidates
+
+
+def lint_vault(
+    vault_path: Path,
+    workspace_path: Optional[Path] = None,
+    space: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Audit the Knowledge Vault for integrity:
+    1. Broken wikilinks: [[Target]] where target cannot be resolved.
+    2. Broken workspace file links: [label](file:///workspace/...) or relative links where file does not exist.
+    3. Orphan notes: notes with 0 total connections.
+    4. Auto-heal candidates: broken links matching exactly 1 candidate file/note.
+    """
+    if not vault_path.exists():
+        return {"ok": False, "error": "Vault does not exist"}
+
+    if workspace_path is None:
+        workspace_path = vault_path.parent
+
+    scan_all = scan_vault(vault_path)
+    all_nodes = scan_all.get("nodes", [])
+
+    # Index all existing note IDs and stems across the entire vault
+    valid_ids: Set[str] = set()
+    stem_to_ids: Dict[str, List[str]] = {}
+    for n in all_nodes:
+        nid = n["id"].lower()
+        valid_ids.add(nid)
+        st = Path(n["id"]).stem.lower()
+        stem_to_ids.setdefault(st, []).append(n["id"])
+
+    # If space filter is specified, filter notes to audit
+    if space and space not in ("all", ""):
+        clean_sf = space.strip().lower()
+        allowed_spaces = {"global", "user"} if clean_sf == "global" else {clean_sf, "user"}
+        nodes = [n for n in all_nodes if n.get("space") in allowed_spaces]
+    else:
+        nodes = all_nodes
+
+    broken_wikilinks = []
+    broken_file_links = []
+    healable_issues = []
+
+    file_link_regex = re.compile(r'\[([^\]]+)\]\((file:///workspace/([^\s\)\"\'>]+)|file://([^\s\)\"\'>]+))\)')
+
+    for n in nodes:
+        rel = n["path"]
+        p = vault_path / rel
+        if not p.exists():
+            continue
+
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        lines = content.splitlines()
+
+        # 1. Audit Wikilinks
+        clean_text = CODE_BLOCK_REGEX.sub('', content)
+        for m in WIKILINK_REGEX.finditer(clean_text):
+            raw_target = m.group(1).strip()
+            norm_target = _normalize_id(raw_target).lower()
+
+            # Target is valid if in valid_ids or in stem_to_ids
+            if norm_target not in valid_ids and norm_target not in stem_to_ids:
+                # Broken wikilink!
+                target_stem = Path(norm_target).stem.lower()
+                candidates = stem_to_ids.get(target_stem, [])
+                if not candidates:
+                    candidates = [nid for st, nids in stem_to_ids.items() if st.startswith(target_stem) or target_stem in st for nid in nids]
+
+                auto_healable = len(candidates) == 1
+                suggested_fix = candidates[0] if auto_healable else None
+
+                issue = {
+                    "type": "wikilink",
+                    "source_note": rel,
+                    "target": raw_target,
+                    "raw_match": m.group(0),
+                    "auto_healable": auto_healable,
+                    "candidates": candidates,
+                    "suggested_fix": suggested_fix,
+                }
+                broken_wikilinks.append(issue)
+                if auto_healable:
+                    healable_issues.append(issue)
+
+        # 2. Audit Workspace File Hyperlinks
+        for idx, line in enumerate(lines, start=1):
+            for m in file_link_regex.finditer(line):
+                raw_href = m.group(2)
+                target_rel = m.group(3) or m.group(4)
+                if not target_rel:
+                    continue
+
+                full_file_path = (workspace_path / target_rel).resolve()
+                if not full_file_path.exists():
+                    # Broken file link!
+                    filename = full_file_path.name
+                    candidates = _find_workspace_file_candidates(workspace_path, filename)
+                    auto_healable = len(candidates) == 1
+                    suggested_fix = None
+                    if auto_healable:
+                        try:
+                            rel_cand = candidates[0].resolve().relative_to(workspace_path.resolve()).as_posix()
+                            suggested_fix = f"file:///workspace/{rel_cand}"
+                        except ValueError:
+                            suggested_fix = f"file:///workspace/{candidates[0].name}"
+
+                    issue = {
+                        "type": "file_link",
+                        "source_note": rel,
+                        "line": idx,
+                        "label": m.group(1),
+                        "raw_href": raw_href,
+                        "missing_path": target_rel,
+                        "auto_healable": auto_healable,
+                        "candidates": [str(c) for c in candidates],
+                        "suggested_fix": suggested_fix,
+                    }
+                    broken_file_links.append(issue)
+                    if auto_healable:
+                        healable_issues.append(issue)
+
+    orphans = [n["id"] for n in nodes if n.get("total_connections", 0) == 0]
+
+    return {
+        "ok": True,
+        "vault_path": str(vault_path),
+        "total_notes": len(nodes),
+        "issues_count": len(broken_wikilinks) + len(broken_file_links) + len(orphans),
+        "broken_wikilinks_count": len(broken_wikilinks),
+        "broken_wikilinks": broken_wikilinks,
+        "broken_file_links_count": len(broken_file_links),
+        "broken_file_links": broken_file_links,
+        "orphan_count": len(orphans),
+        "orphans": orphans,
+        "healable_count": len(healable_issues),
+        "healable_issues": healable_issues,
+        "timestamp": time.time()
+    }
+
+
+def heal_vault(
+    vault_path: Path,
+    workspace_path: Optional[Path] = None,
+    space: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Automatically heal broken wikilinks and broken workspace file hyperlinks
+    where an unambiguous, single candidate fix exists.
+    """
+    if not vault_path.exists():
+        return {"ok": False, "error": "Vault does not exist"}
+
+    if workspace_path is None:
+        workspace_path = vault_path.parent
+
+    lint_res = lint_vault(vault_path, workspace_path=workspace_path, space=space)
+    healable = lint_res.get("healable_issues", [])
+
+    if not healable:
+        return {
+            "ok": True,
+            "healed_count": 0,
+            "healed_items": [],
+            "remaining_issues": lint_res.get("issues_count", 0),
+            "message": "Vault is already healthy; no auto-healable issues found."
+        }
+
+    # Group healable actions by source note
+    by_note: Dict[str, List[Dict[str, Any]]] = {}
+    for item in healable:
+        by_note.setdefault(item["source_note"], []).append(item)
+
+    healed_items = []
+
+    for rel_path, items in by_note.items():
+        note_file = vault_path / rel_path
+        if not note_file.exists():
+            continue
+
+        try:
+            content = note_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        orig_content = content
+        for item in items:
+            fix = item.get("suggested_fix")
+            if not fix:
+                continue
+
+            if item["type"] == "file_link":
+                raw_href = item.get("raw_href")
+                if raw_href and raw_href in content:
+                    content = content.replace(raw_href, fix)
+                    healed_items.append({
+                        "source": rel_path,
+                        "type": "file_link",
+                        "old": raw_href,
+                        "new": fix
+                    })
+            elif item["type"] == "wikilink":
+                old_target = item.get("target")
+                if old_target:
+                    # Replace [[old_target]] or [[old_target|...]]
+                    pattern = re.compile(r'\[\[' + re.escape(old_target) + r'((?:#[^\]\|]+)?(?:\|[^\]]+)?)\]\]')
+                    if pattern.search(content):
+                        content = pattern.sub(f'[[{fix}\\1]]', content)
+                        healed_items.append({
+                            "source": rel_path,
+                            "type": "wikilink",
+                            "old": old_target,
+                            "new": fix
+                        })
+
+        if content != orig_content:
+            note_file.write_text(content, encoding="utf-8")
+
+    # Re-sync rules
+    sync_res = sync_vault_to_rules(vault_path, workspace_path, space=space)
+
+    # Re-lint to check remaining issues
+    post_lint = lint_vault(vault_path, workspace_path=workspace_path, space=space)
+
+    return {
+        "ok": True,
+        "healed_count": len(healed_items),
+        "healed_items": healed_items,
+        "remaining_issues": post_lint.get("issues_count", 0),
+        "rules_synced": sync_res.get("ok", False),
+        "message": f"Successfully healed {len(healed_items)} link issues across the vault."
     }
 
 
