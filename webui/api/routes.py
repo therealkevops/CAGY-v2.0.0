@@ -12511,7 +12511,6 @@ def handle_get(handler, parsed) -> bool:
             "ok": True,
             "container": is_container,
             "sandbox_isolation": "Active (Linux Container Namespace)" if is_container else "Host Native",
-            "edr_shield": "Active (Linux Container Namespace)" if is_container else "Host Native",
             "agy_bin": agy_bin,
             "workspace": str(agent.workspace),
             "python": sys.version.split()[0],
