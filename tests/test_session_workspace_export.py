@@ -158,13 +158,56 @@ class TestSessionWorkspaceExportApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp_dir = tempfile.mkdtemp(dir=Path.home())
+        cls.state_dir = Path(cls.temp_dir) / "state"
+        cls.state_dir.mkdir(parents=True, exist_ok=True)
+        cls.sessions_dir = cls.state_dir / "sessions"
+        cls.sessions_dir.mkdir(parents=True, exist_ok=True)
         cls.workspace_dir = Path(cls.temp_dir) / "workspace"
         cls.workspace_dir.mkdir(parents=True, exist_ok=True)
 
+        os.environ["AGY_WEBUI_STATE_DIR"] = str(cls.state_dir)
+        os.environ["HERMES_WEBUI_STATE_DIR"] = str(cls.state_dir)
         os.environ["AGY_WEBUI_SKIP_ONBOARDING"] = "1"
         os.environ["HERMES_WEBUI_SKIP_ONBOARDING"] = "1"
         os.environ["AGY_CLI_PATH"] = str(MOCK_AGY)
         os.environ["HERMES_DEFAULT_WORKSPACE"] = str(cls.workspace_dir)
+
+        # Hermetically isolate session storage to cls.sessions_dir across all webui modules
+        import api.config
+        import api.models
+        import api.routes
+        try:
+            import api.streaming
+        except ImportError:
+            api.streaming = None
+        try:
+            import api.route_session_list_cache
+        except ImportError:
+            api.route_session_list_cache = None
+
+        cls._orig_config_state_dir = api.config.STATE_DIR
+        cls._orig_config_session_dir = api.config.SESSION_DIR
+        cls._orig_config_index_file = api.config.SESSION_INDEX_FILE
+        cls._orig_models_session_dir = api.models.SESSION_DIR
+        cls._orig_models_index_file = api.models.SESSION_INDEX_FILE
+        cls._orig_routes_session_dir = getattr(api.routes, "SESSION_DIR", None)
+        cls._orig_routes_index_file = getattr(api.routes, "SESSION_INDEX_FILE", None)
+
+        api.config.STATE_DIR = cls.state_dir
+        api.config.SESSION_DIR = cls.sessions_dir
+        api.config.SESSION_INDEX_FILE = cls.sessions_dir / "_index.json"
+        api.models.SESSION_DIR = cls.sessions_dir
+        api.models.SESSION_INDEX_FILE = cls.sessions_dir / "_index.json"
+        if hasattr(api.routes, "SESSION_DIR"):
+            api.routes.SESSION_DIR = cls.sessions_dir
+        if hasattr(api.routes, "SESSION_INDEX_FILE"):
+            api.routes.SESSION_INDEX_FILE = cls.sessions_dir / "_index.json"
+        if api.streaming and hasattr(api.streaming, "SESSION_DIR"):
+            cls._orig_streaming_session_dir = api.streaming.SESSION_DIR
+            api.streaming.SESSION_DIR = cls.sessions_dir
+        if api.route_session_list_cache and hasattr(api.route_session_list_cache, "SESSION_DIR"):
+            cls._orig_cache_session_dir = api.route_session_list_cache.SESSION_DIR
+            api.route_session_list_cache.SESSION_DIR = cls.sessions_dir
 
         cls.httpd = QuietHTTPServer(("127.0.0.1", 0), Handler)
         cls.port = cls.httpd.server_address[1]
@@ -180,7 +223,34 @@ class TestSessionWorkspaceExportApi(unittest.TestCase):
             cls.httpd.server_close()
         except Exception:
             pass
+
+        # Restore original module paths
+        import api.config
+        import api.models
+        import api.routes
+        api.config.STATE_DIR = cls._orig_config_state_dir
+        api.config.SESSION_DIR = cls._orig_config_session_dir
+        api.config.SESSION_INDEX_FILE = cls._orig_config_index_file
+        api.models.SESSION_DIR = cls._orig_models_session_dir
+        api.models.SESSION_INDEX_FILE = cls._orig_models_index_file
+        if cls._orig_routes_session_dir is not None:
+            api.routes.SESSION_DIR = cls._orig_routes_session_dir
+        if cls._orig_routes_index_file is not None:
+            api.routes.SESSION_INDEX_FILE = cls._orig_routes_index_file
+        if getattr(cls, "_orig_streaming_session_dir", None) is not None and getattr(sys.modules.get("api.streaming"), "SESSION_DIR", None):
+            sys.modules["api.streaming"].SESSION_DIR = cls._orig_streaming_session_dir
+        if getattr(cls, "_orig_cache_session_dir", None) is not None and getattr(sys.modules.get("api.route_session_list_cache"), "SESSION_DIR", None):
+            sys.modules["api.route_session_list_cache"].SESSION_DIR = cls._orig_cache_session_dir
+
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
+
+    def setUp(self):
+        self.created_session_ids = []
+
+    def tearDown(self):
+        for sid in list(self.created_session_ids):
+            SESSIONS.pop(sid, None)
+        self.created_session_ids.clear()
 
     def _get(self, path: str):
         req = urllib.request.Request(f"{self.base_url}{path}")
@@ -211,6 +281,7 @@ class TestSessionWorkspaceExportApi(unittest.TestCase):
         )
         s.save()
         SESSIONS[s.session_id] = s
+        self.created_session_ids.append(s.session_id)
 
         # 1. POST /api/session/export/workspace (JSON)
         status, data = self._post(
@@ -259,6 +330,8 @@ class TestSessionWorkspaceExportApi(unittest.TestCase):
         imported_session = data_imp.get("session")
         self.assertIsNotNone(imported_session)
         self.assertEqual(imported_session.get("title"), "E2E Workspace Export Test")
+        if imported_session and imported_session.get("session_id"):
+            self.created_session_ids.append(imported_session["session_id"])
 
         # 5. Security: Path Traversal rejection
         try:
