@@ -1307,6 +1307,14 @@ async function newSession(flash, options={}){
     } else if(_activeProject&&_activeProject!==NO_PROJECT_FILTER){
       reqBody.project_id=_activeProject;
     }
+    // Option A: If the project has a bound default_workspace, use it unless an explicit switchWs was specified
+    if(reqBody.project_id && Array.isArray(_allProjects) && !switchWs){
+      const activeProjObj = _allProjects.find(p => p && p.project_id === reqBody.project_id);
+      if(activeProjObj && activeProjObj.default_workspace){
+        reqBody.workspace = activeProjObj.default_workspace;
+        delete reqBody.workspace_inherited_from_prev_session;
+      }
+    }
     // Forward a pre-session toolset override only from the empty composer (#4490).
     if(!S.session && Array.isArray(S._pendingSessionToolsets)) reqBody.enabled_toolsets=S._pendingSessionToolsets;
     const modelSelForNew=$('modelSelect');
@@ -2483,6 +2491,16 @@ function _setActiveProjectFilter(projectId) {
   const next = projectId === NO_PROJECT_FILTER ? NO_PROJECT_FILTER : (projectId || null);
   if (_activeProject === next) return;
   _activeProject = next;
+  if (next && next !== NO_PROJECT_FILTER && Array.isArray(_allProjects)) {
+    const p = _allProjects.find(proj => proj && proj.project_id === next);
+    if (p && p.default_workspace) {
+      if (S.session && (!S.messages || S.messages.length === 0)) {
+        if (typeof switchToWorkspace === 'function') {
+          void switchToWorkspace(p.default_workspace, p.name);
+        }
+      }
+    }
+  }
   renderSessionListFromCache();
   void renderSessionList({deferWhileInteracting:false});
 }
@@ -7570,6 +7588,15 @@ function renderSessionListFromCache(){
       const nameSpan=document.createElement('span');
       nameSpan.textContent=p.name;
       chip.appendChild(nameSpan);
+      if(p.default_workspace){
+        const wsBadge=document.createElement('span');
+        wsBadge.style.cssText='font-size:10px;opacity:0.65;margin-left:4px;display:inline-flex;align-items:center;';
+        wsBadge.textContent='📁';
+        chip.appendChild(wsBadge);
+        chip.title=`${p.name} • Workspace: ${p.default_workspace}`;
+      } else {
+        chip.title=p.name;
+      }
       let _pClickTimer=null;
       chip.onclick=(e)=>{
         clearTimeout(_pClickTimer);
@@ -9106,15 +9133,21 @@ function _startProjectCreate(bar, addBtn){
     _finishDone=true;
     if(save&&inp.value.trim()){
       const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
+      const currentWs=(S.session&&S.session.workspace)||null;
       try{
-        await api('/api/projects/create',{method:'POST',body:JSON.stringify({name:inp.value.trim(),color})});
+        await api('/api/projects/create',{method:'POST',body:JSON.stringify({
+          name:inp.value.trim(),
+          color,
+          default_workspace:currentWs
+        })});
       }catch(e){
         _finishDone=false;
         showToast('Project create failed: '+(e.message||e));
         return;
       }
       await renderSessionList();
-      showToast('Project created');
+      const wsLabel=currentWs?(typeof getWorkspaceFriendlyName==='function'?getWorkspaceFriendlyName(currentWs):currentWs):null;
+      showToast('Project created'+(wsLabel?' (bound to '+wsLabel+')':''));
     }else{
       inp.replaceWith(addBtn);
     }
@@ -9192,6 +9225,17 @@ function _showProjectContextMenu(e, proj, chip){
   renameItem.onclick=()=>{menu.remove();_startProjectRename(proj,chip);};
   menu.appendChild(renameItem);
 
+  // Workspace binding option
+  const wsItem=document.createElement('div');
+  const boundWs=proj.default_workspace;
+  const wsFriendly=boundWs?(typeof getWorkspaceFriendlyName==='function'?getWorkspaceFriendlyName(boundWs):boundWs):'None';
+  wsItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px;';
+  wsItem.innerHTML=`<span>📁 Workspace</span><span style="font-size:11px;opacity:0.65;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${boundWs||'No workspace bound'}">${wsFriendly}</span>`;
+  wsItem.onmouseenter=()=>wsItem.style.background='var(--hover-bg)';
+  wsItem.onmouseleave=()=>wsItem.style.background='';
+  wsItem.onclick=()=>{menu.remove();_showProjectWorkspaceModal(proj);};
+  menu.appendChild(wsItem);
+
   // Color picker row
   const colorRow=document.createElement('div');
   colorRow.style.cssText='display:flex;gap:5px;padding:7px 14px;align-items:center;';
@@ -9245,6 +9289,180 @@ async function _confirmDeleteProject(proj){
   } catch(e) {
     showToast('Delete failed: '+(e.message||e));
   }
+}
+
+async function _showProjectWorkspaceModal(proj){
+  document.querySelectorAll('.project-ws-modal-overlay').forEach(el=>el.remove());
+
+  let workspaces=[];
+  try{
+    const res=await api('/api/workspaces');
+    if(res&&Array.isArray(res.workspaces)){
+      workspaces=res.workspaces;
+    }
+  }catch(e){
+    console.warn('Failed to load workspaces',e);
+  }
+
+  const overlay=document.createElement('div');
+  overlay.className='project-ws-modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);';
+
+  const modal=document.createElement('div');
+  modal.style.cssText='background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;max-width:460px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:16px;color:var(--text);';
+
+  // Title
+  const header=document.createElement('div');
+  header.style.cssText='display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;';
+  const colorDot=proj.color?`<span style="width:12px;height:12px;border-radius:50%;background:${proj.color};display:inline-block;flex-shrink:0;"></span>`:'';
+  header.innerHTML=`${colorDot}<span>Bind Workspace to "${proj.name}"</span>`;
+  modal.appendChild(header);
+
+  // Description
+  const desc=document.createElement('div');
+  desc.style.cssText='font-size:13px;opacity:0.8;line-height:1.45;';
+  desc.textContent='New conversations in this project will automatically start in this workspace directory, and Second Brain notes will be routed to its space.';
+  modal.appendChild(desc);
+
+  // Current status
+  const currentStatus=document.createElement('div');
+  currentStatus.style.cssText='font-size:12px;padding:8px 12px;border-radius:6px;background:var(--hover-bg, rgba(255,255,255,0.05));display:flex;align-items:center;justify-content:space-between;gap:8px;';
+  const boundWs=proj.default_workspace;
+  currentStatus.innerHTML=`<span><strong>Current:</strong> ${boundWs?`<code style="font-size:11px;">${boundWs}</code>`:'<em>None (unbound)</em>'}</span>`;
+  modal.appendChild(currentStatus);
+
+  // Form group: Select or custom path
+  const formGroup=document.createElement('div');
+  formGroup.style.cssText='display:flex;flex-direction:column;gap:8px;';
+
+  const label=document.createElement('label');
+  label.style.cssText='font-size:12px;font-weight:500;opacity:0.9;';
+  label.textContent='Select Workspace:';
+  formGroup.appendChild(label);
+
+  const select=document.createElement('select');
+  select.style.cssText='padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;outline:none;';
+
+  const optNone=document.createElement('option');
+  optNone.value='';
+  optNone.textContent='-- Unbound (Inherit Last Used) --';
+  select.appendChild(optNone);
+
+  let hasMatch=false;
+  workspaces.forEach(ws=>{
+    const opt=document.createElement('option');
+    opt.value=ws.path;
+    opt.textContent=`${ws.name||ws.path} (${ws.path})`;
+    if(boundWs&&ws.path===boundWs){
+      opt.selected=true;
+      hasMatch=true;
+    }
+    select.appendChild(opt);
+  });
+
+  const optCustom=document.createElement('option');
+  optCustom.value='__custom__';
+  optCustom.textContent='Custom Path...';
+  if(boundWs&&!hasMatch){
+    optCustom.selected=true;
+  }
+  select.appendChild(optCustom);
+  formGroup.appendChild(select);
+
+  // Custom path input
+  const customInput=document.createElement('input');
+  customInput.type='text';
+  customInput.placeholder='/workspace/projects/...';
+  customInput.value=boundWs&&!hasMatch?boundWs:'';
+  customInput.style.cssText=`padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;outline:none;display:${(boundWs&&!hasMatch)||select.value==='__custom__'?'block':'none'};`;
+  formGroup.appendChild(customInput);
+
+  select.onchange=()=>{
+    customInput.style.display=select.value==='__custom__'?'block':'none';
+    if(select.value==='__custom__') customInput.focus();
+  };
+
+  modal.appendChild(formGroup);
+
+  // Button actions
+  const actions=document.createElement('div');
+  actions.style.cssText='display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:6px;';
+
+  const cancelBtn=document.createElement('button');
+  cancelBtn.type='button';
+  cancelBtn.textContent='Cancel';
+  cancelBtn.style.cssText='padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:13px;';
+  cancelBtn.onclick=()=>overlay.remove();
+  actions.appendChild(cancelBtn);
+
+  if(boundWs){
+    const unlinkBtn=document.createElement('button');
+    unlinkBtn.type='button';
+    unlinkBtn.textContent='Unlink';
+    unlinkBtn.title='Remove workspace binding from this project';
+    unlinkBtn.style.cssText='padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--error, #e94560);cursor:pointer;font-size:13px;';
+    unlinkBtn.onclick=async()=>{
+      try{
+        await api('/api/projects/rename',{
+          method:'POST',
+          body:JSON.stringify({
+            project_id:proj.project_id,
+            name:proj.name,
+            default_workspace:null
+          })
+        });
+        proj.default_workspace=null;
+        overlay.remove();
+        await renderSessionList();
+        showToast('Workspace unlinked from "'+proj.name+'"');
+      }catch(e){
+        showToast('Unlink failed: '+(e.message||e));
+      }
+    };
+    actions.appendChild(unlinkBtn);
+  }
+
+  const saveBtn=document.createElement('button');
+  saveBtn.type='button';
+  saveBtn.textContent='Save & Bind';
+  saveBtn.style.cssText='padding:7px 16px;border-radius:6px;border:none;background:var(--accent, #4285f4);color:#fff;cursor:pointer;font-size:13px;font-weight:500;';
+  saveBtn.onclick=async()=>{
+    let targetPath=select.value==='__custom__'?customInput.value.trim():select.value.trim();
+    if(!targetPath) targetPath=null;
+    try{
+      await api('/api/projects/rename',{
+        method:'POST',
+        body:JSON.stringify({
+          project_id:proj.project_id,
+          name:proj.name,
+          default_workspace:targetPath
+        })
+      });
+      proj.default_workspace=targetPath;
+      overlay.remove();
+      // If current session is empty, switch immediately to the bound workspace
+      if(targetPath&&S.session&&(!S.messages||S.messages.length===0)){
+        if(typeof switchToWorkspace==='function'){
+          void switchToWorkspace(targetPath,proj.name);
+        }
+      }
+      await renderSessionList();
+      const wsFriendly=targetPath?(typeof getWorkspaceFriendlyName==='function'?getWorkspaceFriendlyName(targetPath):targetPath):'none';
+      showToast(targetPath?'Bound "'+proj.name+'" to '+wsFriendly:'Workspace cleared');
+    }catch(e){
+      showToast('Save failed: '+(e.message||e));
+    }
+  };
+  actions.appendChild(saveBtn);
+
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+
+  overlay.onclick=e=>{
+    if(e.target===overlay) overlay.remove();
+  };
+
+  document.body.appendChild(overlay);
 }
 
 // Global Escape handler for batch select mode

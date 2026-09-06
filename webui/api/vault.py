@@ -69,6 +69,12 @@ def infer_space_from_workspace(workspace_path: Optional[Path] = None) -> str:
     for parent in [p, *p.parents]:
         if parent.parent and parent.parent.name in ("projects", "spaces", "workspaces"):
             return parent.name
+    try:
+        vault_dir = get_vault_dir(p)
+        if (vault_dir / "spaces" / p.name).is_dir():
+            return p.name
+    except Exception:
+        pass
     return "global"
 
 def get_vault_dir(workspace_path: Optional[Path] = None) -> Path:

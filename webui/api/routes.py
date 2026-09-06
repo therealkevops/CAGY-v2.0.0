@@ -14629,6 +14629,16 @@ def handle_post(handler, parsed) -> bool:
             handler, workspace_prev_session_id, emit_error=False
         ):
             workspace_prev_session_id = None
+        # Option A: If project_id is provided and the project has a bound default_workspace,
+        # prefer it when workspace is not explicitly passed or is merely inherited from prev session.
+        req_project_id = body.get("project_id")
+        if req_project_id and (not body.get("workspace") or body.get("workspace_inherited_from_prev_session")):
+            for p in load_projects():
+                if p.get("project_id") == req_project_id and p.get("default_workspace"):
+                    body["workspace"] = p["default_workspace"]
+                    body["workspace_inherited_from_prev_session"] = False
+                    workspace_prev_session_id = None
+                    break
         try:
             workspace = _resolve_new_session_workspace(body, workspace_prev_session_id)
         except (TypeError, ValueError) as e:
@@ -16565,6 +16575,14 @@ def handle_post(handler, parsed) -> bool:
             )
         try:
             s.project_id = target_pid
+            if target_pid and body.get("sync_workspace"):
+                target_p = next((p for p in load_projects() if p["project_id"] == target_pid), None)
+                if target_p and target_p.get("default_workspace"):
+                    try:
+                        from api.workspace import resolve_trusted_workspace
+                        s.workspace = str(resolve_trusted_workspace(target_p["default_workspace"]))
+                    except Exception:
+                        s.workspace = target_p["default_workspace"]
             s.save()
         finally:
             _move_lock.release()
@@ -16599,20 +16617,30 @@ def handle_post(handler, parsed) -> bool:
             from api.profiles import _PROFILE_ID_RE
             if not _PROFILE_ID_RE.fullmatch(_requested_profile):
                 return bad(handler, "invalid profile")
+        raw_ws = body.get("default_workspace")
+        if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
+            try:
+                from api.workspace import resolve_trusted_workspace
+                default_ws = str(resolve_trusted_workspace(raw_ws.strip()))
+            except Exception:
+                default_ws = raw_ws.strip()
+        else:
+            default_ws = None
         proj = {
             "project_id": uuid.uuid4().hex[:12],
             "name": name,
             "color": color,
             "profile": _requested_profile or get_active_profile_name() or 'default',
+            "default_workspace": default_ws,
             "created_at": time.time(),
         }
         projects.append(proj)
         save_projects(projects)
         return j(handler, {"ok": True, "project": proj})
 
-    if parsed.path == "/api/projects/rename":
+    if parsed.path in ("/api/projects/rename", "/api/projects/update"):
         try:
-            require(body, "project_id", "name")
+            require(body, "project_id")
         except ValueError as e:
             return bad(handler, str(e))
         import re as _re
@@ -16623,16 +16651,27 @@ def handle_post(handler, parsed) -> bool:
         )
         if not proj:
             return bad(handler, "Project not found", 404)
-        # #1614: a project can only be renamed by the profile that owns it.
+        # #1614: a project can only be renamed/updated by the profile that owns it.
         active_profile = get_active_profile_name()
         if not _profiles_match(proj.get("profile"), active_profile):
             return bad(handler, "Project not found", 404)
-        proj["name"] = body["name"].strip()[:128]
+        if "name" in body and body["name"]:
+            proj["name"] = body["name"].strip()[:128]
         if "color" in body:
             color = body["color"]
             if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
                 return bad(handler, "Invalid color format")
             proj["color"] = color
+        if "default_workspace" in body:
+            raw_ws = body.get("default_workspace")
+            if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
+                try:
+                    from api.workspace import resolve_trusted_workspace
+                    proj["default_workspace"] = str(resolve_trusted_workspace(raw_ws.strip()))
+                except Exception:
+                    proj["default_workspace"] = raw_ws.strip()
+            else:
+                proj["default_workspace"] = None
         save_projects(projects)
         return j(handler, {"ok": True, "project": proj})
 
