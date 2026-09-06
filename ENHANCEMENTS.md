@@ -27,6 +27,9 @@ The official **Google Antigravity (AGY)** engine provides a powerful foundation 
 | **Session Archiving** | Client-side browser download blob only. | **Sandboxed Workspace Destination Selector**: Direct `.md`/`.json`/`.html` export + 1-click Workspace Browser. |
 | **Tool Extensibility** | Static `mcp.json` editing via text editor. | **Unified MCP Hub** (`/mcp`): Live JSON-RPC latency probes and quick-connect presets. |
 | **Subagent Telemetry** | Raw JSONL file logs on disk. | **Subagent Swarms DAG** (`/swarm`): Interactive hierarchy tree, step-by-step logs, and transcript viewer. |
+| **Multi-Project Memory Partitioning** | Monolithic prompt or flat files prone to cross-topic context contamination. | **Space-Scoped Vault Containers** (`spaces/<id>/`): Project-partitioned ADRs and architecture, dynamic workspace inference, and isolated Turn-0 rule compilation. |
+| **Project ⇄ Workspace Alignment** | Disconnected concepts; chat labels have no directory anchors or execution context. | **Project ⇄ Workspace Binding**: 1-click binding of chat projects to directory roots, auto-switching composer & vault space on new chat. |
+| **Context Diet & Self-Healing Memory** | Unbounded context growth and broken markdown links when files move. | **Tiered Context Diet Engine & Self-Healing Linter**: Auto-summarizes deep archives at 20 KB limit and heals broken wikilinks upon note rename. |
 
 ---
 
@@ -215,6 +218,96 @@ Upstream AGY limits session export to browser Blob downloads, forcing developers
 - **Unified MCP Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets (Docker, GitHub, Postgres, SQLite, Puppeteer) and live JSON-RPC connection probes.
 - **Subagents Swarm Visualizer (`/swarm`)**: Real-time DAG hierarchy viewer tracking hierarchical agent relationships, execution logs, and transcripts.
 - **WCAG AA High-Contrast Accessibility**: Solid accent buttons utilize dedicated high-contrast CSS variables (`--accent-contrast`) ensuring legibility across light and dark modes.
+
+---
+
+## 9. Multi-Space Knowledge Vault Architecture & Tiered Context Diet Engine
+
+In multi-project repositories or multi-repository workflows, a single flat knowledge vault quickly causes architectural decision (ADR) collisions, bloated prompt injection, and cross-project context pollution (e.g. Kubernetes cluster notes leaking into a React frontend session). Furthermore, as vaults grow over dozens of sessions, unconstrained Turn-0 prompt injection risks ballooning token costs and pushing models past optimal retrieval thresholds.
+
+### 9.1 Multi-Space Vault Partitioning (`knowledge/spaces/<space_id>/`)
+CAGY partitions project-specific knowledge into isolated space containers while preserving global user profile conventions:
+- **Global User Layer (`knowledge/user/`)**: Developer profile, tone preferences, system-wide conventions, and global habits remain accessible across all projects.
+- **Space Containers (`knowledge/spaces/<space_id>/`)**: Project-isolated ADRs (`decisions/adr_XXX_<name>.md`), architecture topologies, and domain notes.
+- **Dynamic Space Inference (`infer_space_from_workspace`)**: The engine automatically resolves the active space ID from the active workspace path (e.g., `/workspace/projects/cka-kb` maps to space `cka-kb` if present, falling back to directory name matching or `global`).
+- **Space-Isolated Sequential ADR Derivation**: Sequential ADR numbers (`adr_001`, `adr_002`, etc.) are calculated strictly per-space, preventing number collisions across projects.
+
+```text
+/workspace/knowledge/
+├── user/                                # Global developer profile & conventions (All sessions)
+│   ├── profile.md
+│   └── conventions.md
+└── spaces/                              # Project-partitioned spaces
+    ├── cka-kb/                          # Bound to /workspace/projects/cka-kb
+    │   ├── decisions/adr_001_...md
+    │   ├── architecture/
+    │   └── notes/
+    └── web-app/                         # Bound to /workspace/projects/web-app
+        ├── decisions/adr_001_...md
+        └── architecture/
+```
+
+### 9.2 Hermetic Turn-0 Space-Scoped Rule Compilation
+Before every agent turn, `run_agent.py` and `webui/api/vault.py` compile only `knowledge/user/*.md` plus `knowledge/spaces/<active_space>/**/*.md` into `.gemini/rules/knowledge_vault.md`.
+- **Hermetic Isolation**: An agent working in Project A is never burdened or distracted by architectural choices, schemas, or dependencies from Project B.
+- **Zero Cross-Contamination**: Eliminates hallucinated cross-project imports and architectural contradictions.
+
+### 9.3 Tiered Context Diet Engine
+To prevent prompt bloat while preserving architectural fidelity as vaults expand to hundreds of notes, CAGY implements an automated **20 KB Tiered Context Diet Guardrail**:
+- **Tier 1 (High Priority - Verbatim)**: Developer profile, workflow conventions, and primary architecture overviews are always injected in full text.
+- **Tier 2 (Decisions & Historical Notes - Smart Summarization)**: When the total compiled space knowledge exceeds 20 KB, deep archives and older ADRs are automatically condensed into compact single-line decision registers:
+  ```markdown
+  - [ADR-001](adr_001_cagy_fork.md): Fork upstream Hermes WebUI into CAGY containerized runtime with zero host contamination.
+  - [ADR-002](adr_002_multi_arch.md): Build dual linux/amd64 and linux/arm64 images using Buildx with native uv binaries.
+  ```
+  Active and recent decisions retain their full body text.
+- **Constant Turn-0 Footprint**: Guarantees that agent prompt overhead remains between ~600 and 1,200 tokens regardless of vault size, sustaining an ultra-high Memory Leverage Ratio (MLR > 15x).
+
+### 9.4 Self-Healing Wikilink Linter & Refactoring Engine
+When notes are moved, renamed, or migrated between spaces, broken links can degrade graph navigation:
+- **Automated Health Linting (`/api/vault/lint`)**: Scans all notes across spaces for missing references, orphan notes, and malformed tags.
+- **Heuristic Self-Healing (`/api/vault/heal`)**: Suggests and applies fuzzy-matched repairs for broken targets.
+- **Bi-Directional Link Refactoring**: Moving or renaming a note automatically cascades through every referencing document, refactoring `[[old-slug]]` to `[[new-slug]]` without human intervention.
+
+### 9.5 Collapsible & Resizable Navigation Panels
+To keep document navigation effortless even with extensive `#tag` vocabularies and hundreds of notes:
+- **Left Navigation Tag Drawer**: Collapsible and drag-resizable split pane in the vault rail, preventing vertical overflow.
+- **Document Sidebar Relations**: Collapsible Tags and Backlinks panels in the note inspector, allowing users to collapse secondary metadata and focus on reading or editing notes.
+
+---
+
+## 10. Project ⇄ Workspace Binding & Unified Second Brain Alignment
+
+Historically in developer tooling, "Projects" (chat labels), "Workspaces" (filesystem directories), and "Vault Spaces" (knowledge containers) exist as disconnected silos. Developers were forced to manually keep session directories, chat project chips, and documentation spaces synchronized.
+
+### 10.1 Unified 3-Way Architecture (Option A)
+CAGY introduces native **Project ⇄ Workspace Binding**:
+```text
+  ┌──────────────────────────────────────────────────────────────┐
+  │                 Unified Second Brain Binding                 │
+  └──────────────────────────────────────────────────────────────┘
+                               │
+       ┌───────────────────────┼───────────────────────┐
+       ▼                       ▼                       ▼
+┌──────────────┐       ┌──────────────┐       ┌─────────────────┐
+│ Chat Project │ <===> │  Filesystem  │ <===> │ Knowledge Vault │
+│ (Session Tag)│       │  Workspace   │       │   Space ID      │
+└──────────────┘       └──────────────┘       └─────────────────┘
+```
+- **Project Schema (`projects.json`)**: Each project can specify a `default_workspace` (e.g. `{"id": "cka-kb", "name": "CKA KB", "default_workspace": "/workspace/projects/cka-kb"}`).
+- **Visual Status Badges**: Projects with bound workspaces display an inline folder badge (`📁`) directly on their project chip in the sidebar, with hover tooltips displaying the canonical directory path.
+
+### 10.2 Interactive Workspace Binding Modal
+Developers can bind, update, or unlink workspaces at any time without leaving the interface:
+- **Context Menu Integration**: Right-click any project chip in the sidebar and select **`📁 Workspace`**.
+- **1-Click Workspace Picker**: Select an existing active workspace from the dropdown or type an arbitrary absolute path.
+- **Validation & Creation**: Live validation verifies whether the target directory exists inside the container or offers to bind new workspace directories immediately.
+- **Unlink Support**: 1-click **Unbind** button restores project to a general workspace-agnostic tag.
+
+### 10.3 Automatic Workspace & Vault Adoption on New Sessions
+- **Context-Aware `+ New Chat`**: Creating a new chat while a bound project is selected automatically configures the session's workspace directory to the project's default workspace.
+- **Empty Session Auto-Alignment**: Switching between project chips while in an empty, unstarted chat session dynamically rebinds the session's workspace to match the selected project.
+- **Automatic Vault Space Synchronization**: Binding a workspace automatically routes all subsequent `/memorize` calls and Turn-0 rule compilations to the corresponding `knowledge/spaces/<space_id>/` container.
 
 ---
 

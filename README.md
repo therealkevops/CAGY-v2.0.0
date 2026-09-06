@@ -20,8 +20,10 @@ By encapsulating both the WebUI server and the native Linux `agy` CLI binary ins
 
 - **Sandboxed Agent Execution & Blast Radius Control**: Autonomous terminal commands, script executions, package installs, and agent tool calls run safely isolated inside the container's Linux namespace.
 - **Native Antigravity Engine**: Uses the official Google Antigravity Linux binary (`agy`) with automated lifecycle management.
-- **Obsidian-Style Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) with bi-directional `[[wikilinks]]`, editor autocomplete, neighborhood depth filtering (`[ All | 1-Hop | 2-Hop ]`), `#tag` extraction, backlinks resolution, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
-- **Agent-Assisted Memory & Auto-Learning (`/memorize`)**: 1-click `🧠 Memorize` message actions and `/memorize` slash command that auto-categorize insights into ADRs (`decisions/adr_XXX`), user preferences, and architecture notes, auto-link existing entities with `[[wikilinks]]`, and sync to `.gemini/rules/` before every conversation turn.
+- **Project ⇄ Workspace Binding**: Seamless 1-click binding of chat projects to filesystem workspace directories with inline folder badges (`📁`), context-menu management, and automatic workspace adoption on `+ New Chat`.
+- **Multi-Space Knowledge Vault & 2D Graph (`/vault`)**: Modular markdown second brain in `./knowledge/` (`/workspace/knowledge/`) partitioned into project containers (`knowledge/spaces/<space_id>/`) with dynamic workspace inference, bi-directional `[[wikilinks]]`, editor autocomplete, neighborhood depth filtering (`[ All | 1-Hop | 2-Hop ]`), collapsible tag navigation, and an interactive 2D physics force-directed graph canvas. 100% interoperable with the desktop Obsidian application.
+- **Tiered Context Diet Engine & Self-Healing Links**: Automated 20 KB context budget guardrail that auto-summarizes deep archives while preserving verbatim user profiles and active architecture, paired with a self-healing link linter and bi-directional link refactoring.
+- **Agent-Assisted Memory & Auto-Learning (`/memorize`)**: 1-click `🧠 Memorize` message actions and `/memorize` slash command that auto-categorize insights into ADRs (`decisions/adr_XXX`), user preferences, and architecture notes, auto-link existing entities with `[[wikilinks]]`, and sync space-scoped notes to `.gemini/rules/` before every conversation turn.
 - **Modern Composer Slash Popover (`/`)**: Floating inline autocomplete popover with Lucide SVG icons, category pills (`Workflow`, `Memory`, `Tools`, `Agents`, `System`, `Session`), and argument guides for all Antigravity signature workflows (`/plan`, `/goal`, `/grill-me`, `/boost`, `/learn`, `/browser`, `/swarm`, `/artifacts`).
 - **Subagent Swarms Visualizer (`/swarm`)**: Real-time DAG hierarchy viewer, execution timeline, and inspector for delegated multi-agent subtasks (`invoke_subagent`).
 - **Model Context Protocol (MCP) Hub (`/mcp`)**: Native manager for `mcp.json` with one-click presets for GitHub, Docker, Fetch, Memory, PostgreSQL, SQLite, and Puppeteer servers with live latency probes.
@@ -90,7 +92,8 @@ Open **[http://localhost:8989](http://localhost:8989)** in your browser.
 | :--- | :--- | :--- |
 | **Chat & Pairing Canvas** | `/chat` (Default) | Real-time streaming conversation, syntax highlighting, and inline tool inspection. |
 | **Inline Slash Popover** | `/` in Composer | Rich floating command popover with icons, category pills, and signature workflows. |
-| **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph with 1-Hop/2-Hop depth filtering and tag search. |
+| **Project ⇄ Workspace Binding** | Project Chip Right-Click (`📁 Workspace`) | Bind chat projects directly to filesystem workspace directories with automatic session workspace alignment. |
+| **Knowledge Vault & 2D Graph** | `/vault` or Left Rail | Interactive force-directed knowledge graph with space filtering, 1-Hop/2-Hop depth filtering, and collapsible tag navigation. |
 | **Token Economics & Memory ROI** | `/analytics` or Left Rail | Real-time context accumulation curves, memory leverage (MLR), avoided context debt, and model cost comparisons. |
 | **Agent Auto-Memorization** | `/memorize` or `🧠` Button | Instantly extract user preferences, conventions, or ADRs into the Knowledge Vault. |
 | **Subagent Swarms** | `/swarm` or Left Rail | Visual DAG tree and step-by-step transcript timeline for autonomous subagents. |
@@ -112,40 +115,42 @@ CAGY features an integrated **Obsidian-compatible Knowledge Vault** at `/workspa
 graph LR
     subgraph Knowledge Vault on Disk
         U["knowledge/user/<br>profile.md, conventions.md"]
+        S["knowledge/spaces/<space_id>/<br>decisions/adr_XXX, arch/"]
         A["knowledge/architecture/<br>cagy_unified.md"]
-        D["knowledge/decisions/<br>adr_001_cagy_fork.md"]
     end
 
     subgraph 2D Graph & Engine
         G["Force-Directed 2D Graph Canvas (/vault)"]
-        M["Engine: Wikilinks & Backlinks"]
-        U & A & D <--> G
-        U & A & D <--> M
+        M["Engine: Space Filter, Wikilinks & Backlinks"]
+        U & S & A <--> G
+        U & S & A <--> M
     end
 
     subgraph Native Antigravity Rules
-        R[".gemini/rules/knowledge_vault.md"]
+        R[".gemini/rules/knowledge_vault.md<br>(Space-Scoped & Context-Dieted)"]
         M -->|Auto-Compile| R
         R --> GCLI["Gemini (agy CLI Engine)"]
     end
 ```
 
 ### 1. Vault Directory Taxonomy
-- **`knowledge/user/`**: Developer profile, tone preferences, coding conventions, and workflow rules.
+- **`knowledge/user/`**: Developer profile, tone preferences, coding conventions, and workflow rules (Global across all projects).
 - **`knowledge/architecture/`**: System topology, container execution models, cloud infrastructure, and network design.
 - **`knowledge/decisions/`**: Architecture Decision Records (`adr_XXX_<name>.md`) tracking choices, trade-offs, and deprecations.
 - **`knowledge/notes/`**: Research topics, conceptual summaries, and reference guides.
+- **`knowledge/spaces/<space_id>/`**: Project-scoped containers (`decisions/adr_XXX`, `architecture/`, `notes/`) bound to specific workspaces for isolated context recall.
 
 ### 2. Bi-Directional Wikilinks & 2D Force-Directed Graph (`/vault`)
 - Notes use standard Obsidian `[[Note Name]]`, `[[folder/note]]`, or `[[target|Alias]]` links.
 - The **2D Graph Canvas** simulates a real-time particle-spring physics layout:
+  - Space-filtering dropdown to isolate project subgraphs or view the global vault.
   - Node sizes scale dynamically with connection density (in-degree + out-degree).
   - Category-based color coding (`user`: blue, `architecture`: cyan, `decisions`: purple, `notes`: green).
   - Hover glow, pan, mouse-wheel zoom, and aspect-ratio synchronization preventing distortion when resizing sidebars.
   - Clicking any note or graph node opens it directly in the right-sidebar Markdown editor.
 
 ### 3. Agent-Assisted Memorization (`/memorize` & `🧠` Button)
-- **`/memorize <insight>`**: Automatically classifies the takeaway into the appropriate directory, assigns sequential ADR numbers for decisions, synthesizes wikilinks to matching existing vault entities, and recompiles native rules.
+- **`/memorize <insight>`**: Automatically classifies the takeaway into the active space (`spaces/<space_id>/decisions/adr_XXX`), derives sequential ADR numbers per space, synthesizes wikilinks to matching existing vault entities, and recompiles native rules.
 - **`/memorize` (No Arguments)**: Prompts Gemini to synthesize recent conversation turns into atomic vault notes.
 - **1-Click Message Action**: Click the `🧠` bookmark icon on any assistant message to immediately extract and persist the insight into the vault with toast feedback.
 - **Pre-Turn Rule Sync**: The CLI runner (`run_agent.py`) re-compiles `.gemini/rules/knowledge_vault.md` before every conversation turn, ensuring the model retains full context across all sessions.
@@ -161,10 +166,22 @@ graph LR
 - **Node Spacing & Forces Controls (`[ Compact | Spacious | Relaxed ]`)**: Adjust 2D graph spread in real-time. Features softened Coulomb repulsion, dynamic link spring distance (160px–400px), a hard collision buffer preventing node overlap, pill-backdropped text labels for crystal-clear legibility, and quick Zoom (`+` / `-`) action buttons.
 - **Tag Extraction & Interactive Filtering**: The backend automatically parses `#tag` tokens across all markdown files (strictly excluding markdown headings). The vault sidebar renders interactive tag chips (`[All]`, `[#architecture]`, etc.) for 1-click filtering, and the vault search bar supports direct `#tag` lookups. Tags also display inside the right-panel note relations footer.
 
-### 5. Obsidian Desktop Interoperability
+### 5. Multi-Space Partitioning & Dynamic Workspace Inference
+- **Space Isolation (`knowledge/spaces/<space_id>/`)**: Separate project decisions, architecture, and notes to prevent cross-topic context contamination.
+- **Dynamic Workspace Resolution**: `infer_space_from_workspace` automatically matches the active filesystem workspace path to its corresponding vault space container.
+- **Space-Scoped Rule Compilation**: Pre-turn synchronization compiles only global developer conventions (`knowledge/user/*.md`) plus the active space's notes (`knowledge/spaces/<space_id>/**/*.md`) into `.gemini/rules/knowledge_vault.md`.
+- **Per-Space ADR Sequencing**: Each space maintains its own autonomous ADR progression (`adr_001`, `adr_002`...) without collisions.
+
+### 6. Tiered Context Diet Engine & Self-Healing Links
+- **Automated 20 KB Guardrail**: When compiled space knowledge exceeds 20 KB, historical ADRs and deep archives are automatically condensed into compact single-line decision summaries while preserving user conventions and active architecture in full text.
+- **Constant Turn-0 Footprint**: Keeps prompt injection lean (~600–1,200 tokens) even across large codebases, sustaining a high Memory Leverage Ratio (MLR > 15x).
+- **Self-Healing Linter & Refactoring Engine (`/api/vault/lint`, `/api/vault/heal`)**: Scans for dangling links and orphan notes; renaming or moving notes automatically cascades bi-directional link refactoring across all referencing documents.
+- **Collapsible & Resizable Navigation Panels**: Left rail tag drawer and document sidebar tags/backlinks panes can be collapsed or resized to optimize vertical reading room.
+
+### 7. Obsidian Desktop Interoperability
 Because all notes are saved as plain UTF-8 Markdown on the host filesystem under `./knowledge/`, you can open this folder directly as an existing vault in the official **[Obsidian](https://obsidian.md)** desktop app on macOS/Windows/Linux.
 
-### 6. Token Economics & Memory ROI Dashboard (`/analytics`)
+### 8. Token Economics & Memory ROI Dashboard (`/analytics`)
 Inspect prompt token cost efficiency and the exact leverage of your Knowledge Vault:
 - **Real-Time Token & Spend Tracking**: Instant USD cost estimations based on official API pricing tiers ($0.075/1M input, $0.30/1M output on Gemini 3.8 Flash), generation throughput (tok/s), and active prompt size.
 - **Context Accumulation Curve**: Visual SVG growth graph plotting prompt tokens per conversation turn against the **Context Debt Threshold (25,000 tokens)**. Hover over turn nodes to view prompt size, response size, and generation speed.
@@ -336,10 +353,12 @@ We provide two update pathways:
 │   │   └── antigravity-cli/brain/  # Subagent transcripts and artifacts
 │   └── system_certs.pem   # Exported host SSL root certificates
 ├── knowledge/             # Obsidian-compatible Knowledge Vault & Second Brain
-│   ├── user/              # Developer profile and coding conventions
+│   ├── user/              # Developer profile and coding conventions (Global)
 │   ├── architecture/      # System architecture and container topologies
 │   ├── decisions/         # Architecture Decision Records (ADRs)
-│   └── notes/             # Research notes and domain reference guides
+│   ├── notes/             # Research notes and domain reference guides
+│   └── spaces/            # Project-partitioned spaces (e.g. spaces/cka-kb/)
+│       └── <space_id>/    # Project ADRs, architecture, and domain notes
 ├── skills/                # Antigravity domain skills
 │   ├── agy-webui-bridge/  # CLI bridge contract & compatibility validator
 │   └── knowledge-vault/   # Knowledge Vault authoring & protocol guidelines
