@@ -239,6 +239,71 @@ class TestSecondBrainEfficacy(unittest.TestCase):
         self.assertTrue(lint_res["ok"])
         self.assertEqual(lint_res["broken_wikilinks_count"], 0)
 
+    def test_conversational_recall_search_and_metadata(self):
+        """Verify conversational recall search across spaces, scoring, snippets, and slash command bindings."""
+        from api.vault import search_vault
+
+        # 1. Search for 'fastapi' in vault - should match ADR-001 in space B
+        search_res = search_vault(self.vault_dir, query="fastapi")
+        self.assertTrue(search_res["ok"])
+        self.assertEqual(search_res["total_matches"], 1)
+        match = search_res["results"][0]
+        self.assertIn("fastapi", match["id"])
+        self.assertEqual(match["space"], "cloud-telemetry")
+        self.assertGreater(len(match["snippets"]), 0)
+        self.assertTrue(any("<mark>" in s["highlighted"].lower() for s in match["snippets"]))
+
+        # 2. Search for 'etcd' in vault - should match ADR-001 in space A
+        search_etcd = search_vault(self.vault_dir, query="etcd")
+        self.assertTrue(search_etcd["ok"])
+        self.assertEqual(search_etcd["total_matches"], 1)
+        self.assertEqual(search_etcd["results"][0]["space"], "cka-kb")
+
+        # 3. Verify slash command and palette bindings in static assets
+        commands_js = (WEBUI_DIR / "static" / "commands.js").read_text(encoding="utf-8")
+        slash_palette_js = (WEBUI_DIR / "static" / "slash_palette.js").read_text(encoding="utf-8")
+
+        self.assertIn("name:'recall'", commands_js)
+        self.assertIn("fn:cmdRecall", commands_js)
+        self.assertIn("async function cmdRecall", commands_js)
+        self.assertIn("function insertVaultNoteIntoComposer", commands_js)
+        self.assertIn("cmd: '/recall'", slash_palette_js)
+        self.assertIn("Recall from Knowledge Vault", slash_palette_js)
+
+    def test_obsidian_quick_switcher_and_editor_hotkeys(self):
+        """Verify Obsidian Quick Switcher modal, keyboard navigation, and Markdown Cmd+S editor hotkeys."""
+        index_html = (WEBUI_DIR / "static" / "index.html").read_text(encoding="utf-8")
+        vault_js = (WEBUI_DIR / "static" / "vault.js").read_text(encoding="utf-8")
+        workspace_js = (WEBUI_DIR / "static" / "workspace.js").read_text(encoding="utf-8")
+        ui_js = (WEBUI_DIR / "static" / "ui.js").read_text(encoding="utf-8")
+        messages_js = (WEBUI_DIR / "static" / "messages.js").read_text(encoding="utf-8")
+
+        # 1. Quick Switcher Modal in HTML
+        self.assertIn('id="vaultQuickSwitcherModal"', index_html)
+        self.assertIn('id="vaultQuickSwitcherInput"', index_html)
+        self.assertIn('id="vaultQuickSwitcherList"', index_html)
+        self.assertIn('openVaultQuickSwitcher()', index_html)
+
+        # 2. Quick Switcher Functions and Cmd+O in vault.js
+        self.assertIn("function openVaultQuickSwitcher", vault_js)
+        self.assertIn("function closeVaultQuickSwitcher", vault_js)
+        self.assertIn("function filterVaultQuickSwitcher", vault_js)
+        self.assertIn("handleVaultQuickSwitcherKeydown", vault_js)
+        self.assertIn("e.key === 'o' || e.key === 'O'", vault_js)
+
+        # 3. Markdown Editor Cmd+S and Escape hotkeys in workspace.js
+        self.assertIn("function handlePreviewEditKeydown", workspace_js)
+        self.assertIn("e.key === 's' || e.key === 'S'", workspace_js)
+        self.assertIn("e.key === 'Escape'", workspace_js)
+
+        # 4. Vault protocol handling in ui.js and messages.js
+        self.assertIn("vault:\\/\\/", ui_js)
+        self.assertIn("vault-insert", ui_js)
+        self.assertIn("a[href^=\"#vault=\"]", ui_js)
+        self.assertIn("a[href^=\"#vault-insert=\"]", ui_js)
+        self.assertIn("vault:\\/\\/", messages_js)
+        self.assertIn("vault-insert", messages_js)
+
 
 if __name__ == "__main__":
     unittest.main()

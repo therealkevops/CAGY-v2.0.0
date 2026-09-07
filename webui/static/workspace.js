@@ -1090,10 +1090,8 @@ async function toggleEditMode(){
     $('previewEditArea').style.display='';
     if(_previewCurrentMode==='code') $('previewCode').style.display='none';
     else $('previewMd').style.display='none';
-    // Escape cancels the edit without saving
-    $('previewEditArea').onkeydown=e=>{
-      if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
-    };
+    // Escape cancels the edit without saving; Cmd+S / Ctrl+S saves
+    $('previewEditArea').onkeydown=handlePreviewEditKeydown;
     $('previewEditArea').focus();
   }
   updateEditBtn();
@@ -1101,6 +1099,19 @@ async function toggleEditMode(){
 
 let _previewRawContent = '';  // raw text for md files (to populate editor)
 let _previewRawContentPath = '';  // path that _previewRawContent belongs to (#3378 force-render cache guard)
+
+function handlePreviewEditKeydown(e){
+  if((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')){
+    e.preventDefault();
+    toggleEditMode();
+    return;
+  }
+  if(e.key === 'Escape'){
+    e.preventDefault();
+    cancelEditMode();
+    return;
+  }
+}
 
 function cancelEditMode(){
   // Discard changes and return to read-only view
@@ -1110,6 +1121,19 @@ function cancelEditMode(){
   else $('previewMd').style.display='';
   _previewDirty=false;
   updateEditBtn();
+}
+
+// Global hotkey: Cmd+S / Ctrl+S saves when editor is active
+if(typeof window !== 'undefined'){
+  window.addEventListener('keydown', e => {
+    if((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')){
+      const editArea = document.getElementById('previewEditArea');
+      if(editArea && editArea.style.display !== 'none'){
+        e.preventDefault();
+        toggleEditMode();
+      }
+    }
+  });
 }
 
 // Map file extensions to Prism.js language identifiers.
@@ -1250,9 +1274,7 @@ async function openFile(path, opts={}){
         if($('previewCode')) $('previewCode').style.display = 'none';
         if($('previewMd')) $('previewMd').style.display = 'none';
         $('previewEditArea').focus();
-        $('previewEditArea').onkeydown=e=>{
-          if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
-        };
+        $('previewEditArea').onkeydown=handlePreviewEditKeydown;
         updateEditBtn();
       }
     }catch(e){
@@ -1311,9 +1333,7 @@ async function openFile(path, opts={}){
         if($('previewCode')) $('previewCode').style.display = 'none';
         if($('previewMd')) $('previewMd').style.display = 'none';
         $('previewEditArea').focus();
-        $('previewEditArea').onkeydown=e=>{
-          if(e.key==='Escape'){e.preventDefault();cancelEditMode();}
-        };
+        $('previewEditArea').onkeydown=handlePreviewEditKeydown;
         updateEditBtn();
       }
   }catch(e){

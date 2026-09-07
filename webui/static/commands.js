@@ -10,6 +10,7 @@ const COMMANDS=[
   {name:'learn',            desc:'Antigravity: Persist behavioral guidelines & conventions', fn:cmdPassToAgent, arg:'[rule/correction]'},
   {name:'memorize',         desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
   {name:'vault',            desc:'Antigravity: Open Knowledge Vault & Graph memory panel', fn:cmdVault, noEcho:true},
+  {name:'recall',           desc:'Antigravity: Recall and search Knowledge Vault notes & ADRs', fn:cmdRecall, arg:'[query]', noEcho:true},
   {name:'analytics',        desc:'Antigravity: Inspect prompt token economics and memory efficiency', fn:cmdAnalytics, noEcho:true},
   {name:'efficiency',       desc:'Antigravity: Alias for /analytics',                                  fn:cmdAnalytics, noEcho:true},
   {name:'browser',          desc:'Antigravity: Web browsing and URL content extraction', fn:cmdPassToAgent, arg:'[url or research query]'},
@@ -407,6 +408,110 @@ function cmdVault(){
   if(typeof switchPanel==='function'){
     switchPanel('vault', {fromRailClick:true});
   }
+}
+
+async function cmdRecall(args){
+  const query = String(args || '').trim();
+  if(!query){
+    const content = `### 🧠 Antigravity Knowledge Vault Recall\n\nSearch and summon relevant ADRs, architectural decisions, and note excerpts from across all spaces directly into your conversation.\n\n**Usage:**\n- \`/recall <topic or keyword>\`\n\n**Examples:**\n- \`/recall fastapi\`\n- \`/recall logging\`\n- \`/recall redis\`\n- \`/recall etcd\`\n\n> *Recall cards provide 1-click prompt injection (\`Insert into Prompt\`) and direct navigation into the [Knowledge Vault & Graph](vault://).*`;
+    S.messages.push({role:'assistant', content});
+    renderMessages();
+    return;
+  }
+
+  showToast(`Recalling "${query}" from Knowledge Vault...`);
+  try {
+    const res = await fetch(`/api/vault/search?q=${encodeURIComponent(query)}&content=1`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const results = (data && data.results) || [];
+
+    if(!results.length){
+      const content = `### 🧠 Knowledge Vault Recall: "${query}"\n\nNo matching notes or architectural decisions found in the vault.\n\n> *Tip: Try searching for a broader term, or explore all notes in the [Knowledge Vault & Graph](vault://).*`;
+      S.messages.push({role:'assistant', content});
+      renderMessages();
+      return;
+    }
+
+    const topResults = results.slice(0, 5);
+    let md = `### 🧠 Knowledge Vault Recall: "${query}"\n\nFound **${results.length}** matching note${results.length === 1 ? '' : 's'} across spaces:\n\n---\n\n`;
+
+    topResults.forEach((item, idx) => {
+      const spaceLabel = item.space ? `\`[${item.space}]\`` : '';
+      const tagsStr = (item.tags && item.tags.length) ? item.tags.map(t => `#${t}`).join(' ') : '';
+      const meta = [spaceLabel, tagsStr].filter(Boolean).join(' · ');
+
+      md += `#### ${idx + 1}. [${item.title}](vault://${item.path}) ${meta}\n`;
+      md += `📁 \`knowledge/${item.path}\`\n\n`;
+
+      if(item.snippets && item.snippets.length){
+        item.snippets.slice(0, 2).forEach(s => {
+          md += `> Line ${s.line}: ${s.text}\n`;
+        });
+        md += `\n`;
+      }
+
+      const firstSnippet = (item.snippets && item.snippets[0] && item.snippets[0].text) || '';
+      const payload = encodeURIComponent(JSON.stringify({
+        title: item.title,
+        path: item.path,
+        quote: firstSnippet
+      }));
+
+      md += `[📥 Insert into Prompt](vault-insert://${payload}) &nbsp;|&nbsp; [👁️ Open in Vault](vault://${item.path})\n\n---\n\n`;
+    });
+
+    if(results.length > 5){
+      md += `*> Showing top 5 of ${results.length} matches. Open [Knowledge Vault](vault://) for full search & 2D graph view.*`;
+    }
+
+    S.messages.push({role:'assistant', content: md.trim()});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to recall from Knowledge Vault: ${err.message}`});
+    renderMessages();
+  }
+}
+
+function insertVaultNoteIntoComposer(rawPayload){
+  let title = '';
+  let path = '';
+  let quote = '';
+  try {
+    const data = typeof rawPayload === 'object' ? rawPayload : JSON.parse(rawPayload);
+    title = data.title || '';
+    path = data.path || '';
+    quote = data.quote || '';
+  } catch(_){
+    path = String(rawPayload || '');
+    title = path.split('/').pop().replace(/\.md$/, '');
+  }
+
+  const ta = document.getElementById('msg') || (typeof $ === 'function' && $('msg'));
+  if(!ta) return;
+
+  const noteId = path.replace(/\.md$/, '');
+  const wikilink = `[[${noteId}|${title || noteId}]]`;
+  let snippetText = '';
+  if(quote){
+    snippetText = `> ${quote}\n\n`;
+  }
+  const insertion = `Regarding ${wikilink}:\n${snippetText}`;
+
+  if(ta.value && ta.value.trim()){
+    ta.value = ta.value.trim() + '\n\n' + insertion;
+  } else {
+    ta.value = insertion;
+  }
+
+  ta.focus();
+  if(typeof autoResize === 'function') autoResize();
+  if(typeof showToast === 'function') showToast(`Inserted reference to ${title || noteId} into prompt`, 2000);
+}
+
+if(typeof window !== 'undefined'){
+  window.cmdRecall = cmdRecall;
+  window.insertVaultNoteIntoComposer = insertVaultNoteIntoComposer;
 }
 
 function cmdAnalytics(){

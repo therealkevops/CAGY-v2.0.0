@@ -4529,6 +4529,22 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         return '#';
       }
     }
+    if(/^vault:\/\//i.test(href)){
+      try{
+        const rel=decodeURIComponent(href.replace(/^vault:\/\//i,'')).replace(/^knowledge\//,'');
+        return '#vault='+encodeURIComponent(rel);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault-insert:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^vault-insert:\/\//i,''));
+        return '#vault-insert='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
     if(!/^file:\/\//i.test(href)) return href;
     try{
       const path=decodeURIComponent(href.replace(/^file:\/\//i,''));

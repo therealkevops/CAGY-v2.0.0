@@ -2574,6 +2574,27 @@ document.addEventListener('click', e => {
     }catch(_){}
     return;
   }
+  const vaultLink=e.target.closest('a[href^="#vault="]');
+  if(vaultLink){
+    e.preventDefault();
+    const href=vaultLink.getAttribute('href')||'';
+    try{
+      const rel=decodeURIComponent(href.slice('#vault='.length));
+      if(typeof switchPanel==='function') switchPanel('vault', {fromRailClick:true});
+      if(rel && typeof loadVaultNote==='function') loadVaultNote(rel, true);
+    }catch(_){}
+    return;
+  }
+  const vaultInsertLink=e.target.closest('a[href^="#vault-insert="]');
+  if(vaultInsertLink){
+    e.preventDefault();
+    const href=vaultInsertLink.getAttribute('href')||'';
+    try{
+      const payload=decodeURIComponent(href.slice('#vault-insert='.length));
+      if(typeof insertVaultNoteIntoComposer==='function') insertVaultNoteIntoComposer(payload);
+    }catch(_){}
+    return;
+  }
   // Message-attached images (already wired since v0.50.x).
   let img = e.target.closest('.msg-media-img');
   if(img){ _openImgLightbox(img); return; }
@@ -7755,7 +7776,7 @@ function renderMd(raw){
     t=t.replace(/\x00C(\d+)\x00/g,(_,i)=>_code_stash[+i]);
     // Stash [label](url) links before autolink so the URL in href= is not re-linked
     const _link_stash=[];
-    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
+    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
     t=t.replace(/(https?:\/\/[^\s<>"')\]\uFF09]+)/g,(url)=>{const trail=url.match(/[.,;:!?)\uFF09\uFF0C\uFF1B\uFF1A\uFF01\uFF1F\u3001\u3002]$/)?url.slice(-1):'';const clean=trail?url.slice(0,-1):url;return `<a href="${clean}" target="_blank" rel="noopener">${esc(clean)}</a>${trail}`;});
     t=t.replace(/\x00L(\d+)\x00/g,(_,i)=>_link_stash[+i]);
     t=t.replace(/\x00G(\d+)\x00/g,(_,i)=>_img_stash[+i]);
@@ -7896,7 +7917,7 @@ function renderMd(raw){
   // Stash existing <a> tags first to avoid re-linking already-linked URLs.
   const _a_stash=[];
   s=s.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)/g,m=>{_a_stash.push(m);return `\x00A${_a_stash.length-1}\x00`;});
-  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
+  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
   s=s.replace(/\x00A(\d+)\x00/g,(_,i)=>_a_stash[+i]);
   // Restore raw <pre> only after markdown rewrites so literal preformatted
   // content stays placeholder-protected, then let the sanitizer normalize tags.
@@ -7928,6 +7949,22 @@ function renderMd(raw){
       try{
         const rel=decodeURIComponent(href.replace(/^workspace:\/\//i,'')).replace(/^~\//,'').replace(/^\.\//,'');
         return '#workspace='+encodeURIComponent(rel);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault:\/\//i.test(href)){
+      try{
+        const rel=decodeURIComponent(href.replace(/^vault:\/\//i,'')).replace(/^knowledge\//,'');
+        return '#vault='+encodeURIComponent(rel);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault-insert:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^vault-insert:\/\//i,''));
+        return '#vault-insert='+encodeURIComponent(payload);
       }catch(_){
         return '#';
       }

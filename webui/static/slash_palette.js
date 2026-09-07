@@ -67,6 +67,15 @@ const AGY_SLASH_COMMANDS = [
     paramPlaceholder: 'e.g. Always deploy Nutanix NC2 VPC subnets with /24 CIDRs'
   },
   {
+    cmd: '/recall',
+    title: 'Recall from Knowledge Vault',
+    category: 'Memory',
+    desc: 'Search the Knowledge Vault and summon relevant ADRs, architectural decisions, and note excerpts directly into chat.',
+    icon: 'search',
+    hasParams: true,
+    paramPlaceholder: 'e.g. redis, etcd, fastapi, telemetry'
+  },
+  {
     cmd: '/quota',
     title: 'Rate Limits & Quota Summary',
     category: 'Diagnostics',

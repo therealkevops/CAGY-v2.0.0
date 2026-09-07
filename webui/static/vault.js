@@ -1919,3 +1919,204 @@ function escapeAttr(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+// ── Obsidian-Style Quick Switcher (Cmd+O / Ctrl+O) ──
+let _vaultQuickSwitcherOpen = false;
+let _vaultQuickSwitcherIndex = 0;
+let _vaultQuickSwitcherItems = [];
+
+async function openVaultQuickSwitcher(initialQuery = '') {
+  const modal = document.getElementById('vaultQuickSwitcherModal');
+  const input = document.getElementById('vaultQuickSwitcherInput');
+  if (!modal || !input) return;
+
+  _vaultQuickSwitcherOpen = true;
+  modal.style.display = 'flex';
+  input.value = initialQuery;
+
+  // If vault nodes not loaded yet, fetch graph nodes
+  if (!_allGraphNodes || !_allGraphNodes.length) {
+    try {
+      const res = await fetch('/api/vault/graph');
+      if (res.ok) {
+        const data = await res.json();
+        _vaultData = data;
+        _allGraphNodes = data.nodes || [];
+      }
+    } catch (_) {}
+  }
+
+  filterVaultQuickSwitcher(initialQuery);
+  input.focus();
+}
+
+function closeVaultQuickSwitcher() {
+  const modal = document.getElementById('vaultQuickSwitcherModal');
+  if (modal) modal.style.display = 'none';
+  _vaultQuickSwitcherOpen = false;
+}
+
+function filterVaultQuickSwitcher(query) {
+  const q = (query || '').trim().toLowerCase();
+  const terms = q.split(/\s+/).filter(Boolean);
+
+  const pool = (_allGraphNodes && _allGraphNodes.length) ? _allGraphNodes : (_vaultData.nodes || []);
+
+  _vaultQuickSwitcherItems = pool.filter(n => {
+    if (!terms.length) return true;
+    const title = (n.title || '').toLowerCase();
+    const path = (n.path || '').toLowerCase();
+    const space = (n.space || '').toLowerCase();
+    const folder = (n.folder || '').toLowerCase();
+    const tags = Array.isArray(n.tags) ? n.tags.map(t => String(t).toLowerCase()) : [];
+
+    return terms.every(term => {
+      const cleanTerm = term.replace(/^#/, '');
+      return title.includes(term) ||
+             path.includes(term) ||
+             space.includes(term) ||
+             folder.includes(term) ||
+             tags.some(t => t.includes(cleanTerm));
+    });
+  });
+
+  // Score & sort results
+  if (terms.length) {
+    _vaultQuickSwitcherItems.sort((a, b) => {
+      const aTitle = (a.title || '').toLowerCase();
+      const bTitle = (b.title || '').toLowerCase();
+      const aExact = aTitle === q;
+      const bExact = bTitle === q;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+
+      const aStarts = aTitle.startsWith(q);
+      const bStarts = bTitle.startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      // Prefer active space
+      if (_activeSpaceFilter && _activeSpaceFilter !== 'all') {
+        const aInSpace = a.space === _activeSpaceFilter;
+        const bInSpace = b.space === _activeSpaceFilter;
+        if (aInSpace && !bInSpace) return -1;
+        if (!aInSpace && bInSpace) return 1;
+      }
+
+      return (b.total_connections || 0) - (a.total_connections || 0);
+    });
+  }
+
+  // Cap at top 40 items for speed
+  _vaultQuickSwitcherItems = _vaultQuickSwitcherItems.slice(0, 40);
+  _vaultQuickSwitcherIndex = 0;
+  _renderQuickSwitcherList();
+}
+
+function _renderQuickSwitcherList() {
+  const listEl = document.getElementById('vaultQuickSwitcherList');
+  if (!listEl) return;
+
+  if (!_vaultQuickSwitcherItems.length) {
+    listEl.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: var(--muted); font-size: 12.5px;">
+        No vault notes or ADRs match your search.
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = _vaultQuickSwitcherItems.map((note, idx) => {
+    const isSelected = idx === _vaultQuickSwitcherIndex;
+    const folderColor = FOLDER_COLORS[note.folder] || FOLDER_COLORS.other;
+    const spaceBadge = note.space && note.space !== 'global'
+      ? `<span class="slash-palette-category" style="color:var(--accent);border-color:var(--accent);">${escapeHtml(note.space)}</span>`
+      : `<span class="slash-palette-category">${escapeHtml(note.folder || 'vault')}</span>`;
+
+    const tagsHtml = (note.tags && note.tags.length)
+      ? note.tags.slice(0, 3).map(t => `<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">#${escapeHtml(t)}</span>`).join(' ')
+      : '';
+
+    return `
+      <div class="slash-palette-item ${isSelected ? 'selected' : ''}" onclick="executeQuickSwitcherItem(${idx})">
+        <div class="slash-palette-item-left">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${folderColor};flex-shrink:0;margin-right:2px;"></span>
+          <div style="min-width:0;">
+            <div class="slash-palette-title" style="display:flex;align-items:center;gap:6px;">
+              <span>${escapeHtml(note.title || note.id)}</span>
+              ${tagsHtml}
+            </div>
+            <div class="slash-palette-desc"><code>knowledge/${escapeHtml(note.path)}</code></div>
+          </div>
+        </div>
+        ${spaceBadge}
+      </div>
+    `;
+  }).join('');
+}
+
+function handleVaultQuickSwitcherKeydown(e) {
+  if (e.key === 'Escape') {
+    closeVaultQuickSwitcher();
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (_vaultQuickSwitcherItems.length > 0) {
+      _vaultQuickSwitcherIndex = (_vaultQuickSwitcherIndex + 1) % _vaultQuickSwitcherItems.length;
+      _renderQuickSwitcherList();
+      _scrollQuickSwitcherIntoView();
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (_vaultQuickSwitcherItems.length > 0) {
+      _vaultQuickSwitcherIndex = (_vaultQuickSwitcherIndex - 1 + _vaultQuickSwitcherItems.length) % _vaultQuickSwitcherItems.length;
+      _renderQuickSwitcherList();
+      _scrollQuickSwitcherIntoView();
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    executeQuickSwitcherItem(_vaultQuickSwitcherIndex);
+  }
+}
+
+function _scrollQuickSwitcherIntoView() {
+  const listEl = document.getElementById('vaultQuickSwitcherList');
+  if (!listEl) return;
+  const items = listEl.querySelectorAll('.slash-palette-item');
+  if (items[_vaultQuickSwitcherIndex]) {
+    items[_vaultQuickSwitcherIndex].scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function executeQuickSwitcherItem(idx) {
+  const item = _vaultQuickSwitcherItems[idx];
+  if (!item) return;
+  closeVaultQuickSwitcher();
+
+  if (typeof switchPanel === 'function') {
+    switchPanel('vault', { fromRailClick: true });
+  }
+  if (typeof loadVaultNote === 'function') {
+    loadVaultNote(item.path, true);
+  }
+}
+
+// Global hotkey: Cmd+O / Ctrl+O toggles Quick Switcher
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'o' || e.key === 'O')) {
+      e.preventDefault();
+      const modal = document.getElementById('vaultQuickSwitcherModal');
+      if (modal && modal.style.display === 'flex') {
+        closeVaultQuickSwitcher();
+      } else {
+        openVaultQuickSwitcher();
+      }
+    }
+  });
+
+  window.openVaultQuickSwitcher = openVaultQuickSwitcher;
+  window.closeVaultQuickSwitcher = closeVaultQuickSwitcher;
+  window.filterVaultQuickSwitcher = filterVaultQuickSwitcher;
+  window.handleVaultQuickSwitcherKeydown = handleVaultQuickSwitcherKeydown;
+  window.executeQuickSwitcherItem = executeQuickSwitcherItem;
+}
