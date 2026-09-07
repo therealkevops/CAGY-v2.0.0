@@ -12516,14 +12516,21 @@ def handle_get(handler, parsed) -> bool:
             "python": sys.version.split()[0],
             "system": platform.platform(),
             "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
-            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits"),
+            "deepmode": (lambda: sys.modules.get("api.vault") and sys.modules["api.vault"].is_deepmode_enabled(agent.workspace) if "api.vault" in sys.modules else False)()
         })
 
     if parsed.path == "/api/agy/settings":
+        try:
+            from api.vault import is_deepmode_enabled
+            dm_status = is_deepmode_enabled()
+        except Exception:
+            dm_status = False
         return j(handler, {
             "ok": True,
             "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
-            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+            "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits"),
+            "deepmode": dm_status
         })
 
     if parsed.path == "/api/settings":
@@ -16169,7 +16176,11 @@ def handle_post(handler, parsed) -> bool:
     # ── Antigravity (AGY) Settings (POST) ──
     if parsed.path == "/api/agy/settings":
         try:
+            from api.vault import is_deepmode_enabled, sync_deepmode_rule
             req_body = body if isinstance(body, dict) else {}
+            if "deepmode" in req_body:
+                dm_val = bool(req_body["deepmode"])
+                sync_deepmode_rule(enabled=dm_val)
             if "effort" in req_body and req_body["effort"] in ("low", "medium", "high"):
                 os.environ["AGY_DEFAULT_EFFORT"] = req_body["effort"]
             if "mode" in req_body and req_body["mode"] in ("accept-edits", "plan"):
@@ -16177,7 +16188,8 @@ def handle_post(handler, parsed) -> bool:
             return j(handler, {
                 "ok": True,
                 "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
-                "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits")
+                "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits"),
+                "deepmode": is_deepmode_enabled()
             })
         except Exception as exc:
             return bad(handler, str(exc), status=400)

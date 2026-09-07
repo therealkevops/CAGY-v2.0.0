@@ -5,6 +5,15 @@
 
 const AGY_SLASH_COMMANDS = [
   {
+    cmd: '/deepmode',
+    title: 'DeepMode Autonomous Execution',
+    category: 'Workflows',
+    desc: 'Toggle or execute tasks with Solar Pro 4 / Hermes autonomous discipline (zero fluff, proactive tool calling, high effort).',
+    icon: 'zap',
+    hasParams: true,
+    paramPlaceholder: 'on | off | [task description]'
+  },
+  {
     cmd: '/goal',
     title: 'Autonomous Goal Execution',
     category: 'Workflows',

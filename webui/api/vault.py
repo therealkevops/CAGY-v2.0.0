@@ -1804,3 +1804,107 @@ def heal_vault(
     }
 
 
+# ── DeepMode Autonomous Execution Scaffolding ──
+
+DEEPMODE_RULES_CONTENT = """# Antigravity DeepMode: Autonomous Execution Directives
+
+> [!IMPORTANT]
+> DeepMode is ACTIVE. Operate with Solar Pro 4 / Hermes autonomous discipline.
+> Prioritize direct action, high density, proactive tool calling, zero conversational fluff, and relentless verification.
+
+## 1. Zero Fluff & Fluff-Free Communication
+- Eliminate all conversational preamble, warmups, filler, and pleasantries (e.g. "Sure, I'd be happy to help!", "Let's dive right in!", "Certainly!").
+- Jump immediately to the solution, diagnosis, tool action, or code diff.
+- Keep conversational text terse, structured, and information-dense.
+
+## 2. Autonomous Bias to Action & Proactive Tool Use
+- Do not ask for user permission before executing non-destructive inspection, searching, reading, or running test suites.
+- Never list hypothetical steps when you can execute them directly. If an answer can be found using tools (`grep_search`, `find_by_name`, `view_file`, `run_command`), execute them immediately before responding.
+- Formulate hypotheses and immediately verify them via tool execution.
+
+## 3. Relentless Verification Loop (Test & Prove)
+- Never assume code works simply because it compiles or looks correct.
+- After modifying code, run unit tests, type checks, or linters immediately to verify correctness and detect regressions.
+- If a test fails or a command errors, diagnose the root cause and self-heal autonomously before yielding control back to the user.
+
+## 4. No Meta-Apologies or Explanatory Hand-Wringing
+- Never say "I apologize for the confusion", "Sorry about that", or offer meta-commentary on previous mistakes.
+- State errors factually and concisely (e.g. "Fixing test regression at line 42: ..."), resolve the issue, and continue.
+
+## 5. Code-First Dense Engineering
+- Provide complete, syntactically valid code edits and unified diffs.
+- Do not truncate code blocks with comments like `// rest of code unchanged` or placeholder ellipses.
+- Strictly adhere to existing architectural patterns, typing annotations, and conventions without unrequested style refactoring.
+"""
+
+
+def resolve_workspace_dir(workspace_path: Optional[Path] = None) -> Path:
+    """Resolve workspace root directory safely across host and container environments."""
+    if workspace_path:
+        p = Path(workspace_path).resolve()
+        if p.exists():
+            return p
+    for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+        val = os.environ.get(var)
+        if val and Path(val).exists():
+            return Path(val).resolve()
+    if Path("/workspace").exists():
+        return Path("/workspace").resolve()
+    return Path.cwd().resolve()
+
+
+def sync_deepmode_rule(workspace_path: Optional[Path] = None, enabled: bool = True) -> Dict[str, Any]:
+    """
+    Toggle Antigravity DeepMode (Solar/Hermes autonomous discipline).
+    When enabled:
+      - Writes .gemini/rules/deepmode.md
+      - Sets AGY_DEEPMODE=1 and AGY_DEFAULT_EFFORT=high
+    When disabled:
+      - Deletes .gemini/rules/deepmode.md
+      - Sets AGY_DEEPMODE=0 and resets AGY_DEFAULT_EFFORT to medium
+    """
+    ws = resolve_workspace_dir(workspace_path)
+    rules_dir = ws / ".gemini" / "rules"
+    deepmode_file = rules_dir / "deepmode.md"
+
+    if enabled:
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        deepmode_file.write_text(DEEPMODE_RULES_CONTENT, encoding="utf-8")
+        os.environ["AGY_DEEPMODE"] = "1"
+        os.environ["AGY_DEFAULT_EFFORT"] = "high"
+        return {
+            "ok": True,
+            "deepmode": True,
+            "file": str(deepmode_file),
+            "effort": "high",
+            "message": "Antigravity DeepMode activated (Solar Pro 4 / Hermes autonomous discipline)."
+        }
+    else:
+        if deepmode_file.exists():
+            try:
+                deepmode_file.unlink()
+            except Exception:
+                pass
+        os.environ["AGY_DEEPMODE"] = "0"
+        if os.environ.get("AGY_DEFAULT_EFFORT") == "high":
+            os.environ["AGY_DEFAULT_EFFORT"] = "medium"
+        return {
+            "ok": True,
+            "deepmode": False,
+            "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
+            "message": "Antigravity DeepMode deactivated."
+        }
+
+
+def is_deepmode_enabled(workspace_path: Optional[Path] = None) -> bool:
+    """Check if Antigravity DeepMode is currently active."""
+    env_val = os.environ.get("AGY_DEEPMODE")
+    if env_val == "1":
+        return True
+    if env_val == "0":
+        return False
+    ws = resolve_workspace_dir(workspace_path)
+    return (ws / ".gemini" / "rules" / "deepmode.md").exists()
+
+
+

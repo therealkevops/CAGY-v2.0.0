@@ -4,6 +4,7 @@ function cmdPassToAgent(args){
 
 const COMMANDS=[
   // Antigravity (AGY) Signature Workflows
+  {name:'deepmode',         desc:'Antigravity: DeepMode (Solar / Hermes autonomous execution)', fn:cmdDeepMode, arg:'[on|off|task]', subArgs:['on', 'off', 'status'], noEcho:true},
   {name:'plan',             desc:'Antigravity: Step-by-step implementation planning before coding', fn:cmdPassToAgent, arg:'[plan description]'},
   {name:'goal',             desc:'Antigravity: Autonomous long-running goal execution until completion', fn:cmdPassToAgent, arg:'[goal description]'},
   {name:'grill-me',         desc:'Antigravity: Interactive design interview to stress-test requirements', fn:cmdPassToAgent, arg:'[topic or feature]'},
@@ -642,7 +643,102 @@ if(typeof window !== 'undefined'){
   window.cmdRecall = cmdRecall;
   window.cmdGaps = cmdGaps;
   window.cmdDigest = cmdDigest;
+  window.cmdDeepMode = cmdDeepMode;
   window.insertVaultNoteIntoComposer = insertVaultNoteIntoComposer;
+}
+
+function cmdDeepMode(args){
+  const trimmed = String(args || '').trim();
+  const lower = trimmed.toLowerCase();
+
+  if (!lower || lower === 'status' || lower === 'on' || lower === 'enable' || lower === 'off' || lower === 'disable') {
+    _handleDeepModeToggle(lower);
+    return;
+  }
+
+  // Task execution mode: /deepmode <task description>
+  // Ensure DeepMode is enabled in settings in background
+  try {
+    fetch('/api/agy/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({deepmode: true, effort: 'high'})
+    }).catch(()=>{});
+  } catch(e){}
+
+  if (typeof showToast === 'function') {
+    showToast('DeepMode: Executing with Solar/Hermes autonomous discipline...');
+  }
+  // Return false so messages.js passes the command through to send() and run_agent.py
+  return false;
+}
+
+async function _handleDeepModeToggle(subcmd){
+  if (!subcmd || subcmd === 'status') {
+    try {
+      const res = await fetch('/api/agy/settings');
+      const data = await res.json();
+      const isActive = !!data.deepmode;
+      const effort = data.effort || (isActive ? 'high' : 'medium');
+      const statusBadge = isActive
+        ? '<span style="color:#10b981;font-weight:bold;">⚡ ACTIVE</span>'
+        : '<span style="color:#94a3b8;font-weight:bold;">⏸️ INACTIVE</span>';
+
+      const content = `⚡ **Antigravity DeepMode (Solar Pro 4 / Hermes Autonomous Discipline)**\n\n` +
+        `Current Status: **${statusBadge}** &nbsp; | &nbsp; Reasoning Effort: **\`${effort}\`**\n\n` +
+        `DeepMode enforces relentless autonomous problem-solving inspired by Nous Hermes & Solar Pro:\n` +
+        `1. **Zero Fluff**: No conversational warmups, conversational filler, or pleasantries.\n` +
+        `2. **Autonomous Bias to Action**: Proactive directory inspection, file viewing, and tool execution without asking permission.\n` +
+        `3. **Relentless Verification Loop**: Mandatory unit tests, lints, and self-healing error recovery on any code change.\n` +
+        `4. **No Meta-Apologies**: Zero hand-wringing or conversational apologies. Direct root-cause resolution.\n` +
+        `5. **Code-First Dense Engineering**: Complete, robust, syntactically verified code modifications without truncation.\n\n` +
+        `**Quick Controls**:\n` +
+        `[⚡ Enable DeepMode](#deepmode=on) &nbsp; [⏸️ Disable DeepMode](#deepmode=off)\n\n` +
+        `*Usage*: \`/deepmode on\` • \`/deepmode off\` • \`/deepmode [task description]\``;
+
+      S.messages.push({role:'assistant', content});
+      renderMessages();
+    } catch(err){
+      S.messages.push({role:'assistant', content:`⚠️ Failed to query DeepMode status: ${err.message}`});
+      renderMessages();
+    }
+    return;
+  }
+
+  const shouldEnable = (subcmd === 'on' || subcmd === 'enable');
+  try {
+    const res = await fetch('/api/agy/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({deepmode: shouldEnable, effort: shouldEnable ? 'high' : 'medium'})
+    });
+    const data = await res.json();
+    if (shouldEnable) {
+      if (typeof showToast === 'function') showToast('DeepMode enabled (Solar/Hermes autonomous mode)');
+      S.messages.push({
+        role: 'assistant',
+        content: `⚡ **Antigravity DeepMode Activated**\n\n` +
+          `- **Directives**: \`.gemini/rules/deepmode.md\` active across all turns.\n` +
+          `- **Reasoning Effort**: Scaled to **\`high\`** for deep chain-of-thought analysis.\n` +
+          `- **Autonomous Discipline**: Zero fluff, proactive tool calling, and mandatory test verification.\n\n` +
+          `[⏸️ Disable DeepMode](#deepmode=off)`
+      });
+    } else {
+      if (typeof showToast === 'function') showToast('DeepMode deactivated');
+      S.messages.push({
+        role: 'assistant',
+        content: `⏸️ **Antigravity DeepMode Deactivated**\n\n` +
+          `- **Directives**: \`.gemini/rules/deepmode.md\` removed.\n` +
+          `- **Reasoning Effort**: Reset to standard (**\`${data.effort || 'medium'}\`**).\n` +
+          `- Normal conversational conventions restored.\n\n` +
+          `[⚡ Enable DeepMode](#deepmode=on)`
+      });
+    }
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content:`⚠️ Failed to update DeepMode: ${err.message}`});
+    renderMessages();
+  }
 }
 
 function cmdAnalytics(){

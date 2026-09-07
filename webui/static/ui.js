@@ -2595,6 +2595,16 @@ document.addEventListener('click', e => {
     }catch(_){}
     return;
   }
+  const deepmodeLink=e.target.closest('a[href^="#deepmode="]');
+  if(deepmodeLink){
+    e.preventDefault();
+    const href=deepmodeLink.getAttribute('href')||'';
+    const action=href.slice('#deepmode='.length).trim();
+    if(typeof cmdDeepMode==='function'){
+      cmdDeepMode(action);
+    }
+    return;
+  }
   const vaultCreateLink=e.target.closest('a[href^="#vault-create="]');
   if(vaultCreateLink){
     e.preventDefault();
@@ -7836,7 +7846,7 @@ function renderMd(raw){
     t=t.replace(/\x00C(\d+)\x00/g,(_,i)=>_code_stash[+i]);
     // Stash [label](url) links before autolink so the URL in href= is not re-linked
     const _link_stash=[];
-    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
+    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|deepmode:\/\/|#deepmode=|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
     t=t.replace(/(https?:\/\/[^\s<>"')\]\uFF09]+)/g,(url)=>{const trail=url.match(/[.,;:!?)\uFF09\uFF0C\uFF1B\uFF1A\uFF01\uFF1F\u3001\u3002]$/)?url.slice(-1):'';const clean=trail?url.slice(0,-1):url;return `<a href="${clean}" target="_blank" rel="noopener">${esc(clean)}</a>${trail}`;});
     t=t.replace(/\x00L(\d+)\x00/g,(_,i)=>_link_stash[+i]);
     t=t.replace(/\x00G(\d+)\x00/g,(_,i)=>_img_stash[+i]);
@@ -7977,7 +7987,7 @@ function renderMd(raw){
   // Stash existing <a> tags first to avoid re-linking already-linked URLs.
   const _a_stash=[];
   s=s.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)/g,m=>{_a_stash.push(m);return `\x00A${_a_stash.length-1}\x00`;});
-  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
+  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|deepmode:\/\/|#deepmode=|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
   s=s.replace(/\x00A(\d+)\x00/g,(_,i)=>_a_stash[+i]);
   // Restore raw <pre> only after markdown rewrites so literal preformatted
   // content stays placeholder-protected, then let the sanitizer normalize tags.
@@ -8049,6 +8059,14 @@ function renderMd(raw){
       try{
         const payload=decodeURIComponent(href.replace(/^vault-search:\/\//i,''));
         return '#vault-search='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^deepmode:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^deepmode:\/\//i,''));
+        return '#deepmode='+encodeURIComponent(payload);
       }catch(_){
         return '#';
       }

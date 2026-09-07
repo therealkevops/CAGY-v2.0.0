@@ -217,6 +217,7 @@ The dashboard separates numbers into measured ground truth, published rates, and
 Typing `/` in the chat composer displays an inline floating popover with Lucide SVG icons, category pills, parameter hints, and keyboard/mouse navigation (`ArrowUp`, `ArrowDown`, `Enter`, `Tab`, `Escape`):
 
 ```text
+  /deepmode [on|off|task]      WORKFLOW   Solar/Hermes autonomous execution (zero fluff, high effort)
   /plan [description]          WORKFLOW   Step-by-step implementation planning before coding
   /goal [description]          WORKFLOW   Autonomous long-running goal execution until completion
   /grill-me [topic]            WORKFLOW   Interactive design interview to stress-test requirements

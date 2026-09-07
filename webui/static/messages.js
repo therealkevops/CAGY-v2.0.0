@@ -4569,6 +4569,14 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         return '#';
       }
     }
+    if(/^deepmode:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^deepmode:\/\//i,''));
+        return '#deepmode='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
     if(!/^file:\/\//i.test(href)) return href;
     try{
       const path=decodeURIComponent(href.replace(/^file:\/\//i,''));
@@ -4585,7 +4593,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     const _a=root.querySelectorAll('a[href]');
     for(let i=0;i<_a.length;i++){
       const n=_a[i],v=n.getAttribute('href')||'';
-      if(/^(file|workspace|session|vault|vault-insert|vault-create|vault-weave|vault-search):\/\//i.test(v)){n.setAttribute('href',_smdLinkHref(v));n.classList&&/^session:\/\//i.test(v)&&n.classList.add('session-link');continue;}
+      if(/^(file|workspace|session|vault|vault-insert|vault-create|vault-weave|vault-search|deepmode):\/\//i.test(v)){n.setAttribute('href',_smdLinkHref(v));n.classList&&/^session:\/\//i.test(v)&&n.classList.add('session-link');continue;}
       if(!_SMD_SAFE_URL_RE.test(v)){n.removeAttribute('href');n.setAttribute('data-blocked-scheme','1');}
     }
     const _im=root.querySelectorAll('img[src]');

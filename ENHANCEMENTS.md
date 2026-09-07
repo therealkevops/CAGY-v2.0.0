@@ -31,6 +31,7 @@ The official **Google Antigravity (AGY)** engine provides a powerful foundation 
 | **Project ⇄ Workspace Alignment** | Disconnected concepts; chat labels have no directory anchors or execution context. | **Project ⇄ Workspace Binding**: 1-click binding of chat projects to directory roots, auto-switching composer & vault space on new chat. |
 | **Context Diet & Self-Healing Memory** | Unbounded context growth and broken markdown links when files move. | **Tiered Context Diet Engine & Self-Healing Linter**: Auto-summarizes deep archives at 20 KB limit and heals broken wikilinks upon note rename. |
 | **Knowledge Base Creation & Curation** | Manual note authoring, unlinked text dumps, and unresolved missing stubs. | **Autonomous Note Synthesizer & Gap Resolver** (`/digest`, `/gaps`, `/recall`): Ingest unformatted dumps into atomic notes with auto-woven wikilinks, and audit/heal dangling stubs with 1-click creation. |
+| **Autonomous Problem-Solving Mode** | Chatty conversational responses with apologies and passive questions. | **Antigravity DeepMode (`/deepmode`)**: Enforces Solar Pro 4 / Hermes autonomous discipline: zero fluff, proactive tool use, code-first delivery, relentless verification loop, and escalated reasoning effort (`high`). |
 
 
 ---
@@ -335,9 +336,30 @@ Auditing knowledge graph topology to prevent dead ends and unresolved references
 
 ---
 
+## 12. Antigravity DeepMode (`/deepmode`): Solar Pro 4 & Hermes Autonomous Discipline
+
+While Gemini Flash 3.8 possesses high analytical capabilities, default agent configurations often lean toward conversational pleasantries, tentative questions before non-destructive discovery, and meta-apologies. **DeepMode** configures Gemini Flash to operate with the terse, hyper-autonomous discipline characteristic of **Solar Pro 4 in Hermes**.
+
+### 12.1 The 5 Behavioral Pillars of DeepMode
+1. **Zero Fluff & Fluff-Free Communication**: Eliminates conversational filler, warmups, and pleasantries ("Sure, I'd be happy to help!", "Certainly!"). Jump directly to the diagnosis, tool call, or code diff.
+2. **Autonomous Bias to Action**: Executes non-destructive discovery, repository inspection, file viewing, and test running proactively without asking for user permission. Formulates hypotheses and verifies them immediately via tools.
+3. **Relentless Verification Loop (Test & Prove)**: Never assumes code works simply because it compiles. Runs unit tests, lints, and type checks immediately after editing code, automatically diagnosing and self-healing regressions before yielding control back to the user.
+4. **No Meta-Apologies or Explanatory Hand-Wringing**: Eliminates "I apologize for the confusion" or conversational apologies. Reports errors factually, fixes them, and proceeds.
+5. **Code-First Dense Engineering**: Complete, syntactically valid code edits without placeholder comments (`// rest of code unchanged`).
+
+### 12.2 Architectural Implementation
+- **Dynamic Rule Management (`.gemini/rules/deepmode.md`)**: Toggling DeepMode dynamically writes or removes `.gemini/rules/deepmode.md`. Antigravity's core ingestion pipeline loads this rule into system instructions on every turn with zero prompt drift.
+- **Reasoning Effort Escalation**: Automatically couples DeepMode with `--effort high`, allocating extensive scratchpad tokens to Gemini Flash for deep multi-step planning before tool execution.
+- **1-Click Interactive Controls**: Assistant cards in the WebUI render live status chips (`⚡ ACTIVE` / `⏸️ INACTIVE`) and 1-click execution badges (`[⚡ Enable DeepMode]`, `[⏸️ Disable DeepMode]`).
+- **Pass-Through Task Scaffolding**: Typing `/deepmode <task>` seamlessly activates high effort, injects execution scaffolding, and dispatches the task in a single turn.
+
+---
+
 ## Conclusion: The CAGY Advantage
 
-By combining **hermetic container sandboxing** with an **Obsidian-compatible Knowledge Vault** and **Token Economics analytics**, CAGY solves the two greatest challenges of agentic pair-programming:
+By combining **hermetic container sandboxing** with an **Obsidian-compatible Knowledge Vault**, **Token Economics analytics**, and **DeepMode autonomous discipline**, CAGY solves the core challenges of agentic pair-programming:
 
 1. **Safety & Reproducibility**: Giving autonomous agents full shell and toolchain freedom inside a bounded, safe blast radius.
 2. **Context Longevity & Efficiency**: Replacing bloated, 80k-token conversational debt with lean, structured, 600-token Turn-0 knowledge recall.
+3. **Execution Intensity**: Eliminating conversational friction and passive stalls with proactive, test-verified engineering autonomy.
+

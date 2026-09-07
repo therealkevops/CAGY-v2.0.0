@@ -144,11 +144,13 @@ class AIAgent:
 
             # Sync Knowledge Vault & Long-Term Memory
             try:
-                from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
+                from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace, is_deepmode_enabled, sync_deepmode_rule
                 vdir = get_vault_dir(self.workspace)
                 space = infer_space_from_workspace(self.workspace)
                 if vdir.exists():
                     sync_vault_to_rules(vdir, self.workspace, space=space)
+                if is_deepmode_enabled(self.workspace):
+                    sync_deepmode_rule(self.workspace, enabled=True)
             except Exception:
                 pass
             
@@ -259,6 +261,29 @@ class AIAgent:
         if not user_prompt:
             user_prompt = "Hello"
 
+        # Check for /deepmode prefix in user_prompt
+        clean_prompt = user_prompt.strip()
+        if clean_prompt.startswith("/deepmode"):
+            parts = clean_prompt.split(maxsplit=1)
+            task = parts[1].strip() if len(parts) > 1 else ""
+            try:
+                from api.vault import sync_deepmode_rule
+                sync_deepmode_rule(self.workspace, enabled=True)
+            except Exception:
+                pass
+            if task:
+                user_prompt = (
+                    f"[⚡ DEEPMODE: Execute with Solar/Hermes autonomous discipline — "
+                    f"zero fluff, proactive tool use, code-first, and mandatory test verification.]\n\n"
+                    f"{task}"
+                )
+            else:
+                user_prompt = (
+                    "[⚡ DEEPMODE: Operating under Solar/Hermes autonomous discipline — "
+                    "zero fluff, proactive tool use, code-first, and mandatory test verification.]\n\n"
+                    "Please acknowledge and confirm readiness to execute."
+                )
+
         agy_bin = self._find_agy_bin()
         print_timeout = kwargs.get("print_timeout") or os.environ.get("AGY_PRINT_TIMEOUT", "60m")
         cmd = [
@@ -278,6 +303,12 @@ class AIAgent:
             cmd.extend(["--model", self.model])
 
         effort = kwargs.get("effort") or os.environ.get("AGY_DEFAULT_EFFORT")
+        try:
+            from api.vault import is_deepmode_enabled
+            if is_deepmode_enabled(self.workspace) and not kwargs.get("effort"):
+                effort = "high"
+        except Exception:
+            pass
         if effort and effort in ("low", "medium", "high"):
             cmd.extend(["--effort", effort])
 

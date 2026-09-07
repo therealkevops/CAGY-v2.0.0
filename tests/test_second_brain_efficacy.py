@@ -27,6 +27,9 @@ from api.vault import (
     get_vault_health,
     weave_wikilinks,
     digest_note,
+    sync_deepmode_rule,
+    is_deepmode_enabled,
+    DEEPMODE_RULES_CONTENT,
 )
 
 
@@ -469,6 +472,75 @@ class TestSecondBrainEfficacy(unittest.TestCase):
         self.assertIn("window.zoomGraph = zoomGraph", vault_js)
         self.assertIn("window.resetGraphView = resetGraphView", vault_js)
 
+    def test_deepmode_behavioral_engine_and_slash_command(self):
+        """Verify Antigravity DeepMode autonomous execution engine, rule synchronization, and slash command integration."""
+        # 1. Enable DeepMode and verify rule file creation & environment state
+        res_enable = sync_deepmode_rule(self.workspace_dir, enabled=True)
+        self.assertTrue(res_enable.get("ok"))
+        self.assertTrue(res_enable.get("deepmode"))
+        self.assertEqual(res_enable.get("effort"), "high")
+
+        deepmode_file = self.workspace_dir / ".gemini" / "rules" / "deepmode.md"
+        self.assertTrue(deepmode_file.exists())
+        rule_content = deepmode_file.read_text(encoding="utf-8")
+
+        # Verify the 5 core pillars of Solar/Hermes autonomous discipline
+        self.assertIn("Zero Fluff & Fluff-Free Communication", rule_content)
+        self.assertIn("Autonomous Bias to Action & Proactive Tool Use", rule_content)
+        self.assertIn("Relentless Verification Loop (Test & Prove)", rule_content)
+        self.assertIn("No Meta-Apologies or Explanatory Hand-Wringing", rule_content)
+        self.assertIn("Code-First Dense Engineering", rule_content)
+
+        # Check status check helper
+        self.assertTrue(is_deepmode_enabled(self.workspace_dir))
+        self.assertEqual(os.environ.get("AGY_DEEPMODE"), "1")
+        self.assertEqual(os.environ.get("AGY_DEFAULT_EFFORT"), "high")
+
+        # 2. Disable DeepMode and verify file cleanup & effort reset
+        res_disable = sync_deepmode_rule(self.workspace_dir, enabled=False)
+        self.assertTrue(res_disable.get("ok"))
+        self.assertFalse(res_disable.get("deepmode"))
+        self.assertFalse(deepmode_file.exists())
+        self.assertFalse(is_deepmode_enabled(self.workspace_dir))
+        self.assertEqual(os.environ.get("AGY_DEEPMODE"), "0")
+        self.assertEqual(os.environ.get("AGY_DEFAULT_EFFORT"), "medium")
+
+        # 3. Verify AIAgent prompt interception and high effort defaulting in run_agent.py
+        run_agent_src = (WEBUI_DIR / "run_agent.py").read_text(encoding="utf-8")
+        self.assertIn('clean_prompt.startswith("/deepmode")', run_agent_src)
+        self.assertIn("⚡ DEEPMODE: Execute with Solar/Hermes autonomous discipline", run_agent_src)
+        self.assertIn("is_deepmode_enabled(self.workspace)", run_agent_src)
+        self.assertIn('effort = "high"', run_agent_src)
+
+        # 4. Verify WebUI slash command palette registration
+        palette_js = (WEBUI_DIR / "static" / "slash_palette.js").read_text(encoding="utf-8")
+        self.assertIn("cmd: '/deepmode'", palette_js)
+        self.assertIn("DeepMode Autonomous Execution", palette_js)
+        self.assertIn("category: 'Workflows'", palette_js)
+
+        # 5. Verify commands.js command registration and exports
+        commands_js = (WEBUI_DIR / "static" / "commands.js").read_text(encoding="utf-8")
+        self.assertIn("name:'deepmode'", commands_js)
+        self.assertIn("fn:cmdDeepMode", commands_js)
+        self.assertIn("function cmdDeepMode(args)", commands_js)
+        self.assertIn("window.cmdDeepMode = cmdDeepMode", commands_js)
+        self.assertIn("_handleDeepModeToggle", commands_js)
+
+        # 6. Verify ui.js and messages.js link handlers & safe schemes
+        ui_js = (WEBUI_DIR / "static" / "ui.js").read_text(encoding="utf-8")
+        self.assertIn('a[href^="#deepmode="]', ui_js)
+        self.assertIn("deepmode:\\/\\/", ui_js)
+        self.assertIn("#deepmode=", ui_js)
+
+        messages_js = (WEBUI_DIR / "static" / "messages.js").read_text(encoding="utf-8")
+        self.assertIn("deepmode:\\/\\/", messages_js)
+        self.assertIn("deepmode", messages_js)
+
+        # 7. Verify style.css action chip styling
+        style_css = (WEBUI_DIR / "static" / "style.css").read_text(encoding="utf-8")
+        self.assertIn('a[href^="#deepmode="]', style_css)
+
 
 if __name__ == "__main__":
     unittest.main()
+

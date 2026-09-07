@@ -5997,8 +5997,8 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 .panel-head-btn.spinning svg { animation: spin 0.6s linear infinite; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
-/* ── Knowledge Vault Action Chips & Badges ── */
-a[href^="#vault="], a[href^="#vault-insert="], a[href^="#vault-create="], a[href^="#vault-weave="], a[href^="#vault-search="] {
+/* ── Knowledge Vault & DeepMode Action Chips & Badges ── */
+a[href^="#vault="], a[href^="#vault-insert="], a[href^="#vault-create="], a[href^="#vault-weave="], a[href^="#vault-search="], a[href^="#deepmode="] {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -6014,7 +6014,7 @@ a[href^="#vault="], a[href^="#vault-insert="], a[href^="#vault-create="], a[href
   margin: 2px 4px 2px 0;
   cursor: pointer;
 }
-a[href^="#vault="]:hover, a[href^="#vault-insert="]:hover, a[href^="#vault-create="]:hover, a[href^="#vault-weave="]:hover, a[href^="#vault-search="]:hover {
+a[href^="#vault="]:hover, a[href^="#vault-insert="]:hover, a[href^="#vault-create="]:hover, a[href^="#vault-weave="]:hover, a[href^="#vault-search="]:hover, a[href^="#deepmode="]:hover {
   background: var(--hover-bg);
   border-color: var(--accent);
   color: var(--accent) !important;
