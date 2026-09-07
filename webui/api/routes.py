@@ -13988,7 +13988,9 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, search_vault(get_vault_dir(), query=q, folder=folder, tag=tag, limit=limit, space=space))
     if parsed.path == "/api/vault/health":
         from api.vault import get_vault_health, get_vault_dir
-        return j(handler, get_vault_health(get_vault_dir()))
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        space = qs.get("space", [None])[0]
+        return j(handler, get_vault_health(get_vault_dir(), space=space))
     if parsed.path == "/api/vault/template":
         from api.vault import get_note_template, get_next_adr_number, get_vault_dir
         qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
@@ -14444,6 +14446,58 @@ def handle_post(handler, parsed) -> bool:
         if not space_param:
             space_param = infer_space_from_workspace(ws_root)
         return j(handler, heal_vault(get_vault_dir(ws_root), workspace_path=ws_root, space=space_param))
+
+    if parsed.path == "/api/vault/weave":
+        from api.vault import weave_wikilinks, get_vault_dir, infer_space_from_workspace, get_note, save_note
+        body = _read_json_body(handler) or {}
+        content = body.get("content", "")
+        note_path = body.get("path", "")
+        if note_path.startswith("knowledge/"):
+            note_path = note_path[len("knowledge/"):]
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        vdir = get_vault_dir(ws_root)
+        if note_path:
+            existing = get_note(vdir, note_path)
+            if existing.get("ok"):
+                content = existing.get("content", "")
+                weaved = weave_wikilinks(vdir, content, space=space_param, exclude_id=existing.get("id"))
+                if weaved.get("links_added", 0) > 0:
+                    save_note(vdir, note_path, weaved["content"], workspace_path=ws_root)
+                return j(handler, weaved)
+        return j(handler, weave_wikilinks(vdir, content, space=space_param))
+
+    if parsed.path == "/api/vault/digest":
+        from api.vault import digest_note, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        text = str(body.get("text", "")).strip()
+        title = body.get("title")
+        category = body.get("category", "notes")
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, digest_note(get_vault_dir(ws_root), text, space=space_param, title=title, category=category, workspace_path=ws_root))
 
     if parsed.path == "/api/skills/scaffold":
         from api.skills_wizard import scaffold_skill_or_rule

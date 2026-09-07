@@ -343,7 +343,7 @@ def get_note(vault_path: Path, rel_path: str) -> Dict[str, Any]:
         "ok": True
     }
 
-def save_note(vault_path: Path, rel_path: str, content: str, workspace_path: Optional[Path] = None) -> Dict[str, Any]:
+def save_note(vault_path: Path, rel_path: str, content: str, workspace_path: Optional[Path] = None, space: Optional[str] = None) -> Dict[str, Any]:
     """Write markdown note to disk, ensuring directory structure."""
     if not rel_path:
         return {"error": "rel_path is required", "ok": False}
@@ -361,9 +361,10 @@ def save_note(vault_path: Path, rel_path: str, content: str, workspace_path: Opt
     try:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content or "", encoding="utf-8")
-        # Auto-sync rules when saving core profile/conventions notes
+        # Auto-sync rules when saving notes
+        note_space = space or extract_space_from_rel_path(clean_rel)
         ws = workspace_path if workspace_path is not None else vault_path.parent
-        sync_vault_to_rules(vault_path, ws)
+        sync_vault_to_rules(vault_path, ws, space=note_space if note_space not in ("global", "user") else None)
         return {
             "ok": True,
             "path": clean_rel,
@@ -1166,9 +1167,20 @@ def search_vault(
     }
 
 
-def get_vault_health(vault_path: Path) -> Dict[str, Any]:
+COMMON_VAULT_STOPWORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "these", "those",
+    "are", "was", "were", "been", "being", "have", "has", "had", "does",
+    "did", "will", "would", "should", "could", "can", "may", "might", "must",
+    "about", "into", "through", "during", "before", "after", "above", "below",
+    "note", "notes", "status", "accepted", "decision", "architecture", "overview",
+    "introduction", "conventions", "profile", "file", "files", "document", "true",
+    "false", "null", "none", "using", "uses", "used", "make", "made", "step"
+}
+
+
+def get_vault_health(vault_path: Path, space: Optional[str] = None) -> Dict[str, Any]:
     """Analyze vault graph health: orphan notes, unresolved links, and central hub statistics."""
-    scan = scan_vault(vault_path)
+    scan = scan_vault(vault_path, space_filter=space)
     nodes = scan.get("nodes", [])
     edges = scan.get("edges", [])
 
@@ -1189,13 +1201,199 @@ def get_vault_health(vault_path: Path) -> Dict[str, Any]:
 
     return {
         "ok": True,
+        "space": space or "all",
         "total_notes": len(nodes),
         "total_edges": len(edges),
         "orphan_count": len(orphans),
-        "orphans": [{"id": o["id"], "title": o["title"], "path": o["path"], "folder": o["folder"]} for o in orphans],
+        "orphans": [{"id": o["id"], "title": o["title"], "path": o["path"], "folder": o["folder"], "space": o.get("space", "global")} for o in orphans],
         "unresolved_count": len(unresolved_links),
         "unresolved_links": unresolved_links,
-        "top_hubs": [{"id": h["id"], "title": h["title"], "total_connections": h["total_connections"]} for h in hubs],
+        "top_hubs": [{"id": h["id"], "title": h["title"], "total_connections": h["total_connections"], "space": h.get("space", "global")} for h in hubs],
+        "timestamp": time.time()
+    }
+
+
+def weave_wikilinks(
+    vault_path: Path,
+    content: str,
+    space: Optional[str] = None,
+    exclude_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Scan prose and automatically weave bi-directional [[wikilinks]] pointing to
+    existing notes in the active space (and global user/architecture layers).
+    Protects code blocks, inline code, headings, and existing links.
+    """
+    if not content or not vault_path.exists():
+        return {"ok": True, "content": content, "links_added": 0, "targets_linked": []}
+
+    clean_space = (space or "").strip().lower()
+    allowed_spaces = {clean_space, "user", "global"} if clean_space and clean_space != "all" else None
+
+    phrase_targets: Dict[str, str] = {}
+
+    for p in vault_path.rglob("*.md"):
+        rel = p.relative_to(vault_path).as_posix()
+        note_space = extract_space_from_rel_path(rel)
+        if allowed_spaces and note_space not in allowed_spaces:
+            continue
+
+        note_id = rel[:-3] if rel.endswith(".md") else rel
+        if exclude_id and (note_id == exclude_id or p.stem == exclude_id or rel == exclude_id):
+            continue
+
+        try:
+            note_content = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        title = _extract_title(note_content, p.stem).strip()
+        clean_title_no_adr = re.sub(r'^ADR[- ]\d+:\s*', '', title, flags=re.IGNORECASE).strip()
+        stem_clean = re.sub(r'^adr[-_]\d+[-_]?', '', p.stem, flags=re.IGNORECASE).replace("_", " ").strip()
+
+        candidates = [title, clean_title_no_adr, stem_clean]
+        adr_m = re.match(r'^(ADR[- ]\d+)', title, flags=re.IGNORECASE)
+        if adr_m:
+            candidates.append(adr_m.group(1))
+
+        # Add single significant words from stem
+        for w in stem_clean.split():
+            if len(w) >= 4 and w.lower() not in COMMON_VAULT_STOPWORDS:
+                candidates.append(w)
+
+        # Add distinct domain tags
+        for t in extract_tags(note_content):
+            if len(t) >= 4 and t.lower() not in ("architecture", "decisions", "notes", "user", "global"):
+                candidates.append(t)
+
+        for cand in candidates:
+            c = cand.strip()
+            if len(c) >= 3 and c.lower() not in COMMON_VAULT_STOPWORDS:
+                if c.lower() not in phrase_targets:
+                    phrase_targets[c.lower()] = note_id
+
+    if not phrase_targets:
+        return {"ok": True, "content": content, "links_added": 0, "targets_linked": []}
+
+    sorted_phrases = sorted(phrase_targets.keys(), key=len, reverse=True)
+
+    stash = []
+    def _stash_token(m):
+        stash.append(m.group(0))
+        return f"\x00VAULT_STASH_{len(stash) - 1}\x00"
+
+    working = content
+    working = re.sub(r'```[\s\S]*?```', _stash_token, working)
+    working = re.sub(r'`[^`\n]+`', _stash_token, working)
+    working = re.sub(r'\[\[[\s\S]*?\]\]', _stash_token, working)
+    working = re.sub(r'\[[^\]]+\]\([^\)]+\)', _stash_token, working)
+    working = re.sub(r'(?m)^#+\s+.*$', _stash_token, working)
+
+    linked_targets: Set[str] = set()
+    links_added = 0
+
+    for phrase in sorted_phrases:
+        target_id = phrase_targets[phrase]
+        if target_id in linked_targets:
+            continue
+
+        pattern = re.compile(r'\b(' + re.escape(phrase) + r')\b', re.IGNORECASE)
+        match = pattern.search(working)
+        if match:
+            matched_text = match.group(1)
+            replacement = f"[[{target_id}|{matched_text}]]"
+            working = pattern.sub(replacement, working, count=1)
+            linked_targets.add(target_id)
+            links_added += 1
+
+    for i, token in enumerate(stash):
+        working = working.replace(f"\x00VAULT_STASH_{i}\x00", token)
+
+    return {
+        "ok": True,
+        "content": working,
+        "links_added": links_added,
+        "targets_linked": sorted(linked_targets),
+        "timestamp": time.time()
+    }
+
+
+def digest_note(
+    vault_path: Path,
+    text: str,
+    space: Optional[str] = None,
+    title: Optional[str] = None,
+    category: str = "notes",
+    workspace_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Synthesize raw unformatted study text, documentation dump, or thoughts into
+    a clean, atomic Obsidian note, automatically weaving bi-directional wikilinks.
+    """
+    if not vault_path.exists():
+        vault_path.mkdir(parents=True, exist_ok=True)
+
+    raw_text = (text or "").strip()
+    if not raw_text:
+        return {"ok": False, "error": "Cannot digest empty text"}
+
+    inferred_space = space
+    if not inferred_space or inferred_space == "all":
+        inferred_space = infer_space_from_workspace(workspace_path)
+    if not inferred_space:
+        inferred_space = "global"
+
+    clean_title = (title or "").strip()
+    lines = raw_text.splitlines()
+    body_text = raw_text
+    if not clean_title:
+        first_line = lines[0].strip() if lines else ""
+        if first_line.startswith("#"):
+            clean_title = first_line.lstrip("#").strip()
+            body_text = "\n".join(lines[1:]).strip()
+        elif ":" in first_line and len(first_line.split(":")[0].split()) <= 4:
+            clean_title = first_line.split(":", 1)[0].strip()
+        else:
+            words = first_line.split()[:7]
+            clean_title = " ".join(words).rstrip(".,;:-") if words else "Atomic Note"
+
+    clean_slug = re.sub(r'[^a-zA-Z0-9_-]+', '_', clean_title.lower()).strip('_')
+    if not clean_slug:
+        clean_slug = f"note_{int(time.time())}"
+
+    weaved = weave_wikilinks(vault_path, body_text, space=inferred_space, exclude_id=clean_slug)
+    weaved_body = weaved.get("content", body_text)
+
+    existing_tags = extract_tags(raw_text)
+    auto_tags = list(existing_tags)
+    cat_dir = category if category in ("decisions", "architecture", "notes", "user") else "notes"
+    if cat_dir not in auto_tags:
+        auto_tags.append(cat_dir)
+    if inferred_space not in ("global", "user") and inferred_space not in auto_tags:
+        auto_tags.append(inferred_space)
+
+    tags_line = " ".join(f"#{t}" for t in sorted(set(auto_tags)))
+    assembled = f"# {clean_title}\n\n{weaved_body}\n\n---\n{tags_line}\n"
+
+    if inferred_space not in ("global", "user"):
+        rel_path = f"spaces/{inferred_space}/{cat_dir}/{clean_slug}.md"
+    else:
+        rel_path = f"{cat_dir}/{clean_slug}.md"
+
+    save_res = save_note(vault_path, rel_path, assembled, workspace_path=workspace_path, space=inferred_space)
+    if not save_res.get("ok", False):
+        return save_res
+
+    return {
+        "ok": True,
+        "path": rel_path,
+        "title": clean_title,
+        "space": inferred_space,
+        "category": cat_dir,
+        "tags": auto_tags,
+        "links_added": weaved.get("links_added", 0),
+        "targets_linked": weaved.get("targets_linked", []),
+        "size_bytes": len(assembled.encode("utf-8")),
         "timestamp": time.time()
     }
 

@@ -2595,6 +2595,66 @@ document.addEventListener('click', e => {
     }catch(_){}
     return;
   }
+  const vaultCreateLink=e.target.closest('a[href^="#vault-create="]');
+  if(vaultCreateLink){
+    e.preventDefault();
+    const href=vaultCreateLink.getAttribute('href')||'';
+    try{
+      const rawPayload=decodeURIComponent(href.slice('#vault-create='.length));
+      let payload={};
+      try{ payload=JSON.parse(rawPayload); }catch(_){ payload={title: rawPayload}; }
+      if(typeof switchPanel==='function') switchPanel('vault', {fromRailClick:true});
+      if(typeof promptCreateVaultNote==='function'){
+        promptCreateVaultNote(payload.category || 'notes', payload.title || '', payload.space || '');
+      }
+    }catch(_){}
+    return;
+  }
+  const vaultWeaveLink=e.target.closest('a[href^="#vault-weave="]');
+  if(vaultWeaveLink){
+    e.preventDefault();
+    const href=vaultWeaveLink.getAttribute('href')||'';
+    try{
+      const rawPayload=decodeURIComponent(href.slice('#vault-weave='.length));
+      let payload={};
+      try{ payload=JSON.parse(rawPayload); }catch(_){ payload={path: rawPayload}; }
+      if(payload.path){
+        if(typeof showToast==='function') showToast(`Auto-weaving wikilinks for ${payload.path}...`);
+        fetch('/api/vault/weave', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            path: payload.path,
+            space: payload.space || ''
+          })
+        }).then(r => r.json()).then(res => {
+          if(res.ok){
+            if(typeof showToast==='function') showToast(`Wove ${res.links_added} new wikilinks into ${payload.path}!`);
+            if(typeof loadVaultNote==='function') loadVaultNote(payload.path, true);
+          } else {
+            if(typeof showToast==='function') showToast(`Weave failed: ${res.error || 'Unknown error'}`);
+          }
+        }).catch(err => {
+          if(typeof showToast==='function') showToast(`Weave error: ${err.message}`);
+        });
+      }
+    }catch(_){}
+    return;
+  }
+  const vaultSearchLink=e.target.closest('a[href^="#vault-search="]');
+  if(vaultSearchLink){
+    e.preventDefault();
+    const href=vaultSearchLink.getAttribute('href')||'';
+    try{
+      const query=decodeURIComponent(href.slice('#vault-search='.length));
+      if(typeof cmdRecall==='function'){
+        cmdRecall(query);
+      } else if(typeof showToast==='function'){
+        showToast(`Searching for: ${query}`);
+      }
+    }catch(_){}
+    return;
+  }
   // Message-attached images (already wired since v0.50.x).
   let img = e.target.closest('.msg-media-img');
   if(img){ _openImgLightbox(img); return; }
@@ -7776,7 +7836,7 @@ function renderMd(raw){
     t=t.replace(/\x00C(\d+)\x00/g,(_,i)=>_code_stash[+i]);
     // Stash [label](url) links before autolink so the URL in href= is not re-linked
     const _link_stash=[];
-    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
+    t=t.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,lb,u)=>{_link_stash.push(_markdownAnchor(lb,u));return `\x00L${_link_stash.length-1}\x00`;});
     t=t.replace(/(https?:\/\/[^\s<>"')\]\uFF09]+)/g,(url)=>{const trail=url.match(/[.,;:!?)\uFF09\uFF0C\uFF1B\uFF1A\uFF01\uFF1F\u3001\u3002]$/)?url.slice(-1):'';const clean=trail?url.slice(0,-1):url;return `<a href="${clean}" target="_blank" rel="noopener">${esc(clean)}</a>${trail}`;});
     t=t.replace(/\x00L(\d+)\x00/g,(_,i)=>_link_stash[+i]);
     t=t.replace(/\x00G(\d+)\x00/g,(_,i)=>_img_stash[+i]);
@@ -7917,7 +7977,7 @@ function renderMd(raw){
   // Stash existing <a> tags first to avoid re-linking already-linked URLs.
   const _a_stash=[];
   s=s.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)/g,m=>{_a_stash.push(m);return `\x00A${_a_stash.length-1}\x00`;});
-  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
+  s=s.replace(/\[([^\]]+)\]\(((?:https?:\/\/|file:\/\/|workspace:\/\/|session:\/\/|vault:\/\/|vault-insert:\/\/|vault-create:\/\/|vault-weave:\/\/|vault-search:\/\/|mailto:|tel:|message:)[^\s\)]+)\)/g,(_,label,url)=>_markdownAnchor(label,url));
   s=s.replace(/\x00A(\d+)\x00/g,(_,i)=>_a_stash[+i]);
   // Restore raw <pre> only after markdown rewrites so literal preformatted
   // content stays placeholder-protected, then let the sanitizer normalize tags.
@@ -7965,6 +8025,30 @@ function renderMd(raw){
       try{
         const payload=decodeURIComponent(href.replace(/^vault-insert:\/\//i,''));
         return '#vault-insert='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault-create:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^vault-create:\/\//i,''));
+        return '#vault-create='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault-weave:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^vault-weave:\/\//i,''));
+        return '#vault-weave='+encodeURIComponent(payload);
+      }catch(_){
+        return '#';
+      }
+    }
+    if(/^vault-search:\/\//i.test(href)){
+      try{
+        const payload=decodeURIComponent(href.replace(/^vault-search:\/\//i,''));
+        return '#vault-search='+encodeURIComponent(payload);
       }catch(_){
         return '#';
       }

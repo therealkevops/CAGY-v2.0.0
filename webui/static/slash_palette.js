@@ -76,6 +76,23 @@ const AGY_SLASH_COMMANDS = [
     paramPlaceholder: 'e.g. redis, etcd, fastapi, telemetry'
   },
   {
+    cmd: '/digest',
+    title: 'Atomic Note Synthesizer & Auto-Wikilinker',
+    category: 'Memory',
+    desc: 'Transform raw study notes, transcripts, or thoughts into atomic Obsidian notes with auto-woven wikilinks.',
+    icon: 'file-text',
+    hasParams: true,
+    paramPlaceholder: 'e.g. Kubernetes Pod Disruption Budgets: PDBs specify minimum available pods...'
+  },
+  {
+    cmd: '/gaps',
+    title: 'Knowledge Gap & Stub Auditor',
+    category: 'Memory',
+    desc: 'Audit active space for missing note stubs, unresolved wikilinks, and orphan notes with 1-click creation.',
+    icon: 'activity',
+    hasParams: false
+  },
+  {
     cmd: '/quota',
     title: 'Rate Limits & Quota Summary',
     category: 'Diagnostics',

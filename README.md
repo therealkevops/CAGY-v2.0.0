@@ -178,10 +178,15 @@ graph LR
 - **Self-Healing Linter & Refactoring Engine (`/api/vault/lint`, `/api/vault/heal`)**: Scans for dangling links and orphan notes; renaming or moving notes automatically cascades bi-directional link refactoring across all referencing documents.
 - **Collapsible & Resizable Navigation Panels**: Left rail tag drawer and document sidebar tags/backlinks panes can be collapsed or resized to optimize vertical reading room.
 
-### 7. Obsidian Desktop Interoperability
+### 7. Knowledge Base Creation & Curation Engine (`/digest`, `/gaps`, `/recall`)
+- **Atomic Note Synthesizer & Auto-Wikilinker (`/digest <raw text>`)**: Transform raw study dumps, transcript excerpts, or unformatted thoughts into structured, atomic Obsidian notes. Automatically matches and weaves bi-directional `[[wikilinks]]` to existing notes within the active space (and global profile), protects code blocks and inline spans, assigns tags, saves to `knowledge/spaces/<space>/notes/<title>.md`, and triggers instant turn-0 rule sync.
+- **Knowledge Gap & Stub Auditor (`/gaps [space]`)**: Scans the active space's knowledge graph for unresolved dangling `[[wikilinks]]` (stubs referenced in notes that don't have a backing file yet) and orphan notes (0 connections). Renders interactive action chips (`[➕ Create Note]`, `[🔗 Auto-Weave Links]`, `[🔍 Search Vault]`) to resolve knowledge debt with 1 click.
+- **Conversational Recall Search (`/recall <query>`)**: Instant semantic and full-text search across all notes and ADRs directly within chat. Displays ranked cards with `<mark>` matched snippets and 1-click `[📥 Reference in Prompt]` chips.
+
+### 8. Obsidian Desktop Interoperability
 Because all notes are saved as plain UTF-8 Markdown on the host filesystem under `./knowledge/`, you can open this folder directly as an existing vault in the official **[Obsidian](https://obsidian.md)** desktop app on macOS/Windows/Linux.
 
-### 8. Token Economics & Memory ROI Dashboard (`/analytics`)
+### 9. Token Economics & Memory ROI Dashboard (`/analytics`)
 Inspect prompt token cost efficiency and the exact leverage of your Knowledge Vault:
 - **Real-Time Token & Spend Tracking**: Instant USD cost estimations based on official API pricing tiers ($0.075/1M input, $0.30/1M output on Gemini 3.8 Flash), generation throughput (tok/s), and active prompt size.
 - **Context Accumulation Curve**: Visual SVG growth graph plotting prompt tokens per conversation turn against the **Context Debt Threshold (25,000 tokens)**. Hover over turn nodes to view prompt size, response size, and generation speed.
@@ -220,6 +225,9 @@ Typing `/` in the chat composer displays an inline floating popover with Lucide 
   /schedule [instructions]     WORKFLOW   Schedule recurring or one-shot task timer
   /teamwork-preview [brief]    AGENTS     Autonomous subagents team collaboration preview
   /memorize [insight]          MEMORY     Persist insights, preferences, or decisions into Vault
+  /recall [query]              MEMORY     Conversational search across notes with 1-click prompt insert
+  /digest [raw text]           MEMORY     Transform raw text into atomic note with auto-woven wikilinks
+  /gaps [space]                MEMORY     Audit missing note stubs and orphans with 1-click creation
   /vault                       MEMORY     Open Knowledge Vault & Graph memory panel
   /browser [url or query]      TOOLS      Web browsing and URL content extraction
   /swarm                       AGENTS     Inspect autonomous subagents swarm and execution trees

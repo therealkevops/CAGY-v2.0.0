@@ -11,6 +11,8 @@ const COMMANDS=[
   {name:'memorize',         desc:'Antigravity: Persist insights, preferences, or decisions into Knowledge Vault', fn:cmdPassToAgent, arg:'[insight or topic]'},
   {name:'vault',            desc:'Antigravity: Open Knowledge Vault & Graph memory panel', fn:cmdVault, noEcho:true},
   {name:'recall',           desc:'Antigravity: Recall and search Knowledge Vault notes & ADRs', fn:cmdRecall, arg:'[query]', noEcho:true},
+  {name:'digest',           desc:'Antigravity: Convert raw text or study dump into atomic auto-linked note', fn:cmdDigest, arg:'[text or topic]', noEcho:true},
+  {name:'gaps',             desc:'Antigravity: Audit Knowledge Vault for missing stubs and orphan notes', fn:cmdGaps, arg:'[space]', noEcho:true},
   {name:'analytics',        desc:'Antigravity: Inspect prompt token economics and memory efficiency', fn:cmdAnalytics, noEcho:true},
   {name:'efficiency',       desc:'Antigravity: Alias for /analytics',                                  fn:cmdAnalytics, noEcho:true},
   {name:'browser',          desc:'Antigravity: Web browsing and URL content extraction', fn:cmdPassToAgent, arg:'[url or research query]'},
@@ -509,8 +511,137 @@ function insertVaultNoteIntoComposer(rawPayload){
   if(typeof showToast === 'function') showToast(`Inserted reference to ${title || noteId} into prompt`, 2000);
 }
 
+async function cmdGaps(args){
+  const spaceArg = String(args || '').trim();
+  const activeSpace = spaceArg || (typeof _activeSpaceFilter !== 'undefined' && _activeSpaceFilter !== 'all' ? _activeSpaceFilter : 'all');
+
+  showToast(`Auditing knowledge gaps for space: ${activeSpace}...`);
+  try {
+    const url = activeSpace && activeSpace !== 'all'
+      ? `/api/vault/health?space=${encodeURIComponent(activeSpace)}`
+      : '/api/vault/health';
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const totalNotes = data.total_notes || 0;
+    const totalEdges = data.total_edges || 0;
+    const unresolved = data.unresolved_links || [];
+    const orphans = data.orphans || [];
+    const hubs = data.top_hubs || [];
+
+    let md = `### 🧠 Knowledge Gap Audit: \`[${activeSpace}]\`\n\n`;
+    md += `**Topology**: ${totalNotes} notes · ${totalEdges} connections · ${unresolved.length} missing stubs · ${orphans.length} orphans\n\n---\n\n`;
+
+    // 1. Missing Note Stubs
+    if(unresolved.length > 0){
+      md += `#### 📌 Missing Note Stubs (Referenced in [[wikilinks]], but note does not exist)\n`;
+      unresolved.slice(0, 8).forEach((item, idx) => {
+        const targetClean = item.target.split('/').pop().replace(/\.md$/, '').replace(/_/g, ' ');
+        const targetTitle = targetClean.charAt(0).toUpperCase() + targetClean.slice(1);
+        const sourcesText = item.sources.slice(0, 3).map(s => `\`${s.split('/').pop()}\``).join(', ');
+        const payload = encodeURIComponent(JSON.stringify({
+          title: targetTitle,
+          space: activeSpace !== 'all' ? activeSpace : (item.target.startsWith('spaces/') ? item.target.split('/')[1] : ''),
+          category: 'notes'
+        }));
+        md += `${idx + 1}. **\`${item.target}\`** (${item.occurrences} ref${item.occurrences === 1 ? '' : 's'}: ${sourcesText})\n`;
+        md += `   [➕ Create Note](vault-create://${payload}) &nbsp;|&nbsp; [🔍 Search Vault](vault-search://${encodeURIComponent(targetClean)})\n\n`;
+      });
+      if(unresolved.length > 8){
+        md += `*> +${unresolved.length - 8} more missing stubs. Open [Knowledge Vault](vault://) to view full graph.*\n\n`;
+      }
+      md += `---\n\n`;
+    } else {
+      md += `#### 📌 Missing Note Stubs\n✅ No unresolved wikilinks found! All references point to valid notes.\n\n---\n\n`;
+    }
+
+    // 2. Orphan Notes
+    if(orphans.length > 0){
+      md += `#### 🏝️ Orphan Notes (0 connections in active graph)\n`;
+      orphans.slice(0, 5).forEach((item, idx) => {
+        const weavePayload = encodeURIComponent(JSON.stringify({
+          path: item.path,
+          space: item.space || activeSpace
+        }));
+        md += `${idx + 1}. **${item.title || item.id}** (\`knowledge/${item.path}\`)\n`;
+        md += `   [🔗 Auto-Weave Links](vault-weave://${weavePayload}) &nbsp;|&nbsp; [👁️ Open Note](vault://${item.path})\n\n`;
+      });
+      if(orphans.length > 5){
+        md += `*> +${orphans.length - 5} more orphan notes.*\n\n`;
+      }
+      md += `---\n\n`;
+    } else {
+      md += `#### 🏝️ Orphan Notes\n✅ Zero orphan notes! All notes are connected to the knowledge graph.\n\n---\n\n`;
+    }
+
+    // 3. Central Hubs
+    if(hubs.length > 0){
+      const hubList = hubs.map(h => `[${h.title || h.id}](vault://${h.id}.md) (${h.total_connections} links)`).join(' · ');
+      md += `**Central Knowledge Hubs**: ${hubList}\n`;
+    }
+
+    S.messages.push({role:'assistant', content: md.trim()});
+    renderMessages();
+  } catch(err){
+    S.messages.push({role:'assistant', content: `⚠️ Failed to audit knowledge gaps: ${err.message}`});
+    renderMessages();
+  }
+}
+
+async function cmdDigest(args){
+  const text = String(args || '').trim();
+  if(!text){
+    const content = `### 🧠 Antigravity Knowledge Digest (\`/digest\`)\n\nTransform raw study dumps, documentation excerpts, or unformatted thoughts into clean, atomic Obsidian notes with auto-woven bi-directional \`[[wikilinks]]\`.\n\n**Usage:**\n- \`/digest <raw text or topic dump>\`\n\n**Example:**\n- \`/digest Kubernetes Pod Disruption Budgets (PDB) specify minimum available pods during voluntary disruptions. Essential for high-availability clusters along with etcd backups.\`\n\n> *The engine auto-extracts titles, weaves links to existing notes in the space, assigns tags, saves to your vault, and re-compiles rules immediately.*`;
+    S.messages.push({role:'assistant', content});
+    renderMessages();
+    return;
+  }
+
+  showToast('Digesting text into atomic vault note...');
+  try {
+    const activeSpace = (typeof _activeSpaceFilter !== 'undefined' && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
+    const res = await fetch('/api/vault/digest', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text,
+        space: activeSpace,
+        category: 'notes'
+      })
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Failed to digest note');
+
+    const tagsStr = (data.tags && data.tags.length) ? data.tags.map(t => `#${t}`).join(' ') : '';
+    const targetsStr = (data.targets_linked && data.targets_linked.length)
+      ? data.targets_linked.map(t => `\`${t.split('/').pop()}\``).join(', ')
+      : 'None (standalone note)';
+
+    let md = `### 📝 Atomic Note Created: "${data.title}"\n\n`;
+    md += `Successfully digested raw text into knowledge vault:\n\n`;
+    md += `- **Path**: \`knowledge/${data.path}\`\n`;
+    md += `- **Space**: \`${data.space}\` · **Category**: \`${data.category}\`\n`;
+    md += `- **Tags**: ${tagsStr}\n`;
+    md += `- **Wikilinks Woven**: **${data.links_added}** (${targetsStr})\n\n`;
+    md += `[👁️ Open in Vault](vault://${data.path}) &nbsp;|&nbsp; [📥 Reference in Prompt](vault-insert://${encodeURIComponent(JSON.stringify({title: data.title, path: data.path}))})\n\n`;
+    md += `> *Note automatically compiled into active turn-0 rules for immediate agent recall.*`;
+
+    S.messages.push({role:'assistant', content: md});
+    renderMessages();
+
+    if(typeof loadVault === 'function') loadVault(true);
+  } catch(err){
+    S.messages.push({role:'assistant', content: `⚠️ Failed to digest note: ${err.message}`});
+    renderMessages();
+  }
+}
+
 if(typeof window !== 'undefined'){
   window.cmdRecall = cmdRecall;
+  window.cmdGaps = cmdGaps;
+  window.cmdDigest = cmdDigest;
   window.insertVaultNoteIntoComposer = insertVaultNoteIntoComposer;
 }
 

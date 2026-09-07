@@ -24,6 +24,9 @@ from api.vault import (
     heal_vault,
     rename_note,
     get_note,
+    get_vault_health,
+    weave_wikilinks,
+    digest_note,
 )
 
 
@@ -303,6 +306,140 @@ class TestSecondBrainEfficacy(unittest.TestCase):
         self.assertIn("a[href^=\"#vault-insert=\"]", ui_js)
         self.assertIn("vault:\\/\\/", messages_js)
         self.assertIn("vault-insert", messages_js)
+
+    def test_space_scoped_vault_health_and_gap_analysis(self):
+        """Verify that get_vault_health accurately partitions gaps, stubs, and orphans per space."""
+        # 1. Create a note in cka-kb referencing missing stubs: 'flannel_cni' and 'coredns_config'
+        (self.space_a_dir / "architecture" / "networking.md").write_text(
+            "# Cluster Networking\n\n"
+            "Networking requires [[spaces/cka-kb/notes/flannel_cni|Flannel]] overlay and "
+            "[[spaces/cka-kb/notes/coredns_config|CoreDNS]] service discovery.\n"
+            "Also integrates with [[spaces/cka-kb/decisions/adr_001_etcd_backup|ETCD Backup]].\n"
+        )
+
+        # 2. Create an orphan note in cka-kb with 0 incoming or outgoing links
+        (self.space_a_dir / "notes").mkdir(parents=True, exist_ok=True)
+        (self.space_a_dir / "notes" / "orphan_troubleshooting.md").write_text(
+            "# Kubernetes Troubleshooting Guide\n\n"
+            "General runbook for debugging crashlooping pods without any links.\n"
+        )
+
+        # 3. Create a missing stub in cloud-telemetry space to verify space boundary filtering
+        (self.space_b_dir / "architecture" / "metrics.md").write_text(
+            "# Metrics Collector\n\n"
+            "Pushes metrics to [[spaces/cloud-telemetry/notes/clickhouse_sink|ClickHouse]].\n"
+        )
+
+        # Run health check scoped to cka-kb
+        health_a = get_vault_health(self.vault_dir, space="cka-kb")
+        self.assertTrue(health_a["ok"])
+        unresolved_a = [u["target"] for u in health_a["unresolved_links"]]
+        self.assertIn("spaces/cka-kb/notes/flannel_cni", unresolved_a)
+        self.assertIn("spaces/cka-kb/notes/coredns_config", unresolved_a)
+        # Verify cross-space stub is NOT leaked
+        self.assertNotIn("spaces/cloud-telemetry/notes/clickhouse_sink", unresolved_a)
+
+        orphans_a = [o["path"] for o in health_a["orphans"]]
+        self.assertTrue(any("orphan_troubleshooting.md" in p for p in orphans_a))
+
+        # Run health check for cloud-telemetry
+        health_b = get_vault_health(self.vault_dir, space="cloud-telemetry")
+        self.assertTrue(health_b["ok"])
+        unresolved_b = [u["target"] for u in health_b["unresolved_links"]]
+        self.assertIn("spaces/cloud-telemetry/notes/clickhouse_sink", unresolved_b)
+        self.assertNotIn("spaces/cka-kb/notes/flannel_cni", unresolved_b)
+
+    def test_auto_wikilink_weaving_and_digest_engine(self):
+        """Verify atomic note digest, markdown syntax protection, and turn-0 rule sync."""
+        raw_text = (
+            "### Pod Disruption Budgets in Production\n\n"
+            "Pod Disruption Budgets ensure minimum replica availability during voluntary disruptions. "
+            "They coordinate with etcd backups to guarantee high availability.\n\n"
+            "```bash\n# Fenced code block should not be modified: etcd snapshot save\netcdctl snapshot save /tmp/backup.db\n```\n\n"
+            "Inline code like `etcdctl` or `fastapi` must stay clean.\n"
+            "Existing link [[spaces/cka-kb/decisions/adr_001_etcd_backup|etcd]] must not be double-linked.\n"
+        )
+
+        # 1. Test weave_wikilinks in isolation
+        woven = weave_wikilinks(self.vault_dir, raw_text, space="cka-kb")
+        self.assertTrue(woven["ok"])
+        woven_content = woven["content"]
+
+        # Code blocks and inline spans must remain protected
+        self.assertIn("`etcdctl`", woven_content)
+        self.assertIn("etcdctl snapshot save /tmp/backup.db", woven_content)
+        # Prose reference to etcd backups should be woven
+        self.assertIn("[[spaces/cka-kb/decisions/adr_001_etcd_backup|", woven_content)
+        # Should not link fastapi when scoped to cka-kb
+        self.assertNotIn("[[spaces/cloud-telemetry/", woven_content)
+
+        # 2. Test digest_note end-to-end with active turn-0 rule sync
+        digest_res = digest_note(
+            self.vault_dir,
+            raw_text,
+            space="cka-kb",
+            title="Pod Disruption Budgets",
+            category="notes",
+            workspace_path=self.workspace_dir
+        )
+        self.assertTrue(digest_res["ok"])
+        self.assertEqual(digest_res["title"], "Pod Disruption Budgets")
+        self.assertEqual(digest_res["space"], "cka-kb")
+        self.assertEqual(digest_res["category"], "notes")
+        self.assertIn("pod_disruption_budgets.md", digest_res["path"])
+
+        saved_file = self.vault_dir / digest_res["path"]
+        self.assertTrue(saved_file.exists())
+        saved_text = saved_file.read_text(encoding="utf-8")
+        self.assertIn("# Pod Disruption Budgets", saved_text)
+        self.assertIn("#cka-kb", saved_text)
+        self.assertIn("#notes", saved_text)
+
+        # Verify instant turn-0 rule sync
+        rules_content = (self.workspace_dir / ".gemini" / "rules" / "knowledge_vault.md").read_text()
+        self.assertIn("Pod Disruption Budgets", rules_content)
+
+    def test_gaps_and_digest_slash_commands_and_protocols(self):
+        """Verify /gaps, /digest slash commands, action badge links, and CSS styles."""
+        commands_js = (WEBUI_DIR / "static" / "commands.js").read_text(encoding="utf-8")
+        slash_palette_js = (WEBUI_DIR / "static" / "slash_palette.js").read_text(encoding="utf-8")
+        ui_js = (WEBUI_DIR / "static" / "ui.js").read_text(encoding="utf-8")
+        messages_js = (WEBUI_DIR / "static" / "messages.js").read_text(encoding="utf-8")
+        style_css = (WEBUI_DIR / "static" / "style.css").read_text(encoding="utf-8")
+        vault_js = (WEBUI_DIR / "static" / "vault.js").read_text(encoding="utf-8")
+
+        # 1. Commands & Palette registrations
+        self.assertIn("name:'gaps'", commands_js)
+        self.assertIn("fn:cmdGaps", commands_js)
+        self.assertIn("name:'digest'", commands_js)
+        self.assertIn("fn:cmdDigest", commands_js)
+        self.assertIn("window.cmdGaps = cmdGaps", commands_js)
+        self.assertIn("window.cmdDigest = cmdDigest", commands_js)
+
+        self.assertIn("cmd: '/gaps'", slash_palette_js)
+        self.assertIn("cmd: '/digest'", slash_palette_js)
+
+        # 2. UI protocols & click listeners
+        self.assertIn("vault-create:\\/\\/", ui_js)
+        self.assertIn("vault-weave:\\/\\/", ui_js)
+        self.assertIn("vault-search:\\/\\/", ui_js)
+        self.assertIn("a[href^=\"#vault-create=\"]", ui_js)
+        self.assertIn("a[href^=\"#vault-weave=\"]", ui_js)
+        self.assertIn("a[href^=\"#vault-search=\"]", ui_js)
+
+        # 3. Message rendering & sanitization
+        self.assertIn("vault-create:\\/\\/", messages_js)
+        self.assertIn("vault-weave:\\/\\/", messages_js)
+        self.assertIn("vault-search:\\/\\/", messages_js)
+        self.assertIn("vault-create", messages_js)
+
+        # 4. Vault creation with space
+        self.assertIn("initialSpace", vault_js)
+
+        # 5. CSS Action Badges
+        self.assertIn("a[href^=\"#vault-create=\"]", style_css)
+        self.assertIn("a[href^=\"#vault-weave=\"]", style_css)
+        self.assertIn("a[href^=\"#vault-search=\"]", style_css)
 
 
 if __name__ == "__main__":

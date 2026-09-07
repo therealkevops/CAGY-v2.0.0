@@ -30,6 +30,8 @@ The official **Google Antigravity (AGY)** engine provides a powerful foundation 
 | **Multi-Project Memory Partitioning** | Monolithic prompt or flat files prone to cross-topic context contamination. | **Space-Scoped Vault Containers** (`spaces/<id>/`): Project-partitioned ADRs and architecture, dynamic workspace inference, and isolated Turn-0 rule compilation. |
 | **Project ⇄ Workspace Alignment** | Disconnected concepts; chat labels have no directory anchors or execution context. | **Project ⇄ Workspace Binding**: 1-click binding of chat projects to directory roots, auto-switching composer & vault space on new chat. |
 | **Context Diet & Self-Healing Memory** | Unbounded context growth and broken markdown links when files move. | **Tiered Context Diet Engine & Self-Healing Linter**: Auto-summarizes deep archives at 20 KB limit and heals broken wikilinks upon note rename. |
+| **Knowledge Base Creation & Curation** | Manual note authoring, unlinked text dumps, and unresolved missing stubs. | **Autonomous Note Synthesizer & Gap Resolver** (`/digest`, `/gaps`, `/recall`): Ingest unformatted dumps into atomic notes with auto-woven wikilinks, and audit/heal dangling stubs with 1-click creation. |
+
 
 ---
 
@@ -308,6 +310,28 @@ Developers can bind, update, or unlink workspaces at any time without leaving th
 - **Context-Aware `+ New Chat`**: Creating a new chat while a bound project is selected automatically configures the session's workspace directory to the project's default workspace.
 - **Empty Session Auto-Alignment**: Switching between project chips while in an empty, unstarted chat session dynamically rebinds the session's workspace to match the selected project.
 - **Automatic Vault Space Synchronization**: Binding a workspace automatically routes all subsequent `/memorize` calls and Turn-0 rule compilations to the corresponding `knowledge/spaces/<space_id>/` container.
+
+---
+
+## 11. Knowledge Base Creation & Curation Engine (`/digest`, `/gaps`, `/recall`)
+
+While the standard AGY harness treats memory as passive scratchpad files, CAGY turns the Second Brain into an **active Knowledge Base creation engine**—ideal for building deep certification vaults (e.g. `cka-kb`), domain documentation, and enterprise system blueprints without context fatigue.
+
+### 11.1 Atomic Note Synthesizer & Auto-Wikilinker (`/digest <raw text>`)
+Transform raw study dumps, architecture documentation excerpts, or unformatted thoughts into clean, atomic Obsidian notes:
+- **Automatic Entity & Stem Matching**: Gathers titles, ADR prefixes, clean stems, and keywords ($\ge 4$ characters) from the active space and weaves bi-directional `[[target|Label]]` links.
+- **Syntax Protection Engine**: Fenced code blocks (` ``` `), inline code spans (` `...` `), existing `[[...]]` wikilinks, markdown URLs, and `#` headings are placeholder-stashed (`\x00VAULT_STASH_i\x00`) to guarantee that code snippets and headings are never corrupted by regex substitution.
+- **Turn-0 Immediate Rule Sync**: Saving an atomic note automatically triggers `sync_vault_to_rules`, immediately compiling the new knowledge into native `.gemini/rules/knowledge_vault.md` so the agent possesses turn-0 recall of the new note in the very next turn.
+
+### 11.2 Knowledge Gap & Stub Auditor (`/gaps [space]`)
+Auditing knowledge graph topology to prevent dead ends and unresolved references:
+- **Missing Stub Detection**: Discovers references to notes (`[[spaces/.../note]]`) that do not yet have a backing file. Renders interactive `[➕ Create Note]` action badges with pre-filled title, space, and category, and `[🔍 Search Vault]` chips.
+- **Orphan Note Resolution**: Detects disconnected nodes with 0 connections in the active graph and provides 1-click `[🔗 Auto-Weave Links]` badges that trigger `/api/vault/weave` to integrate orphan notes into the broader knowledge web.
+- **Central Knowledge Hubs**: Highlights high-degree centrality notes that act as primary architectural anchors.
+
+### 11.3 Conversational Recall Search (`/recall <query>`)
+- Direct in-chat fuzzy and full-text retrieval across all spaces with relevance ranking and highlighted snippets (`<mark>`).
+- 1-click `[📥 Reference in Prompt]` chip appends note summaries directly to the composer input without context penalty.
 
 ---
 

@@ -948,7 +948,12 @@ function highlightVaultGraphNode(pathOrId) {
 /**
  * Open the structured modal to create a new vault note with category presets and auto ADR numbering.
  */
-async function promptCreateVaultNote(initialCategory = 'decisions', initialTitle = '') {
+async function promptCreateVaultNote(initialCategory = 'decisions', initialTitle = '', initialSpace = '') {
+  if (initialSpace && initialSpace !== 'all') {
+    _activeSpaceFilter = initialSpace;
+    const sel = document.getElementById('vaultSpaceSelect');
+    if (sel) sel.value = initialSpace;
+  }
   _selectedVaultCategory = initialCategory || 'decisions';
   const modal = document.getElementById('vaultNewNoteModal');
   if (!modal) return;
