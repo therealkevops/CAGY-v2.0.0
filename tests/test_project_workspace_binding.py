@@ -273,6 +273,29 @@ class TestProjectWorkspaceBinding(unittest.TestCase):
         space_root = infer_space_from_workspace(self.workspace_dir)
         self.assertEqual(space_root, "global")
 
+    def test_session_update_workspace_switch(self):
+        """Verify POST /api/session/update succeeds when switching workspaces (Spaces page)."""
+        # 1. Create a session in root workspace
+        _, s_data = self._post(
+            "/api/session/new",
+            {"title": "Switch Test Session", "workspace": str(self.workspace_dir)},
+        )
+        sid = s_data["session"]["session_id"]
+        self.created_session_ids.append(sid)
+        self.assertEqual(s_data["session"]["workspace"], str(self.workspace_dir.resolve()))
+
+        # 2. Update session workspace to project_a_dir (Spaces page workspace activation)
+        status_up, data_up = self._post(
+            "/api/session/update",
+            {
+                "session_id": sid,
+                "workspace": str(self.project_a_dir),
+            },
+        )
+        self.assertEqual(status_up, 200)
+        self.assertEqual(data_up["session"]["workspace"], str(self.project_a_dir.resolve()))
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -16645,7 +16645,6 @@ def handle_post(handler, parsed) -> bool:
                 target_p = next((p for p in load_projects() if p["project_id"] == target_pid), None)
                 if target_p and target_p.get("default_workspace"):
                     try:
-                        from api.workspace import resolve_trusted_workspace
                         s.workspace = str(resolve_trusted_workspace(target_p["default_workspace"]))
                     except Exception:
                         s.workspace = target_p["default_workspace"]
@@ -16686,7 +16685,6 @@ def handle_post(handler, parsed) -> bool:
         raw_ws = body.get("default_workspace")
         if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
             try:
-                from api.workspace import resolve_trusted_workspace
                 default_ws = str(resolve_trusted_workspace(raw_ws.strip()))
             except Exception:
                 default_ws = raw_ws.strip()
@@ -16732,7 +16730,6 @@ def handle_post(handler, parsed) -> bool:
             raw_ws = body.get("default_workspace")
             if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
                 try:
-                    from api.workspace import resolve_trusted_workspace
                     proj["default_workspace"] = str(resolve_trusted_workspace(raw_ws.strip()))
                 except Exception:
                     proj["default_workspace"] = raw_ws.strip()
