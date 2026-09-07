@@ -46,6 +46,25 @@ Commands:
                 if c_idx + 1 < len(args):
                     conv_id = args[c_idx + 1]
 
+            if "--effort" in args and "--model" in args:
+                m_idx = args.index("--model")
+                eff_idx = args.index("--effort")
+                if m_idx + 1 < len(args) and eff_idx + 1 < len(args):
+                    m_val = args[m_idx + 1]
+                    eff_val = args[eff_idx + 1]
+                    if any(t in m_val.lower() for t in ["(high)", "(medium)", "(low)", "-high", "-medium", "-low", "claude"]):
+                        err_evt = {
+                            "event": "result",
+                            "result": {
+                                "conversation_id": "",
+                                "status": "ERROR",
+                                "response": "",
+                                "error": f'invalid model selection (--model "{m_val}" --effort "{eff_val}"): --effort is not supported for model "{m_val}"'
+                            }
+                        }
+                        print(json.dumps(err_evt), flush=True)
+                        sys.exit(1)
+
             prompt_text = "Hello from mock AGY"
             if "--print" in args:
                 p_idx = args.index("--print")
@@ -53,6 +72,18 @@ Commands:
                     prompt_text = f"Mock reply to: {args[p_idx + 1]}"
                     if "TRIGGER_TIMEOUT_ERROR" in args[p_idx + 1]:
                         sys.stderr.write("E0905 06:45:14.319511    1 printmode.go:521] Print mode: timed out after 1495 polls\n")
+                        sys.exit(1)
+                    if "TRIGGER_RESULT_ERROR" in args[p_idx + 1]:
+                        err_evt = {
+                            "event": "result",
+                            "result": {
+                                "conversation_id": "",
+                                "status": "ERROR",
+                                "response": "",
+                                "error": "simulated antigravity provider failure"
+                            }
+                        }
+                        print(json.dumps(err_evt), flush=True)
                         sys.exit(1)
 
             # Emit stream-json events

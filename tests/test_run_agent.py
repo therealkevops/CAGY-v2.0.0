@@ -105,6 +105,97 @@ class TestRunAgent(unittest.TestCase):
         self.assertIn("Execution Timeout", content)
         self.assertIn("45m", content)
 
+    def test_resolve_model_and_effort(self):
+        """Verify model and effort resolution avoids duplicate or illegal --effort flags."""
+        # Models that encode effort in parens
+        m, eff = run_agent.resolve_model_and_effort("Gemini 3.8 Flash (High)", "high")
+        self.assertEqual(m, "Gemini 3.8 Flash (High)")
+        self.assertIsNone(eff)
+
+        # Lower tier promoted to High
+        m, eff = run_agent.resolve_model_and_effort("Gemini 3.8 Flash (Medium)", "high")
+        self.assertEqual(m, "Gemini 3.8 Flash (High)")
+        self.assertIsNone(eff)
+
+        m, eff = run_agent.resolve_model_and_effort("Gemini 3.8 Flash (Low)", "high")
+        self.assertEqual(m, "Gemini 3.8 Flash (High)")
+        self.assertIsNone(eff)
+
+        # Lower tier dash-suffix promoted to High
+        m, eff = run_agent.resolve_model_and_effort("gemini-3.8-flash-low", "high")
+        self.assertEqual(m, "gemini-3.8-flash-high")
+        self.assertIsNone(eff)
+
+        # Claude models should never receive --effort
+        m, eff = run_agent.resolve_model_and_effort("Claude Sonnet 4.6 (Thinking)", "high")
+        self.assertEqual(m, "Claude Sonnet 4.6 (Thinking)")
+        self.assertIsNone(eff)
+
+        m, eff = run_agent.resolve_model_and_effort("claude-sonnet-4-6", "high")
+        self.assertEqual(m, "claude-sonnet-4-6")
+        self.assertIsNone(eff)
+
+        # GPT-OSS models should never receive --effort
+        m, eff = run_agent.resolve_model_and_effort("GPT-OSS 120B (Medium)", "high")
+        self.assertEqual(m, "GPT-OSS 120B (Medium)")
+        self.assertIsNone(eff)
+
+        # Base models without tier accept --effort
+        m, eff = run_agent.resolve_model_and_effort("gemini-3.8-flash", "high")
+        self.assertEqual(m, "gemini-3.8-flash")
+        self.assertEqual(eff, "high")
+
+        # Unspecified/default models accept --effort
+        m, eff = run_agent.resolve_model_and_effort("default", "high")
+        self.assertIsNone(m)
+        self.assertEqual(eff, "high")
+
+        m, eff = run_agent.resolve_model_and_effort(None, "high")
+        self.assertIsNone(m)
+        self.assertEqual(eff, "high")
+
+    def test_ai_agent_deepmode_model_and_effort_conflict_avoidance(self):
+        """Verify DeepMode with Gemini 3.8 Flash (High) executes cleanly without --effort flag collision."""
+        os.environ["AGY_CLI_PATH"] = str(MOCK_AGY)
+        self.addCleanup(lambda: os.environ.pop("AGY_CLI_PATH", None))
+
+        agent = run_agent.AIAgent(
+            model="Gemini 3.8 Flash (High)",
+            workspace=str(REPO_ROOT),
+        )
+
+        result = agent.run_conversation("/deepmode Summarize video content", session_id="deepmode_sess_1")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("status"), "completed")
+        self.assertIsNone(agent._last_error)
+        self.assertNotIn("error", result)
+
+        messages = result.get("messages", [])
+        assistant_msg = next((m for m in reversed(messages) if m.get("role") == "assistant"), None)
+        self.assertIsNotNone(assistant_msg)
+        self.assertNotIn("⚠️ Antigravity execution error", assistant_msg.get("content", ""))
+
+    def test_ai_agent_result_error_handling(self):
+        """Verify AIAgent captures result errors from stdout without silent failure."""
+        os.environ["AGY_CLI_PATH"] = str(MOCK_AGY)
+        self.addCleanup(lambda: os.environ.pop("AGY_CLI_PATH", None))
+
+        agent = run_agent.AIAgent(
+            model="Gemini 3.8 Flash (High)",
+            workspace=str(REPO_ROOT),
+        )
+
+        result = agent.run_conversation("TRIGGER_RESULT_ERROR", session_id="err_sess_1")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("status"), "error")
+        self.assertIn("simulated antigravity provider failure", result.get("error", ""))
+        self.assertIn("simulated antigravity provider failure", agent._last_error)
+
+        messages = result.get("messages", [])
+        assistant_msg = next((m for m in reversed(messages) if m.get("role") == "assistant"), None)
+        self.assertIsNotNone(assistant_msg)
+        self.assertIn("⚠️ Antigravity execution error", assistant_msg.get("content", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

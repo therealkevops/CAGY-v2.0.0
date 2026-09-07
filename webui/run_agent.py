@@ -1,3 +1,4 @@
+import re
 import os
 import sys
 import json
@@ -6,7 +7,7 @@ import base64
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Callable, Union
+from typing import Dict, Any, List, Optional, Callable, Union, Tuple
 
 def _get_map_file() -> Path:
     default_home = Path.home() / ".agy" if (Path.home() / ".agy" / "webui").exists() or not (Path.home() / ".hermes" / "webui").exists() else Path.home() / ".hermes"
@@ -42,6 +43,57 @@ def _save_agy_conv_id(session_id: str, conv_id: str):
         map_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception:
         pass
+
+
+def resolve_model_and_effort(
+    model_name: Optional[str],
+    requested_effort: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve model name and effort flag for the agy CLI.
+
+    agy CLI rejects --effort if --model already contains an effort tier
+    (e.g. 'Gemini 3.8 Flash (High)' or 'gemini-3.8-flash-high') or is a Claude/Thinking model.
+    If requested_effort is 'high' and the model is at a lower effort tier (e.g. Medium/Low),
+    promotes the model to the High tier.
+    """
+    if not model_name or model_name in ("Antigravity 2.0 (agy CLI)", "default", "auto", ""):
+        eff = requested_effort if requested_effort in ("low", "medium", "high") else None
+        return None, eff
+
+    m = model_name.strip()
+    m_lower = m.lower()
+
+    # Claude and Thinking models do not support --effort
+    if "claude" in m_lower or "thinking" in m_lower:
+        return m, None
+
+    # GPT-OSS models do not support --effort and have no (High) tier
+    if "gpt-oss" in m_lower:
+        return m, None
+
+    is_gemini = "gemini" in m_lower or "flash" in m_lower or "pro" in m_lower
+
+    # Check for embedded effort tier: (High), (Medium), (Low)
+    paren_match = re.search(r'\s*\((Low|Medium|High)\)$', m, re.IGNORECASE)
+    if paren_match:
+        if requested_effort == "high" and is_gemini:
+            m = re.sub(r'\s*\((Low|Medium|High)\)$', ' (High)', m, flags=re.IGNORECASE)
+        elif requested_effort in ("low", "medium") and is_gemini:
+            m = re.sub(r'\s*\((Low|Medium|High)\)$', f' ({requested_effort.capitalize()})', m, flags=re.IGNORECASE)
+        return m, None
+
+    # Check for embedded effort tier: -high, -medium, -low
+    dash_match = re.search(r'-(low|medium|high)$', m, re.IGNORECASE)
+    if dash_match:
+        if requested_effort == "high" and is_gemini:
+            m = re.sub(r'-(low|medium|high)$', '-high', m, flags=re.IGNORECASE)
+        elif requested_effort in ("low", "medium") and is_gemini:
+            m = re.sub(r'-(low|medium|high)$', f'-{requested_effort.lower()}', m, flags=re.IGNORECASE)
+        return m, None
+
+    # Base model (e.g. 'gemini-3.8-flash', 'gemini-3.7-flash') which accepts --effort
+    eff = requested_effort if requested_effort in ("low", "medium", "high") else None
+    return m, eff
 
 
 class AIAgent:
@@ -187,6 +239,7 @@ class AIAgent:
         **kwargs
     ) -> Dict[str, Any]:
         """Execute a turn by invoking agy CLI with stream-json format."""
+        self._last_error = None
         self._sync_agy_memory()
         if not self.session_id and kwargs.get("session_id"):
             self.session_id = kwargs.get("session_id")
@@ -299,9 +352,6 @@ class AIAgent:
         if self.conversation_id:
             cmd.extend(["--conversation", self.conversation_id])
 
-        if self.model and self.model not in ("Antigravity 2.0 (agy CLI)", "default", "auto", ""):
-            cmd.extend(["--model", self.model])
-
         effort = kwargs.get("effort") or os.environ.get("AGY_DEFAULT_EFFORT")
         try:
             from api.vault import is_deepmode_enabled
@@ -309,8 +359,12 @@ class AIAgent:
                 effort = "high"
         except Exception:
             pass
-        if effort and effort in ("low", "medium", "high"):
-            cmd.extend(["--effort", effort])
+
+        resolved_model, resolved_effort = resolve_model_and_effort(self.model, effort)
+        if resolved_model:
+            cmd.extend(["--model", resolved_model])
+        if resolved_effort:
+            cmd.extend(["--effort", resolved_effort])
 
         mode = kwargs.get("mode") or os.environ.get("AGY_DEFAULT_MODE")
         if mode and mode in ("accept-edits", "plan"):
@@ -445,7 +499,19 @@ class AIAgent:
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
 
-                        if not has_streamed_deltas and "response" in res_obj:
+                        res_status = str(res_obj.get("status", "")).upper()
+                        res_err = res_obj.get("error")
+                        if res_status == "ERROR" or res_err:
+                            err_msg = str(res_err or "Antigravity execution error")
+                            self._last_error = err_msg
+                            if not assistant_text:
+                                assistant_text = f"⚠️ Antigravity execution error: {err_msg}"
+                                if self.stream_delta_callback:
+                                    try:
+                                        self.stream_delta_callback(assistant_text)
+                                    except Exception:
+                                        pass
+                        elif not has_streamed_deltas and "response" in res_obj:
                             resp = res_obj["response"]
                             assistant_text = resp
                             if self.stream_delta_callback:
@@ -470,6 +536,12 @@ class AIAgent:
                     err_output = proc.stderr.read().strip()
                 except Exception:
                     err_output = ""
+
+            if proc.returncode != 0 and not self._last_error:
+                if err_output:
+                    self._last_error = err_output
+                elif not assistant_text:
+                    self._last_error = f"Antigravity process exited with return code {proc.returncode}"
 
             # Check for watchdog timeout in stderr
             timeout_keywords = ["print mode: timed out", "timed out after", "timeout expired", "stream timed out"]
@@ -505,6 +577,13 @@ class AIAgent:
                     assistant_text = f"⚠️ Antigravity runtime error:\n```\n{err_output}\n```"
                 if self.stream_delta_callback:
                     self.stream_delta_callback(assistant_text)
+            elif self._last_error and not assistant_text:
+                assistant_text = f"⚠️ Antigravity execution error: {self._last_error}"
+                if self.stream_delta_callback:
+                    try:
+                        self.stream_delta_callback(assistant_text)
+                    except Exception:
+                        pass
 
             # Detect auth failure messages streamed into assistant_text
             if not tool_calls and assistant_text:
@@ -579,7 +658,7 @@ class AIAgent:
         stream_sec = max(0.1, total_duration - thinking_sec)
         tps = (output_tokens / stream_sec) if output_tokens > 0 else (streamed_chars / 4.0 / stream_sec)
 
-        return {
+        res_payload = {
             "messages": history,
             "usage": {
                 "input_tokens": input_tokens,
@@ -588,5 +667,8 @@ class AIAgent:
                 "duration_sec": round(total_duration, 2),
                 "thinking_sec": round(thinking_sec, 2)
             },
-            "status": "completed"
+            "status": "error" if self._last_error else "completed"
         }
+        if self._last_error:
+            res_payload["error"] = self._last_error
+        return res_payload
