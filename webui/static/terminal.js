@@ -459,18 +459,32 @@ function syncTerminalButton(){
   if(TERMINAL_UI.open&&TERMINAL_UI.sessionId&&(currentSid!==TERMINAL_UI.sessionId||currentWorkspace!==TERMINAL_UI.workspace)){
     closeComposerTerminal(TERMINAL_UI.sessionId);
   }
-  if(!toggle)return;
-  const hasWorkspace=!!(S.session&&S.session.workspace);
   const remoteBackend=!!S.terminalRemoteBackend;
-  toggle.disabled=!hasWorkspace||remoteBackend;
-  toggle.classList.toggle('active',TERMINAL_UI.open);
-  toggle.setAttribute('aria-pressed',TERMINAL_UI.open?'true':'false');
-  toggle.title=!hasWorkspace
-    ? t('terminal_no_workspace_title')
-    : (remoteBackend
-      ? _terminalRemoteBackendUnsupportedMessage()
-      : (TERMINAL_UI.collapsed?t('terminal_expand'):t('terminal_open_title')));
-  toggle.setAttribute('aria-label',toggle.title);
+  const title=remoteBackend
+    ? _terminalRemoteBackendUnsupportedMessage()
+    : (TERMINAL_UI.open
+      ? (TERMINAL_UI.collapsed ? t('terminal_expand') : t('terminal_close'))
+      : t('terminal_open_title'));
+
+  if(toggle){
+    toggle.disabled=remoteBackend;
+    toggle.classList.toggle('active',TERMINAL_UI.open);
+    toggle.setAttribute('aria-pressed',TERMINAL_UI.open?'true':'false');
+    toggle.title=title;
+    toggle.setAttribute('aria-label',title);
+  }
+
+  const mobileAction=$('composerMobileTerminalAction');
+  if(mobileAction){
+    mobileAction.disabled=remoteBackend;
+    mobileAction.classList.toggle('active',TERMINAL_UI.open);
+    mobileAction.title=title;
+    mobileAction.setAttribute('aria-label',title);
+    const mobileLabel=$('composerMobileTerminalLabel');
+    if(mobileLabel){
+      mobileLabel.textContent=TERMINAL_UI.open?(TERMINAL_UI.collapsed?t('terminal_expand'):t('terminal_title')):'Terminal';
+    }
+  }
 }
 
 function focusComposerTerminalInput(){
@@ -578,6 +592,14 @@ async function _startComposerTerminal(restart=false){
 async function toggleComposerTerminal(force){
   const next=typeof force==='boolean'?force:!TERMINAL_UI.open;
   if(next){
+    if(S.terminalRemoteBackend){
+      showToast(_terminalRemoteBackendUnsupportedMessage(),3200,'warning');
+      return;
+    }
+    if((!S.session||!S.session.workspace)&&typeof cmdTerminal==='function'){
+      await cmdTerminal();
+      return;
+    }
     if(TERMINAL_UI.open){
       if(TERMINAL_UI.collapsed)expandComposerTerminal();
       else focusComposerTerminalInput();

@@ -9671,6 +9671,7 @@ _SETTINGS_DEFAULTS = {
     "hide_composer_workspace": False,  # hide workspace controls in composer footer/mobile config panel
     "hide_composer_mobile_config": False,  # hide mobile composer config button
     "hide_composer_model": False,  # hide model chip in composer footer/mobile config panel
+    "hide_composer_terminal": False,  # hide terminal chip in composer footer/mobile config panel
     "hide_composer_quota_chip": False,  # hide provider quota chip in composer footer
     "hide_composer_reasoning": False,  # hide reasoning chip in composer footer/mobile config panel
     "hide_composer_toolsets": False,  # hide toolsets chip in composer footer
@@ -10000,6 +10001,7 @@ _SETTINGS_BOOL_KEYS = {
     "hide_composer_workspace",
     "hide_composer_mobile_config",
     "hide_composer_model",
+    "hide_composer_terminal",
     "hide_composer_quota_chip",
     "hide_composer_reasoning",
     "hide_composer_toolsets",

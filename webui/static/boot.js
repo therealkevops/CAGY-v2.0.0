@@ -3000,7 +3000,7 @@ const _COMPOSER_CONTROL_TOGGLE_DEFS=[
   {key:'hide_composer_mic',label:'Mic',labelKey:'composer_control_mic',selectors:['#btnMic'],orderSelector:'#btnMic',orderGroup:'left'},
   {key:'hide_composer_workspace',label:'Workspace',labelKey:'composer_control_workspace',selectors:['.composer-ws-wrap','#composerMobileWorkspaceAction'],orderSelector:'.composer-ws-wrap',orderGroup:'left'},
   {key:'hide_composer_model',label:'Model',labelKey:'composer_control_model',selectors:['.composer-model-wrap','#composerMobileModelAction'],orderSelector:'.composer-model-wrap',orderGroup:'left'},
-  {key:'hide_composer_terminal',label:'Terminal',labelKey:'composer_control_terminal',selectors:['#composerTerminalWrap'],orderSelector:'#composerTerminalWrap',orderGroup:'left'},
+  {key:'hide_composer_terminal',label:'Terminal',labelKey:'composer_control_terminal',selectors:['#composerTerminalWrap','#composerMobileTerminalAction'],orderSelector:'#composerTerminalWrap',orderGroup:'left'},
   {key:'hide_composer_context',label:'Context',labelKey:'composer_control_context',selectors:['#ctxIndicatorWrap','#composerMobileContextAction'],orderSelector:'#ctxIndicatorWrap',orderGroup:'right'},
 ];
 window._COMPOSER_CONTROL_TOGGLE_DEFS=_COMPOSER_CONTROL_TOGGLE_DEFS;
@@ -3114,6 +3114,7 @@ function _applyComposerFooterVisibilitySettings(){
   if(hidden.hide_composer_reasoning&&typeof closeReasoningDropdown==='function') closeReasoningDropdown();
   if(hidden.hide_composer_toolsets&&typeof closeToolsetsDropdown==='function') closeToolsetsDropdown();
   if(hidden.hide_composer_mobile_config&&typeof closeMobileComposerConfig==='function') closeMobileComposerConfig();
+  if(hidden.hide_composer_terminal&&typeof closeComposerTerminal==='function'&&typeof TERMINAL_UI!=='undefined'&&TERMINAL_UI.open) closeComposerTerminal();
 
   // Hide the divider when all left-group buttons before it are hidden
   // Stops a lone vertical separator from appearing when attach/saved-prompts/mic/voice are all hidden.

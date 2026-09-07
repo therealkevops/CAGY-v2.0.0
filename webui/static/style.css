@@ -1640,6 +1640,7 @@
   .composer-profile-wrap,
   .composer-ws-wrap,
   .composer-reasoning-wrap,
+  .composer-terminal-wrap,
   .composer-toolsets-wrap,
   .composer-model-wrap{position:relative;flex:0 0 auto;}
   .composer-profile-chip{display:inline-flex;align-items:center;gap:8px;max-width:180px;padding:8px 10px 8px 12px;border-radius:999px;border:1px solid transparent;background-color:transparent;font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
@@ -1699,6 +1700,14 @@
   .toolsets-apply-btn:hover{opacity:.9;}
   .toolsets-clear-btn{background:transparent;color:var(--muted);border:1px solid var(--border2);}
   .toolsets-clear-btn:hover{background:var(--hover-bg);color:var(--text);}
+  /* Terminal chip in composer footer */
+  .composer-terminal-wrap{display:inline-flex;align-items:center;}
+  .composer-terminal-chip{display:inline-flex;align-items:center;gap:7px;max-width:160px;padding:8px 10px 8px 12px;border-radius:999px;border:1px solid transparent;background-color:transparent;color:var(--muted);font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
+  .composer-terminal-chip:hover{color:var(--text);background-color:var(--hover-bg);}
+  .composer-terminal-chip.active{color:var(--text);background:var(--accent-bg);border-color:var(--accent-bg);}
+  .composer-terminal-chip:disabled{opacity:.45;cursor:not-allowed;}
+  .composer-terminal-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;}
+  .composer-terminal-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .composer-model-chip{display:inline-flex;align-items:center;gap:8px;max-width:280px;padding:8px 10px 8px 12px;border-radius:999px;border:1px solid transparent;background-color:transparent;color:var(--muted);font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
   .composer-model-chip:hover{color:var(--text);background-color:var(--hover-bg);}
   .composer-model-chip.active{color:var(--text);background:var(--accent-bg);border-color:var(--accent-bg);}
@@ -2053,6 +2062,8 @@
   .composer-footer.cf-icons .composer-model-label,
   .composer-footer.cf-icons #composerModelLabel{display:none;}
   .composer-footer.cf-icons .composer-model-chip{max-width:none;padding-left:10px;padding-right:8px;gap:4px;}
+  .composer-footer.cf-icons .composer-terminal-label{display:none;}
+  .composer-footer.cf-icons .composer-terminal-chip{max-width:none;padding-left:10px;padding-right:10px;gap:0;}
   .composer-footer.cf-icons #btnSavedPrompts,
   .composer-footer.cf-icons .saved-prompts-popup{display:none!important;}
   .composer-footer.cf-icons .composer-divider{display:none;}
@@ -2064,6 +2075,7 @@
   .composer-footer.cf-burger .composer-left > .composer-model-wrap,
   .composer-footer.cf-burger .provider-quota-chip,
   .composer-footer.cf-burger .composer-left > .composer-reasoning-wrap,
+  .composer-footer.cf-burger .composer-left > .composer-terminal-wrap,
   .composer-footer.cf-burger .composer-left > .composer-toolsets-wrap{display:none!important;}
   .composer-footer.cf-burger .composer-mobile-config-btn{box-sizing:border-box;position:relative;display:inline-flex!important;width:44px;height:44px;min-width:44px;min-height:44px;flex-shrink:0;}
   .composer-footer.cf-burger .composer-mobile-config-panel.open{display:flex;}
@@ -2168,6 +2180,7 @@
     .composer-workspace-label,
     .composer-model-label,
     .composer-reasoning-label,
+    .composer-terminal-label,
     .composer-profile-chevron,
     .composer-workspace-chevron,
     .composer-model-chevron,
@@ -2178,12 +2191,14 @@
     #composerReasoningLabel{display:none;}
     .composer-profile-chip,
     .composer-model-chip,
-    .composer-reasoning-chip{box-sizing:border-box;width:44px;height:44px;max-width:44px;min-width:44px;min-height:44px;padding:0;justify-content:center;gap:0;font-size:11px;}
+    .composer-reasoning-chip,
+    .composer-terminal-chip{box-sizing:border-box;width:44px;height:44px;max-width:44px;min-width:44px;min-height:44px;padding:0;justify-content:center;gap:0;font-size:11px;}
     .composer-workspace-group{box-sizing:border-box;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;min-height:44px;overflow:hidden;border:none;background:transparent;border-radius:8px;}
     .composer-workspace-files-btn{box-sizing:border-box;width:44px;min-width:44px;max-width:44px;padding:0;border-radius:8px;}
     .composer-workspace-chip{display:none!important;}
     .composer-left > .composer-model-wrap,
     .composer-left > .composer-reasoning-wrap,
+    .composer-left > .composer-terminal-wrap,
     .composer-left > .composer-toolsets-wrap{display:none!important;}
     /* Saved prompts is a desktop-only composer affordance — too much for the
        narrow mobile composer (Nathan 2026-06-09). Hide the button + popup. */
