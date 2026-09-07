@@ -18,6 +18,8 @@ MODE="local"
 PUSH_TARGET=""
 DO_TEST=false
 
+BUILD_EXTRA_ARGS=()
+
 show_help() {
     echo "Usage: ./build-image.sh [OPTIONS]"
     echo ""
@@ -26,7 +28,9 @@ show_help() {
     echo "  --multi-arch        Build multi-platform images (linux/amd64, linux/arm64)"
     echo "  --push <TARGET>     Build multi-platform images and push to registry (e.g. ghcr.io/org/cagy)"
     echo "  --tag <TAG>         Custom primary tag (default: latest)"
-    echo "  --test              Run test suite inside container after build to verify image health"
+    echo "  --no-cache          Rebuild image without using cached layers"
+    echo "  --pull              Always attempt to pull newer versions of the base images"
+    echo "  --test              Run toolchain and Python imports check inside container after build"
     echo "  --help, -h          Show this help message"
 }
 
@@ -44,6 +48,14 @@ while [ "$#" -gt 0 ]; do
         --tag)
             TAG="$2"
             shift 2
+            ;;
+        --no-cache)
+            BUILD_EXTRA_ARGS+=("--no-cache")
+            shift
+            ;;
+        --pull)
+            BUILD_EXTRA_ARGS+=("--pull")
+            shift
             ;;
         --test)
             DO_TEST=true
@@ -81,6 +93,7 @@ if [ "$MODE" = "push" ]; then
         --platform "$PLATFORMS" \
         -t "$PUSH_TARGET:$TAG" \
         -t "$PUSH_TARGET:$RELEASE_TAG" \
+        "${BUILD_EXTRA_ARGS[@]}" \
         --push \
         .
     echo -e "${GREEN}✓ Successfully published $PUSH_TARGET:$TAG and $PUSH_TARGET:$RELEASE_TAG!${NC}"
@@ -92,6 +105,7 @@ if [ "$MODE" = "multi-arch" ]; then
     docker buildx build \
         --platform "$PLATFORMS" \
         -t "$IMAGE_NAME:$TAG" \
+        "${BUILD_EXTRA_ARGS[@]}" \
         .
     echo -e "${GREEN}✓ Multi-arch build ($PLATFORMS) validated successfully!${NC}"
     exit 0
@@ -103,6 +117,7 @@ docker buildx build \
     --load \
     -t "$IMAGE_NAME:$TAG" \
     -t "$IMAGE_NAME:$RELEASE_TAG" \
+    "${BUILD_EXTRA_ARGS[@]}" \
     .
 
 echo -e "${GREEN}✓ Local image build complete!${NC}"
@@ -116,5 +131,6 @@ if [ "$DO_TEST" = true ]; then
     docker run --rm "$IMAGE_NAME:$TAG" uv --version
     docker run --rm "$IMAGE_NAME:$TAG" uvx --version
     docker run --rm "$IMAGE_NAME:$TAG" agy --version
-    echo -e "${GREEN}✓ Image toolchain checks passed!${NC}"
+    docker run --rm "$IMAGE_NAME:$TAG" python3 -c "import yaml, psutil, cryptography; print('Python dependencies: OK')"
+    echo -e "${GREEN}✓ Image toolchain & runtime checks passed!${NC}"
 fi

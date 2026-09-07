@@ -25,6 +25,23 @@ else
     COMPOSE_CMD="docker compose"
 fi
 
+NO_BUILD=false
+for arg in "$@"; do
+    case "$arg" in
+        --no-build|--skip-build)
+            NO_BUILD=true
+            ;;
+        --help|-h)
+            echo "Usage: ./setup.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --no-build, --skip-build  Configure directories, SSL certs, and .env without building the image"
+            echo "  --help, -h                Show this help message"
+            exit 0
+            ;;
+    esac
+done
+
 echo "=== Containerized Antigravity (CAGY) Setup ==="
 
 # Check docker CLI and daemon availability
@@ -86,27 +103,32 @@ if [ ! -f .env ] && [ -f .env.example ]; then
     echo "✓ Created .env file."
 fi
 
-# Build Docker image
-echo ""
-echo "Building AGY container image..."
-$COMPOSE_CMD build
+# Build Docker image if not skipped
+if [ "$NO_BUILD" = false ]; then
+    echo ""
+    echo "Building AGY container image..."
+    $COMPOSE_CMD build
 
-echo ""
-echo "======================================================"
-echo "                   Setup Complete!                    "
-echo "======================================================"
-if [ "$HAS_EXISTING_CREDS" = false ] && [ ! -f "./container_data/gemini/antigravity-cli/antigravity-oauth-token" ]; then
-    echo "🔑 FIRST-TIME GOOGLE AUTHENTICATION REQUIRED:"
-    echo "   macOS stores tokens in Keychain, which containers"
-    echo "   cannot access. Authenticate once in the container:"
     echo ""
-    echo "   ./agy-container.sh cli agy"
+    echo "======================================================"
+    echo "                   Setup Complete!                    "
+    echo "======================================================"
+    if [ "$HAS_EXISTING_CREDS" = false ] && [ ! -f "./container_data/gemini/antigravity-cli/antigravity-oauth-token" ]; then
+        echo "🔑 FIRST-TIME GOOGLE AUTHENTICATION REQUIRED:"
+        echo "   macOS stores tokens in Keychain, which containers"
+        echo "   cannot access. Authenticate once in the container:"
+        echo ""
+        echo "   ./agy-container.sh cli agy"
+        echo ""
+        echo "   (Open the Google URL in browser, approve access,"
+        echo "    then press Ctrl+C to return to host terminal)"
+        echo "------------------------------------------------------"
+    fi
+    echo "🚀 To start the WebUI background daemon:"
+    echo "   ./agy-container.sh up"
+    echo "   Open http://localhost:8989"
+    echo "======================================================"
+else
     echo ""
-    echo "   (Open the Google URL in browser, approve access,"
-    echo "    then press Ctrl+C to return to host terminal)"
-    echo "------------------------------------------------------"
+    echo "✓ Prerequisites, SSL certificates, and environment configured (build skipped)."
 fi
-echo "🚀 To start the WebUI background daemon:"
-echo "   ./agy-container.sh up"
-echo "   Open http://localhost:8989"
-echo "======================================================"

@@ -326,19 +326,29 @@ docker run -d -p 8989:8989 ghcr.io/therealkevops/cagy:latest
 
 When running via `docker-compose.yml`, host volume mounts (`./:/workspace` and `./container_data/:/workspace/container_data/`) dynamically overlay the container filesystem to provide local live-reloading and state persistence.
 
-### Updating Antigravity CLI
+### Updating Antigravity CLI & CAGY
 
-We provide two update pathways:
+We provide streamlined update pathways:
 
-* **Quick In-Place Update (Recommended)**:
-  Downloads and updates the Antigravity binary directly inside the running container in seconds:
+* **Quick In-Place Update (Default & Recommended)**:
+  Downloads and updates the Antigravity binary directly inside the running container and host in seconds:
   ```bash
   ./update.sh
   ```
+* **Git Repository Update**:
+  Pulls the latest commits from GitHub and hot-reloads the WebUI:
+  ```bash
+  ./update.sh repo
+  ```
 * **Full Clean Rebuild**:
-  Re-exports host certificates, updates Linux base packages, and performs a fresh build of the Docker image:
+  Re-exports host certificates, updates Linux base packages, and performs a fresh `--no-cache` build of the Docker image:
   ```bash
   ./update.sh full
+  ```
+* **Complete Upgrade**:
+  Pulls Git updates, rebuilds the container from scratch, and synchronizes the host CLI:
+  ```bash
+  ./update.sh all
   ```
 
 ---

@@ -57,8 +57,9 @@ COMMAND="${1:-cli}"
 
 case "$COMMAND" in
     setup)
+        shift 1 2>/dev/null || true
         echo "Running AGY container setup..."
-        ./setup.sh
+        ./setup.sh "$@"
         ;;
     agy)
         shift 1 2>/dev/null || true
@@ -107,15 +108,18 @@ case "$COMMAND" in
             $COMPOSE_CMD exec agy-unified supervisorctl restart agy-webui >/dev/null 2>&1 || $COMPOSE_CMD exec agy-unified supervisorctl restart hermes-webui
             echo "✓ AGY CLI and WebUI updated successfully!"
         else
-            echo "Container is not running. Performing full update & rebuild..."
-            ./setup.sh
-            $COMPOSE_CMD up -d --force-recreate --remove-orphans
-            echo "✓ AGY container rebuilt and started successfully!"
+            echo "Container is not running. Starting container..."
+            $COMPOSE_CMD up -d --remove-orphans
+            echo "Checking and updating Antigravity CLI inside container..."
+            $COMPOSE_CMD exec agy-unified agy update
+            echo "Restarting WebUI inside container..."
+            $COMPOSE_CMD exec agy-unified supervisorctl restart agy-webui >/dev/null 2>&1 || $COMPOSE_CMD exec agy-unified supervisorctl restart hermes-webui
+            echo "✓ AGY container started and CLI updated successfully!"
         fi
         ;;
     rebuild|upgrade)
         echo "Performing full AGY container rebuild..."
-        ./setup.sh
+        ./setup.sh --no-build
         $COMPOSE_CMD build --pull --no-cache
         echo "Recreating container services..."
         $COMPOSE_CMD up -d --force-recreate --remove-orphans
@@ -130,6 +134,22 @@ case "$COMMAND" in
         echo ""
         echo "=== Host WebUI Status ==="
         ./run-webui.sh status
+        ;;
+    --help|-h|help)
+        echo "Usage: $0 {setup|agy|cli|web|up|down|update|rebuild|logs|status}"
+        echo ""
+        echo "Commands:"
+        echo "  setup       Run initial container setup and certificate export"
+        echo "  agy         Launch Antigravity (AGY) Agent interactive session"
+        echo "  cli         Run interactive shell session inside container"
+        echo "  web|ui      Start Antigravity WebUI natively (http://localhost:8989)"
+        echo "  up          Start AGY background daemon & WebUI in container"
+        echo "  down        Stop all AGY container & host WebUI services"
+        echo "  update      In-place update of AGY CLI inside running container"
+        echo "  rebuild     Full clean rebuild of container image and dependencies"
+        echo "  logs        Tail container logs"
+        echo "  status      Show container and WebUI status"
+        exit 0
         ;;
     *)
         echo "Usage: $0 {setup|agy|cli|web|up|down|update|rebuild|logs|status}"
