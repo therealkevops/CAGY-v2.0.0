@@ -441,6 +441,34 @@ class TestSecondBrainEfficacy(unittest.TestCase):
         self.assertIn("a[href^=\"#vault-weave=\"]", style_css)
         self.assertIn("a[href^=\"#vault-search=\"]", style_css)
 
+    def test_graph_zoom_and_node_centering_mechanics(self):
+        """Verify graph zoom centers on highlighted node and viewport instead of top-left corner."""
+        vault_js = (WEBUI_DIR / "static" / "vault.js").read_text(encoding="utf-8")
+
+        # 1. Highlighted node lookup & centering helpers
+        self.assertIn("function getHighlightedGraphNode()", vault_js)
+        self.assertIn("function centerGraphOnNode(nodeOrId)", vault_js)
+        self.assertIn("_vaultPan.x = cx - (targetNode.x * _vaultZoom)", vault_js)
+        self.assertIn("_vaultPan.y = cy - (targetNode.y * _vaultZoom)", vault_js)
+
+        # 2. highlightVaultGraphNode calls centerGraphOnNode
+        self.assertIn("function highlightVaultGraphNode(pathOrId, center = true)", vault_js)
+        self.assertIn("centerGraphOnNode(clean)", vault_js)
+
+        # 3. zoomGraph centers on highlighted node or canvas center (not 0, 0)
+        self.assertIn("function zoomGraph(factor)", vault_js)
+        self.assertIn("_vaultPan.x = focalSx - (highlighted.x * newZoom)", vault_js)
+        self.assertIn("_vaultPan.x = cx - (wx * newZoom)", vault_js)
+
+        # 4. Wheel listener centers on highlighted node or mouse pointer (not 0, 0)
+        self.assertIn("_vaultPan.x = mouseX - (wx * newZoom)", vault_js)
+
+        # 5. Window exports
+        self.assertIn("window.centerGraphOnNode = centerGraphOnNode", vault_js)
+        self.assertIn("window.getHighlightedGraphNode = getHighlightedGraphNode", vault_js)
+        self.assertIn("window.zoomGraph = zoomGraph", vault_js)
+        self.assertIn("window.resetGraphView = resetGraphView", vault_js)
+
 
 if __name__ == "__main__":
     unittest.main()

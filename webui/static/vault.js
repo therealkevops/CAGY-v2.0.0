@@ -935,14 +935,81 @@ async function renderVaultRelationsForCurrentPreview(path) {
   } catch (_) {}
 }
 
-function highlightVaultGraphNode(pathOrId) {
-  if (!_vaultData.nodes) return;
-  const clean = pathOrId.replace(/^knowledge\//, '').replace(/\.md$/, '');
-  const match = _vaultData.nodes.find(n => n.id === clean || n.path === (clean + '.md') || n.path === pathOrId);
+function getHighlightedGraphNode() {
+  if (_activeVaultNote) {
+    const rawPath = String(_activeVaultNote.path || '');
+    const cleanPath = rawPath.replace(/^knowledge\//, '');
+    const cleanId = String(_activeVaultNote.id || '').replace(/^knowledge\//, '').replace(/\.md$/, '');
+    const found = _graphNodes.find(n =>
+      (cleanId && n.id === cleanId) ||
+      (cleanPath && (n.path === cleanPath || n.path === (cleanPath + '.md') || cleanPath === (n.path + '.md'))) ||
+      (_activeVaultNote.id && n.id === _activeVaultNote.id) ||
+      (_activeVaultNote.path && n.path === _activeVaultNote.path)
+    );
+    if (found && typeof found.x === 'number' && typeof found.y === 'number' && !isNaN(found.x) && !isNaN(found.y)) {
+      return found;
+    }
+  }
+
+  if (_hoverNode) {
+    const rawPath = String(_hoverNode.path || '');
+    const cleanPath = rawPath.replace(/^knowledge\//, '');
+    const cleanId = String(_hoverNode.id || '').replace(/^knowledge\//, '').replace(/\.md$/, '');
+    const found = _graphNodes.find(n =>
+      (cleanId && n.id === cleanId) ||
+      (cleanPath && (n.path === cleanPath || n.path === (cleanPath + '.md'))) ||
+      (_hoverNode.id && n.id === _hoverNode.id) ||
+      (_hoverNode.path && n.path === _hoverNode.path)
+    );
+    if (found && typeof found.x === 'number' && typeof found.y === 'number' && !isNaN(found.x) && !isNaN(found.y)) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function centerGraphOnNode(nodeOrId) {
+  const canvas = document.getElementById('vaultGraphCanvas');
+  if (!canvas) return;
+  const cx = canvas.width > 0 ? (canvas.width / 2) : 400;
+  const cy = canvas.height > 0 ? (canvas.height / 2) : 300;
+
+  let targetNode = null;
+  if (nodeOrId && typeof nodeOrId === 'object' && typeof nodeOrId.x === 'number') {
+    targetNode = nodeOrId;
+  } else if (nodeOrId) {
+    const idOrPath = String(nodeOrId).replace(/^knowledge\//, '').replace(/\.md$/, '');
+    targetNode = _graphNodes.find(n =>
+      n.id === idOrPath ||
+      n.path === idOrPath ||
+      n.path === (idOrPath + '.md') ||
+      (n.path && (n.path === ('knowledge/' + idOrPath) || n.path === ('knowledge/' + idOrPath + '.md'))) ||
+      (n.id && n.id.endsWith(idOrPath))
+    );
+  }
+  if (!targetNode) {
+    targetNode = getHighlightedGraphNode();
+  }
+
+  if (!targetNode || typeof targetNode.x !== 'number' || typeof targetNode.y !== 'number' || isNaN(targetNode.x) || isNaN(targetNode.y)) return;
+
+  _vaultPan.x = cx - (targetNode.x * _vaultZoom);
+  _vaultPan.y = cy - (targetNode.y * _vaultZoom);
+  drawGraph();
+}
+
+function highlightVaultGraphNode(pathOrId, center = true) {
+  if (!_vaultData.nodes && !_graphNodes.length) return;
+  const clean = String(pathOrId || '').replace(/^knowledge\//, '').replace(/\.md$/, '');
+  const match = (_vaultData.nodes || []).find(n => n.id === clean || n.path === (clean + '.md') || n.path === pathOrId);
   if (match) {
     _hoverNode = match;
-    triggerGraphRepaint();
   }
+  if (center) {
+    centerGraphOnNode(clean);
+  }
+  triggerGraphRepaint();
 }
 
 /**
@@ -1639,7 +1706,42 @@ function setGraphSpacing(spacing) {
 }
 
 function zoomGraph(factor) {
-  _vaultZoom = Math.max(0.2, Math.min(4.0, _vaultZoom * factor));
+  const canvas = document.getElementById('vaultGraphCanvas');
+  if (!canvas) return;
+  const cx = canvas.width > 0 ? (canvas.width / 2) : 400;
+  const cy = canvas.height > 0 ? (canvas.height / 2) : 300;
+
+  const oldZoom = _vaultZoom;
+  const newZoom = Math.max(0.2, Math.min(4.0, oldZoom * factor));
+  if (Math.abs(newZoom - oldZoom) < 0.0001) return;
+
+  const highlighted = getHighlightedGraphNode();
+
+  if (highlighted && typeof highlighted.x === 'number' && typeof highlighted.y === 'number' && !isNaN(highlighted.x)) {
+    // Current screen position of the highlighted node
+    const currentSx = highlighted.x * oldZoom + _vaultPan.x;
+    const currentSy = highlighted.y * oldZoom + _vaultPan.y;
+
+    // Check if the node is within visible viewport bounds
+    const isVisible = currentSx >= 30 && currentSx <= (canvas.width - 30) &&
+                      currentSy >= 30 && currentSy <= (canvas.height - 30);
+
+    const focalSx = isVisible ? currentSx : cx;
+    const focalSy = isVisible ? currentSy : cy;
+
+    _vaultZoom = newZoom;
+    _vaultPan.x = focalSx - (highlighted.x * newZoom);
+    _vaultPan.y = focalSy - (highlighted.y * newZoom);
+  } else {
+    // If no node is highlighted, zoom centered on the canvas center
+    const wx = (cx - _vaultPan.x) / oldZoom;
+    const wy = (cy - _vaultPan.y) / oldZoom;
+
+    _vaultZoom = newZoom;
+    _vaultPan.x = cx - (wx * newZoom);
+    _vaultPan.y = cy - (wy * newZoom);
+  }
+
   drawGraph();
 }
 
@@ -1830,8 +1932,42 @@ function setupCanvasListeners(canvas) {
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const cx = canvas.width > 0 ? (canvas.width / 2) : 400;
+    const cy = canvas.height > 0 ? (canvas.height / 2) : 300;
+
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-    _vaultZoom = Math.max(0.25, Math.min(3.5, _vaultZoom * zoomFactor));
+    const oldZoom = _vaultZoom;
+    const newZoom = Math.max(0.25, Math.min(3.5, oldZoom * zoomFactor));
+    if (Math.abs(newZoom - oldZoom) < 0.0001) return;
+
+    const highlighted = getHighlightedGraphNode();
+
+    if (highlighted && typeof highlighted.x === 'number' && typeof highlighted.y === 'number' && !isNaN(highlighted.x)) {
+      // Zoom centered on the highlighted node
+      const currentSx = highlighted.x * oldZoom + _vaultPan.x;
+      const currentSy = highlighted.y * oldZoom + _vaultPan.y;
+
+      const isVisible = currentSx >= 30 && currentSx <= (canvas.width - 30) &&
+                        currentSy >= 30 && currentSy <= (canvas.height - 30);
+
+      const focalSx = isVisible ? currentSx : cx;
+      const focalSy = isVisible ? currentSy : cy;
+
+      _vaultZoom = newZoom;
+      _vaultPan.x = focalSx - (highlighted.x * newZoom);
+      _vaultPan.y = focalSy - (highlighted.y * newZoom);
+    } else {
+      // Zoom centered at the mouse cursor position
+      const wx = (mouseX - _vaultPan.x) / oldZoom;
+      const wy = (mouseY - _vaultPan.y) / oldZoom;
+      _vaultZoom = newZoom;
+      _vaultPan.x = mouseX - (wx * newZoom);
+      _vaultPan.y = mouseY - (wy * newZoom);
+    }
+
     drawGraph();
   }, { passive: false });
 
@@ -1900,8 +2036,24 @@ function setupCanvasListeners(canvas) {
 }
 
 function resetGraphView() {
+  const canvas = document.getElementById('vaultGraphCanvas');
+  const cx = canvas && canvas.width > 0 ? (canvas.width / 2) : 400;
+  const cy = canvas && canvas.height > 0 ? (canvas.height / 2) : 300;
+
   _vaultZoom = 1.0;
-  _vaultPan = { x: 0, y: 0 };
+  const highlighted = getHighlightedGraphNode();
+  if (highlighted && typeof highlighted.x === 'number' && !isNaN(highlighted.x)) {
+    _vaultPan.x = cx - (highlighted.x * _vaultZoom);
+    _vaultPan.y = cy - (highlighted.y * _vaultZoom);
+  } else if (_graphNodes.length > 0) {
+    const sum = _graphNodes.reduce((acc, n) => ({ x: acc.x + n.x, y: acc.y + n.y }), { x: 0, y: 0 });
+    const avgX = sum.x / _graphNodes.length;
+    const avgY = sum.y / _graphNodes.length;
+    _vaultPan.x = cx - (avgX * _vaultZoom);
+    _vaultPan.y = cy - (avgY * _vaultZoom);
+  } else {
+    _vaultPan = { x: 0, y: 0 };
+  }
   triggerGraphRepaint();
 }
 
@@ -2124,4 +2276,9 @@ if (typeof window !== 'undefined') {
   window.filterVaultQuickSwitcher = filterVaultQuickSwitcher;
   window.handleVaultQuickSwitcherKeydown = handleVaultQuickSwitcherKeydown;
   window.executeQuickSwitcherItem = executeQuickSwitcherItem;
+  window.centerGraphOnNode = centerGraphOnNode;
+  window.getHighlightedGraphNode = getHighlightedGraphNode;
+  window.zoomGraph = zoomGraph;
+  window.resetGraphView = resetGraphView;
+  window.highlightVaultGraphNode = highlightVaultGraphNode;
 }
