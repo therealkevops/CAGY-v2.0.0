@@ -810,3 +810,15 @@ if(window.MutationObserver){
     });
   }
 }
+
+// Global shortcut (Ctrl+` or Cmd+`) to toggle the embedded workspace terminal
+window.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
+    e.preventDefault();
+    if (typeof cmdTerminal === 'function') {
+      cmdTerminal();
+    } else if (typeof toggleComposerTerminal === 'function') {
+      toggleComposerTerminal();
+    }
+  }
+});

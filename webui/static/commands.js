@@ -31,6 +31,7 @@ const COMMANDS=[
   {name:'skills',           desc:'Antigravity: Browse active and built-in workspace skills',             fn:cmdSkills, noEcho:true},
   {name:'mcp',              desc:'Antigravity: Inspect configured Model Context Protocol servers',        fn:cmdMcp,    noEcho:true},
   // Session Controls
+  {name:'terminal',         desc:'Toggle embedded workspace terminal drawer', fn:cmdTerminal, noEcho:true},
   {name:'new',              desc:'Start a new conversation',            fn:cmdNew,       noEcho:true},
   {name:'clear',            desc:'Clear the active chat view',         fn:cmdClear,     noEcho:true},
   {name:'theme',            desc:'Switch UI theme or skin', fn:cmdTheme, arg:'name',  noEcho:true},
@@ -2527,6 +2528,7 @@ const CMD_ICONS = {
   status: 'shield',
   skills: 'book-open',
   mcp: 'plug',
+  terminal: 'terminal',
   new: 'plus',
   clear: 'trash-2',
   theme: 'star',
@@ -2553,6 +2555,7 @@ const CMD_CATEGORIES = {
   status: 'System',
   skills: 'Custom',
   mcp: 'Custom',
+  terminal: 'Tools',
   new: 'Session',
   clear: 'Session',
   theme: 'Session',

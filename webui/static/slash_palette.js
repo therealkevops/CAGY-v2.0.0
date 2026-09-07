@@ -49,6 +49,17 @@ const AGY_SLASH_COMMANDS = [
     paramPlaceholder: 'e.g. DurationSeconds=300 Prompt="Check build status"'
   },
   {
+    cmd: '/terminal',
+    title: 'Embedded Workspace Terminal',
+    category: 'Web & Tools',
+    desc: 'Toggle the embedded live Unix terminal drawer for the active workspace.',
+    icon: 'terminal',
+    action: () => {
+      if (typeof cmdTerminal === 'function') cmdTerminal();
+      else if (typeof toggleComposerTerminal === 'function') toggleComposerTerminal();
+    }
+  },
+  {
     cmd: '/browser',
     title: 'Autonomous Browser Agent',
     category: 'Web & Tools',
