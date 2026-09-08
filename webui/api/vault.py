@@ -236,8 +236,13 @@ def scan_vault(vault_path: Path, space_filter: Optional[str] = None) -> Dict[str
     # Sort nodes by total connections descending
     nodes.sort(key=lambda n: n["total_connections"], reverse=True)
 
-    # Discover all distinct spaces
+    # Discover all distinct spaces (from nodes and physical spaces directory)
     discovered_spaces = {n.get("space", "global") for n in nodes if n.get("space") not in ("user",)}
+    spaces_dir = vault_path / "spaces"
+    if spaces_dir.is_dir():
+        for d in spaces_dir.iterdir():
+            if d.is_dir() and not d.name.startswith("."):
+                discovered_spaces.add(d.name)
     all_spaces = ["global", *sorted(s for s in discovered_spaces if s != "global")]
 
     # Optional Space filtering
@@ -507,6 +512,25 @@ def sync_vault_to_rules(
     if space is None and workspace_path:
         space = infer_space_from_workspace(workspace_path)
     active_space = (space or "global").strip().lower()
+
+    # Auto-scaffold space directory structure for newly detected spaces
+    if active_space != "global":
+        space_dir = vault_path / "spaces" / active_space
+        if not space_dir.exists():
+            space_dir.mkdir(parents=True, exist_ok=True)
+            (space_dir / "notes").mkdir(exist_ok=True)
+            (space_dir / "architecture").mkdir(exist_ok=True)
+            (space_dir / "decisions").mkdir(exist_ok=True)
+            overview = space_dir / "notes" / "overview.md"
+            if not overview.exists():
+                overview.write_text(
+                    f"# {active_space.replace('-', ' ').title()} Space Overview\n\n"
+                    f"Knowledge container for the `{active_space}` workspace.\n\n"
+                    f"- **Decisions**: `spaces/{active_space}/decisions/`\n"
+                    f"- **Architecture**: `spaces/{active_space}/architecture/`\n"
+                    f"- **Notes**: `spaces/{active_space}/notes/`\n",
+                    encoding="utf-8"
+                )
 
     rules_dir = workspace_path / ".gemini" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)

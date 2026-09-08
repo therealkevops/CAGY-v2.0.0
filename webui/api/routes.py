@@ -24855,6 +24855,13 @@ def _handle_workspace_add(handler, body):
         return bad(handler, "Workspace already in list")
     wss.append({"path": str(p), "name": name or p.name})
     save_workspaces(wss)
+    try:
+        from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
+        sp = infer_space_from_workspace(p)
+        if sp and sp != "global":
+            sync_vault_to_rules(get_vault_dir(p), p, space=sp)
+    except Exception:
+        pass
     return j(handler, {"ok": True, "workspaces": wss})
 
 
