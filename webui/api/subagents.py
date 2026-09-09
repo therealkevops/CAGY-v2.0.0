@@ -21,35 +21,146 @@ def _get_brain_dirs() -> List[Path]:
         Path("/workspace/container_data/gemini/antigravity-cli/brain"),
     ]
     valid = []
+    seen = set()
     for c in candidates:
-        if c and c.exists() and c.is_dir() and c not in valid:
-            valid.append(c)
+        if c and c.exists() and c.is_dir():
+            resolved = str(c.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                valid.append(c)
     return valid
+
+def _get_sessions_dirs() -> List[Path]:
+    """Return list of possible WebUI session directory locations."""
+    candidates = [
+        Path(os.environ.get("AGY_WEBUI_STATE_DIR", "")) / "sessions" if os.environ.get("AGY_WEBUI_STATE_DIR") else None,
+        Path("/root/.agy/webui/sessions"),
+        Path("/opt/data/webui/sessions"),
+        Path.home() / ".agy" / "webui" / "sessions",
+        Path("/workspace/container_data/webui/sessions"),
+        Path(__file__).resolve().parent.parent.parent / "container_data" / "webui" / "sessions",
+        Path.home() / ".hermes" / "webui" / "sessions",
+        Path("/root/.hermes/webui/sessions"),
+    ]
+    valid = []
+    seen = set()
+    for c in candidates:
+        if c and c.exists() and c.is_dir():
+            resolved = str(c.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                valid.append(c)
+    return valid
+
+def _load_session_map() -> Dict[str, str]:
+    """Load unified mapping between WebUI session_id and AGY conversation_id."""
+    res = {}
+    for sdir in _get_sessions_dirs():
+        mf = sdir / "agy_session_map.json"
+        if mf.exists():
+            try:
+                data = json.loads(mf.read_text(encoding="utf-8"))
+                for k, v in data.items():
+                    if isinstance(v, str) and not k.startswith("workspace") and k not in res:
+                        res[k] = v
+            except Exception:
+                pass
+    return res
 
 def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
     """Map Hermes/WebUI session_id to AGY conversation_id."""
     if not session_id:
         return None
-    
-    # Check session map file
-    map_candidates = [
-        Path.home() / ".agy" / "webui" / "sessions" / "agy_session_map.json",
-        Path("/root/.agy/webui/sessions/agy_session_map.json"),
-        Path.home() / ".hermes" / "webui" / "sessions" / "agy_session_map.json",
-        Path("/root/.hermes/webui/sessions/agy_session_map.json"),
-        Path("/opt/data/webui/sessions/agy_session_map.json"),
-        Path(__file__).resolve().parent.parent.parent / "container_data" / "webui" / "sessions" / "agy_session_map.json",
-        Path("/workspace/container_data/webui/sessions/agy_session_map.json"),
-    ]
-    for mf in map_candidates:
-        if mf.exists():
+    session_map = _load_session_map()
+    if session_id in session_map:
+        return session_map[session_id]
+    return session_id
+
+def discover_all_swarm_sessions() -> List[Dict[str, Any]]:
+    """Scan and return all sessions (WebUI + standalone CLI) with subagent counts and activity."""
+    session_map = _load_session_map()
+    conv_to_session = {v: k for k, v in session_map.items()}
+
+    # Gather session metadata from .json session files
+    session_meta = {}
+    for sdir in _get_sessions_dirs():
+        for sf in sdir.glob("*.json"):
+            if sf.name.startswith("_") or sf.name == "agy_session_map.json":
+                continue
             try:
-                data = json.loads(mf.read_text(encoding="utf-8"))
-                if session_id in data:
-                    return data[session_id]
+                d = json.loads(sf.read_text(encoding="utf-8"))
+                sid = d.get("session_id")
+                if sid and sid not in session_meta:
+                    session_meta[sid] = {
+                        "title": d.get("title", "Untitled"),
+                        "updated_at": d.get("updated_at", 0) or sf.stat().st_mtime,
+                        "workspace": d.get("workspace", ""),
+                        "model": d.get("model", "")
+                    }
             except Exception:
                 pass
-    return session_id
+
+    # Discover conversations and parse subagents
+    sessions_found: Dict[str, Dict[str, Any]] = {}
+    seen_convs = set()
+
+    for bdir in _get_brain_dirs():
+        for cdir in bdir.iterdir():
+            if not cdir.is_dir() or cdir.name in seen_convs:
+                continue
+            seen_convs.add(cdir.name)
+
+            t_file = cdir / ".system_generated" / "logs" / "transcript.jsonl"
+            if not t_file.exists():
+                t_file = cdir / ".system_generated" / "logs" / "transcript_full.jsonl"
+            if not t_file.exists():
+                continue
+
+            subs = _parse_transcript_for_subagents(cdir)
+            cid = cdir.name
+            t_mtime = t_file.stat().st_mtime
+
+            if subs:
+                sid = conv_to_session.get(cid)
+                if sid and sid in session_meta:
+                    title = session_meta[sid]["title"]
+                    mtime = max(t_mtime, session_meta[sid].get("updated_at", 0))
+                elif sid:
+                    title = f"Session {sid[:8]}"
+                    mtime = t_mtime
+                else:
+                    sid = cid
+                    title = f"CLI / Standalone ({cid[:8]})"
+                    mtime = t_mtime
+
+                sessions_found[sid] = {
+                    "session_id": sid,
+                    "conversation_id": cid,
+                    "title": title,
+                    "subagent_count": len(subs),
+                    "active_count": sum(1 for s in subs if s.get("status") == "running"),
+                    "updated_at": mtime
+                }
+
+    # Include WebUI sessions that have 0 subagents so user can inspect or switch to them
+    for sid, meta in session_meta.items():
+        if sid not in sessions_found:
+            cid = session_map.get(sid)
+            sessions_found[sid] = {
+                "session_id": sid,
+                "conversation_id": cid,
+                "title": meta.get("title", "Untitled"),
+                "subagent_count": 0,
+                "active_count": 0,
+                "updated_at": meta.get("updated_at", 0)
+            }
+
+    # Sort sessions: sessions with subagents first, then by most recently updated
+    return sorted(
+        sessions_found.values(),
+        key=lambda s: (s["subagent_count"] > 0, s["updated_at"]),
+        reverse=True
+    )
 
 def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
     """Parse transcript.jsonl in a conversation folder to discover spawned subagents."""
@@ -130,41 +241,58 @@ def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
     return subagents
 
 def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieve full subagent swarm tree and metrics."""
-    target_conv_id = conv_id or _resolve_conv_id_for_session(session_id or "")
+    """Retrieve full subagent swarm tree, metrics, and discovered session options."""
+    available_sessions = discover_all_swarm_sessions()
     brain_dirs = _get_brain_dirs()
-    
-    all_subagents = []
-    root_info = {
-        "conversation_id": target_conv_id,
-        "session_id": session_id,
-        "role": "Lead Architect (Parent)",
-        "model": "Gemini 3.7 Flash/Pro (AGY)",
-        "status": "active"
-    }
 
-    scanned_convs = set()
-    
-    # 1. Scan target conversation if known
-    if target_conv_id:
+    # Determine requested session/conversation
+    is_all = (session_id or "").strip().lower() == "all"
+    target_conv_id = conv_id or (None if is_all else _resolve_conv_id_for_session(session_id or ""))
+    selected_sid = session_id or ""
+
+    all_subagents = []
+    root_role = "Lead Architect (Parent)"
+    root_model = "Gemini 3.7 Flash/Pro (AGY)"
+
+    if is_all:
+        # Aggregate subagents across all conversations that have them
+        for sess in available_sessions:
+            if sess["subagent_count"] > 0 and sess.get("conversation_id"):
+                cid = sess["conversation_id"]
+                for bdir in brain_dirs:
+                    cdir = bdir / cid
+                    if cdir.exists() and cdir.is_dir():
+                        subs = _parse_transcript_for_subagents(cdir)
+                        all_subagents.extend(subs)
+        root_role = "Swarm Orchestrator (All Sessions)"
+        root_model = "Multi-Session Swarm"
+        selected_sid = "all"
+    elif target_conv_id:
+        # Scan target conversation
         for bdir in brain_dirs:
             cdir = bdir / target_conv_id
             if cdir.exists() and cdir.is_dir():
-                scanned_convs.add(target_conv_id)
                 subs = _parse_transcript_for_subagents(cdir)
                 all_subagents.extend(subs)
+        matched_sess = next((s for s in available_sessions if s.get("session_id") == session_id or s.get("conversation_id") == target_conv_id), None)
+        if matched_sess:
+            root_role = f"Parent ({matched_sess['title']})"
+            selected_sid = matched_sess["session_id"]
+    elif not session_id:
+        # No session specified: auto-select most recent session that has subagents, or latest session
+        top_sess = next((s for s in available_sessions if s["subagent_count"] > 0), None)
+        if not top_sess and available_sessions:
+            top_sess = available_sessions[0]
+        if top_sess and top_sess.get("conversation_id"):
+            target_conv_id = top_sess["conversation_id"]
+            selected_sid = top_sess["session_id"]
+            root_role = f"Parent ({top_sess['title']})"
+            for bdir in brain_dirs:
+                cdir = bdir / target_conv_id
+                if cdir.exists() and cdir.is_dir():
+                    subs = _parse_transcript_for_subagents(cdir)
+                    all_subagents.extend(subs)
 
-    # 2. If no subagents found for target, scan all recent brain directories
-    if not all_subagents:
-        for bdir in brain_dirs:
-            try:
-                for cdir in sorted(bdir.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)[:15]:
-                    if cdir.is_dir() and cdir.name not in scanned_convs:
-                        scanned_convs.add(cdir.name)
-                        subs = _parse_transcript_for_subagents(cdir)
-                        all_subagents.extend(subs)
-            except Exception:
-                continue
     # Deduplicate subagents
     seen_keys = set()
     deduped = []
@@ -214,6 +342,14 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
                             pass
 
     # Build tree hierarchy
+    root_info = {
+        "conversation_id": target_conv_id,
+        "session_id": selected_sid,
+        "role": root_role,
+        "model": root_model,
+        "status": "active"
+    }
+
     sub_map = {}
     for s in all_subagents:
         s["children"] = []
@@ -251,6 +387,9 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
         "tree": root_info,
         "total": len(all_subagents),
         "active_count": active_count,
+        "selected_session_id": selected_sid,
+        "selected_conv_id": target_conv_id,
+        "available_sessions": available_sessions,
         "timestamp": time.time()
     }
 

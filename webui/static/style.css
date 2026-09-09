@@ -5698,8 +5698,11 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 .swarm-tree-connector.active { background: var(--accent); }
 .swarm-children-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; width: 100%; }
 .swarm-node-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.swarm-node-activity { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border-subtle); padding-top: 6px; }
-.swarm-no-children { font-size: 12px; color: var(--muted); padding: 12px 20px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-sm); }
+.swarm-session-selector-wrap { display: inline-flex; align-items: center; margin-right: 4px; }
+.swarm-no-children { font-size: 12px; color: var(--muted); padding: 20px 24px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); text-align: center; background: var(--surface-subtle); }
+.swarm-empty-suggestions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
+.swarm-jump-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
+.swarm-jump-btn:hover { background: var(--hover-bg); border-color: var(--accent); color: var(--accent); }
 
 /* Inspector Section */
 .swarm-inspector-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 16px; }

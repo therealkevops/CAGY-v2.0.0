@@ -9,8 +9,9 @@ let _subagentPollTimer = null;
 let _currentSubagentRawSteps = [];
 let _subagentTimelineFilter = 'all';
 let _subagentTimelineSearch = '';
+let _currentSwarmSessionId = null;
 
-async function loadSubagents(force = false) {
+async function loadSubagents(force = false, requestedSessionId = null) {
   const listEl = document.getElementById('subagentList');
   const btnSidebar = document.getElementById('subagentsRefreshBtn');
   const btnHeader = document.getElementById('btnRefreshSubagents');
@@ -21,19 +22,27 @@ async function loadSubagents(force = false) {
   }
 
   try {
-    let sessionId = '';
-    if (typeof S !== 'undefined' && S && S.session && S.session.session_id) {
-      sessionId = S.session.session_id;
-    } else if (typeof _currentSessionId !== 'undefined' && _currentSessionId) {
-      sessionId = _currentSessionId;
-    } else if (typeof localStorage !== 'undefined') {
-      sessionId = localStorage.getItem('agy-webui-session') || '';
+    let sessionId = requestedSessionId;
+    if (sessionId === null || sessionId === undefined) {
+      if (_currentSwarmSessionId !== null) {
+        sessionId = _currentSwarmSessionId;
+      } else if (typeof S !== 'undefined' && S && S.session && S.session.session_id) {
+        sessionId = S.session.session_id;
+      } else if (typeof _currentSessionId !== 'undefined' && _currentSessionId) {
+        sessionId = _currentSessionId;
+      } else if (typeof localStorage !== 'undefined') {
+        sessionId = localStorage.getItem('agy-webui-session') || '';
+      }
     }
 
-    const res = await fetch(`/api/subagents?session_id=${encodeURIComponent(sessionId)}`);
+    const query = (sessionId && sessionId !== 'default') ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+    const res = await fetch(`/api/subagents${query}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _subagentsData = data;
+    if (data.selected_session_id) {
+      _currentSwarmSessionId = data.selected_session_id;
+    }
     renderSubagentsView(data);
 
     // If a subagent is selected, re-inspect to refresh its timeline & steps
@@ -55,6 +64,51 @@ async function loadSubagents(force = false) {
       }, 300);
     }
   }
+}
+
+function onSwarmSessionChange(newSessionId) {
+  _currentSwarmSessionId = newSessionId;
+  _selectedSubagent = null;
+  loadSubagents(false, newSessionId);
+}
+
+function onActiveSessionChangedForSwarm(newSid) {
+  if (_currentSwarmSessionId !== 'all') {
+    _currentSwarmSessionId = newSid;
+  }
+  if (typeof _currentPanel !== 'undefined' && _currentPanel === 'subagents') {
+    loadSubagents(false, newSid);
+  }
+}
+
+function _renderSwarmSessionSelectors(data) {
+  const selectHeader = document.getElementById('swarmSessionSelect');
+  const selectSidebar = document.getElementById('swarmSidebarSessionSelect');
+  if (!selectHeader && !selectSidebar) return;
+
+  const sessions = data.available_sessions || [];
+  const activeSid = data.selected_session_id || _currentSwarmSessionId || '';
+
+  let optionsHtml = '';
+  if (sessions.length > 1) {
+    const totalAll = sessions.reduce((acc, s) => acc + (s.subagent_count || 0), 0);
+    optionsHtml += `<option value="all" ${activeSid === 'all' ? 'selected' : ''}>🌐 All Sessions (${totalAll} agents)</option>`;
+  }
+
+  sessions.forEach(s => {
+    const isSel = s.session_id === activeSid;
+    const count = s.subagent_count || 0;
+    const activeIcon = s.active_count > 0 ? ' ⚡' : '';
+    const label = `${s.title || 'Session'} (${count} ${count === 1 ? 'agent' : 'agents'})${activeIcon}`;
+    optionsHtml += `<option value="${escapeAttr(s.session_id)}" ${isSel ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  });
+
+  if (!optionsHtml) {
+    optionsHtml = `<option value="">Active Session (0 agents)</option>`;
+  }
+
+  if (selectHeader) selectHeader.innerHTML = optionsHtml;
+  if (selectSidebar) selectSidebar.innerHTML = optionsHtml;
 }
 
 function _syncSubagentsPolling() {
@@ -89,13 +143,27 @@ function renderSubagentsView(data) {
   if (activeEl) activeEl.textContent = String(data.active_count || 0);
   if (toolsEl) toolsEl.textContent = String(totalTools);
 
+  // Sync Dropdowns
+  _renderSwarmSessionSelectors(data);
+
   // Render Sidebar List
   if (listEl) {
     if (subs.length === 0) {
+      const sessionsWithAgents = (data.available_sessions || []).filter(s => (s.subagent_count || 0) > 0);
       listEl.innerHTML = `
         <div class="swarm-empty-list">
-          <div style="font-weight:600;margin-bottom:4px;color:var(--text)">No Subagents Active</div>
-          <div style="font-size:11.5px;color:var(--muted)">When AGY delegates tasks using <code>invoke_subagent</code>, spawned agents will appear here in real time.</div>
+          <div style="font-weight:600;margin-bottom:4px;color:var(--text)">No Subagents in Session</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">When AGY delegates tasks using <code>invoke_subagent</code>, spawned agents will appear here in real time.</div>
+          ${sessionsWithAgents.length > 0 ? `
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;margin-top:8px">
+              <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:600">Sessions with Swarms</span>
+              ${sessionsWithAgents.slice(0, 3).map(s => `
+                <button type="button" class="swarm-jump-btn" style="justify-content:center" onclick="onSwarmSessionChange('${escapeAttr(s.session_id)}')">
+                  ${escapeHtml(s.title)} (${s.subagent_count})
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
         </div>
       `;
     } else {
@@ -135,7 +203,7 @@ function renderSwarmTopology(data) {
     <div class="swarm-tree-root">
       <div class="swarm-node root-node">
         <div class="swarm-node-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span class="swarm-node-title">${escapeHtml(root.role || 'Parent Agent')}</span>
           <span class="swarm-node-pill pill-gold">${escapeHtml(root.model || 'Gemini 3.7 Pro')}</span>
         </div>
@@ -148,9 +216,25 @@ function renderSwarmTopology(data) {
   `;
 
   if (subs.length === 0) {
+    const sessionsWithAgents = (data.available_sessions || []).filter(s => (s.subagent_count || 0) > 0);
+    const currTitle = root.role ? root.role.replace(/^Parent \((.*)\)$/, '$1') : 'this session';
     html += `
       <div class="swarm-no-children">
-        <span>No subagents currently spawned in this session.</span>
+        <div style="font-weight:600;margin-bottom:6px;color:var(--text)">No subagents spawned in ${escapeHtml(currTitle)}</div>
+        <div style="font-size:12px;color:var(--muted);max-width:440px;margin:0 auto 12px">
+          When tasks are delegated to subagents using <code>invoke_subagent</code>, hierarchy trees and execution traces will be rendered here.
+        </div>
+        ${sessionsWithAgents.length > 0 ? `
+          <div class="swarm-empty-suggestions">
+            <span style="font-size:11.5px;color:var(--muted);margin-right:4px">View existing swarms:</span>
+            ${sessionsWithAgents.slice(0, 3).map(s => `
+              <button type="button" class="swarm-jump-btn" onclick="onSwarmSessionChange('${escapeAttr(s.session_id)}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                ${escapeHtml(s.title)} (${s.subagent_count})
+              </button>
+            `).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
   } else {

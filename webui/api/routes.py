@@ -13931,6 +13931,9 @@ def handle_get(handler, parsed) -> bool:
     # ── Subagent Swarm Visualizer (GET) ──
     if parsed.path in ("/api/subagents", "/api/subagents/list"):
         return _handle_subagents_list(handler, parsed)
+    if parsed.path == "/api/subagents/sessions":
+        from api.subagents import discover_all_swarm_sessions
+        return j(handler, {"ok": True, "sessions": discover_all_swarm_sessions()})
     if parsed.path.startswith("/api/subagents/") and "transcript" in parsed.path:
         return _handle_subagent_transcript(handler, parsed)
     if parsed.path == "/api/subagents/detail":

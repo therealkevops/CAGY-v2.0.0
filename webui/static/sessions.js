@@ -1396,6 +1396,7 @@ async function newSession(flash, options={}){
     if(flash)S.session._flash=true;
     try{localStorage.setItem('agy-webui-session',S.session.session_id);}catch(_){}
     _setActiveSessionUrl(S.session.session_id);
+    if(typeof onActiveSessionChangedForSwarm==='function') onActiveSessionChangedForSwarm(S.session.session_id);
     if(typeof startSessionStream==='function') startSessionStream(S.session.session_id);
     _setSessionViewedCount(S.session.session_id, S.session.message_count || 0);
     // Sync chat-header dropdown to the session's model/provider so the UI reflects
@@ -1947,6 +1948,7 @@ async function loadSession(sid){
   );
   try{localStorage.setItem('agy-webui-session',S.session.session_id);}catch(_){}
   _setActiveSessionUrl(S.session.session_id);
+  if(typeof onActiveSessionChangedForSwarm==='function') onActiveSessionChangedForSwarm(S.session.session_id);
   if(typeof startSessionStream==='function') startSessionStream(S.session.session_id);
 
 

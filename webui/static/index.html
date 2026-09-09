@@ -225,6 +225,11 @@
         </div>
       </div>
       <div class="subagents-sidebar-content">
+        <div class="swarm-sidebar-session-bar" id="swarmSidebarSessionBar" style="padding:8px 12px 0 12px">
+          <select id="swarmSidebarSessionSelect" class="vault-space-dropdown" style="width:100%" onchange="onSwarmSessionChange(this.value)">
+            <option value="">Loading sessions...</option>
+          </select>
+        </div>
         <div class="subagents-metrics-card" id="subagentsMetricsCard">
           <div class="swarm-metric-item"><span class="swarm-metric-val" id="swarmMetricTotal">0</span><span class="swarm-metric-label">Total</span></div>
           <div class="swarm-metric-item"><span class="swarm-metric-val" id="swarmMetricActive">0</span><span class="swarm-metric-label">Active</span></div>
@@ -761,6 +766,11 @@
       <div class="main-view-header">
         <div class="main-view-title" id="subagentDetailTitle">Subagent Swarm Topology</div>
         <div class="main-view-actions">
+          <div class="swarm-session-selector-wrap" title="Active Session Swarm">
+            <select id="swarmSessionSelect" class="vault-space-dropdown" onchange="onSwarmSessionChange(this.value)">
+              <option value="">Loading sessions...</option>
+            </select>
+          </div>
           <span id="subagentStatusBadge" class="swarm-status-badge done">Orchestrator Ready</span>
           <button id="btnRefreshSubagents" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Refresh swarm" onclick="loadSubagents(true)" aria-label="Refresh swarm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16">
