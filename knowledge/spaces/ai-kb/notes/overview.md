@@ -35,10 +35,18 @@ This space serves as the comprehensive technical repository and second brain for
 
 3. **High-Performance AI Networking & Fabric**:
    - [[spaces/ai-kb/notes/lossless-networking-in-gpu-nodes|Lossless Networking in GPU Nodes]]: Solving GPU starvation, RoCEv2 vs. InfiniBand, Priority Flow Control (PFC), ECN/DCQCN, packet spraying, and the Ultra Ethernet Consortium (UEC).
+   - [[spaces/ai-kb/notes/rocev2-vs-infiniband-guide|RoCEv2 vs. InfiniBand Showdown]]: Deep architectural clash—credit-based flow control vs. PFC/ECN, Subnet Manager vs. BGP Clos, adaptive routing vs. packet spraying, vendor lock-in vs. multi-vendor economics, and UEC.
+   - [[spaces/ai-kb/notes/scale-out-nvlink-and-ethernet-guide|Scale-Up vs. Scale-Out (NVLink & Ethernet)]]: Debunking "NVLink over Ethernet", memory semantics vs. packet routing, GB200 NVL72 130 TB/s copper spine, Spectrum-X RoCEv2, and open standards (UALink vs. UEC).
    - Related Decisions: [[spaces/ai-kb/decisions/adr_002_rocev2_lossless_ethernet|ADR 002: Standardize on Lossless RoCEv2 with PFC and ECN]].
 
 4. **Solutions Architecture & Customer Playbooks**:
    - [[spaces/ai-kb/notes/cisco-ai-solutions-architect-guide|Cisco AI Solutions Architecture]]: Enterprise AI solution design, Cisco Silicon One G200, Cisco Nexus HyperFabric, UCS servers, and customer discovery frameworks.
+
+5. **Capacity Planning & Sizing**:
+   - [[spaces/ai-kb/notes/gpu-node-and-cluster-sizing-guide|GPU Node & Cluster Sizing Guide]]: The physics of VRAM, model weight footprints, GQA KV cache calculations, memory bandwidth decode limits (TPOT), and sharding rules (TP/PP) for 8B, 70B, and 405B models.
+
+6. **Real-World Case Studies & Architectural Walkthroughs**:
+   - [[spaces/ai-kb/notes/real-world-architecture-meta-llama3|Real-World Architecture Walkthrough (Meta Llama 3 Infrastructure)]]: How Meta combined Grand Teton H100 servers (NVLink Scale-Up), tested 24k RoCEv2 vs. InfiniBand fabrics, tuned PFC/DCQCN, implemented PyTorch 4D parallelism, and sized 405B training and inference.
 
 ---
 

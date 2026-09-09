@@ -349,3 +349,14 @@ By mastering **lossless RoCEv2 fabrics**, implementing **PFC and ECN**, adopting
 
 ---
 *Reference brief created for `/workspace/projects/ai-kb`.*
+
+---
+
+## Related Knowledge & Architecture Links
+- **Knowledge Hub**: [[spaces/ai-kb/notes/overview|AI-KB Overview]]
+- **RoCEv2 vs. InfiniBand Showdown**: [[spaces/ai-kb/notes/rocev2-vs-infiniband-guide|RoCEv2 vs. InfiniBand Showdown Guide]]
+- **Scale-Up vs. Scale-Out**: [[spaces/ai-kb/notes/scale-out-nvlink-and-ethernet-guide|Scale-Up vs. Scale-Out: NVLink & Ethernet]]
+- **Solutions & Hardware**: [[spaces/ai-kb/notes/cisco-ai-solutions-architect-guide|Cisco AI Solutions Architecture]]
+- **Inference KV Transfer**: [[spaces/ai-kb/notes/vllm-and-llmd-explained|vLLM and LLM-D Orchestration]]
+- **Fabric Architecture**: [[spaces/ai-kb/architecture/ai_cluster_topology|AI Cluster & Lossless Fabric Topology]]
+- **Architectural Decision**: [[spaces/ai-kb/decisions/adr_002_rocev2_lossless_ethernet|ADR 002: Standardize on Lossless RoCEv2]]
