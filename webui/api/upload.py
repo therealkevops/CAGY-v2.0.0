@@ -1,6 +1,7 @@
 """
 AGY WebUI -- File upload: multipart parser and upload handler.
 """
+import logging
 import mimetypes
 import os
 import re as _re
@@ -237,7 +238,7 @@ def handle_upload(handler):
     except ValueError as e:
         return j(handler, {'error': str(e)}, status=400)
     except Exception:
-        print('[webui] upload error: ' + _tb.format_exc(), flush=True)
+        logging.exception("[webui] upload error")
         return j(handler, {'error': 'Upload failed'}, status=500)
 
 
@@ -408,7 +409,7 @@ def handle_upload_extract(handler):
     except ValueError as e:
         return j(handler, {'error': str(e)}, status=400)
     except Exception:
-        print('[webui] upload extract error: ' + _tb.format_exc(), flush=True)
+        logging.exception("[webui] upload extract error")
         return j(handler, {'error': 'Archive extraction failed'}, status=500)
 
 
@@ -445,7 +446,7 @@ def handle_transcribe(handler):
     except ValueError as e:
         return j(handler, {'error': str(e)}, status=400)
     except Exception:
-        print('[webui] transcribe error: ' + _tb.format_exc(), flush=True)
+        logging.exception("[webui] transcribe error")
         return j(handler, {'error': 'Transcription failed'}, status=500)
     finally:
         if temp_path:
@@ -717,7 +718,7 @@ def handle_workspace_upload(handler):
                         unlink_anchored(workspace, dest.resolve())
                     except FileNotFoundError:
                         pass
-                    print(f'[webui] workspace upload extract error: {e}', flush=True)
+                    logging.warning("[webui] workspace upload extract error: %s", e)
                     results.append({
                         'filename': safe_name,
                         'path': str(target_dir),
@@ -729,7 +730,7 @@ def handle_workspace_upload(handler):
                     })
                     continue
                 except Exception:
-                    print('[webui] workspace upload extract error: ' + _extract_tb.format_exc(), flush=True)
+                    logging.exception("[webui] workspace upload extract error")
                     try:
                         unlink_anchored(workspace, dest.resolve())
                     except FileNotFoundError:
@@ -763,5 +764,5 @@ def handle_workspace_upload(handler):
     except ValueError as e:
         return j(handler, {'error': str(e)}, status=400)
     except Exception:
-        print('[webui] workspace upload error: ' + _tb.format_exc(), flush=True)
+        logging.exception("[webui] workspace upload error")
         return j(handler, {'error': 'Upload failed'}, status=500)

@@ -12,6 +12,7 @@ import errno
 import atexit
 import codecs
 import collections
+import logging
 import os
 import queue
 import shutil
@@ -223,7 +224,7 @@ def _reap_abandoned_spawn(proc: subprocess.Popen) -> bool:
         except (subprocess.TimeoutExpired, ProcessLookupError):
             pass
     if proc.poll() is None:
-        print("terminal abandoned spawn cleanup failed", flush=True)
+        logging.warning("terminal abandoned spawn cleanup failed")
         return False
     return True
 

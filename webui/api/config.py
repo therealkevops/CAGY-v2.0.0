@@ -919,15 +919,14 @@ def _warn_state_dir_divergence(warn_prefix: str) -> None:
                         json_files = [f for f in sibling_sessions.glob("*.json") if f.name != "_index.json"]
                         if json_files:
                             # Found a sibling with session data
-                            print(
+                            logging.warning(
                                 f"{warn_prefix}  STATE_DIR is empty but a sibling state directory has session data.\n"
                                 f"        Current : {STATE_DIR}\n"
                                 f"        Sibling : {sibling}\n"
                                 f"        If you switched launch methods (bootstrap.py / ctl.sh / systemd),\n"
                                 f"        the active HERMES_WEBUI_STATE_DIR env var may differ from the\n"
                                 f"        previous run. Set it explicitly to restore access:\n"
-                                f"          export HERMES_WEBUI_STATE_DIR={sibling}",
-                                flush=True,
+                                f"          export HERMES_WEBUI_STATE_DIR={sibling}"
                             )
                             return
     except Exception:

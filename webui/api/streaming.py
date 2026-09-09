@@ -8267,15 +8267,15 @@ def _build_session_db_for_stream(state_db_path):
                     raise
                 _last_error = _db_err
                 if _attempt < _attempts - 1:
-                    print(
-                        f"[webui] WARNING: SessionDB init attempt {_attempt + 1}/{_attempts} failed, retrying: {_db_err}",
-                        flush=True,
+                    logging.warning(
+                        "[webui] SessionDB init attempt %d/%d failed, retrying: %s",
+                        _attempt + 1, _attempts, _db_err,
                     )
                     time.sleep(0.05 * (2 ** _attempt) + random.uniform(0, 0.05))
     except (ImportError, ModuleNotFoundError):
         return None
     except Exception as _db_err:
-        print(f"[webui] WARNING: SessionDB init failed - session_search will be unavailable: {_db_err}", flush=True)
+        logging.warning("[webui] SessionDB init failed - session_search will be unavailable: %s", _db_err)
         return None
 
 
@@ -10135,7 +10135,7 @@ def _run_agent_streaming(
                     if _override:
                         _toolsets = _override
             except Exception as _ts_err:
-                print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
+                logging.warning("[webui] failed to read per-session toolsets for %s: %s", session_id, _ts_err)
 
             # Fallback model chain from profile config (e.g. for rate-limit or
             # provider recovery). Match Hermes CLI/gateway semantics:
@@ -12404,7 +12404,7 @@ def _run_agent_streaming(
                 else: os.environ['HERMES_HOME'] = old_hermes_home
 
     except Exception as e:
-        print('[webui] stream error:\n' + traceback.format_exc(), flush=True)
+        logging.exception("[webui] stream error")
         err_str = str(e)
         # Sanitize HTML from provider error responses — some providers return
         # full HTML pages (e.g. nginx "404 page not found") instead of JSON errors.

@@ -5530,11 +5530,10 @@ def _allowed_public_origins() -> set[str]:
         if not value:
             continue
         if not (value.startswith('http://') or value.startswith('https://')):
-            import sys
-            print(
-                f"[webui] WARNING: HERMES_WEBUI_ALLOWED_ORIGINS entry {value!r} is missing "
-                f"the scheme (expected https://hostname or http://hostname). Entry ignored.",
-                flush=True, file=sys.stderr,
+            import sys  # noqa: F401 – kept for historical compat
+            logging.warning(
+                f"[webui] HERMES_WEBUI_ALLOWED_ORIGINS entry {value!r} is missing "
+                f"the scheme (expected https://hostname or http://hostname). Entry ignored."
             )
             continue
         result.add(value)
