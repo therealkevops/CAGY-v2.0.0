@@ -70,13 +70,15 @@ function onSwarmSessionChange(newSessionId) {
   loadSubagents(false, newSessionId);
 }
 
-function onActiveSessionChangedForSwarm(newSid) {
-  if (_currentSwarmSessionId !== 'all') {
-    _currentSwarmSessionId = newSid;
-  }
-  if (typeof _currentPanel !== 'undefined' && _currentPanel === 'subagents') {
-    loadSubagents(false, newSid);
-  }
+if (typeof AGY_EVENTS !== 'undefined' && AGY_EVENTS.on) {
+  AGY_EVENTS.on('session:activated', (newSid) => {
+    if (_currentSwarmSessionId !== 'all') {
+      _currentSwarmSessionId = newSid;
+    }
+    if (typeof _currentPanel !== 'undefined' && _currentPanel === 'subagents') {
+      loadSubagents(false, newSid);
+    }
+  });
 }
 
 function _renderSwarmSessionSelectors(data) {
