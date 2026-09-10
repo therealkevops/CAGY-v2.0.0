@@ -227,26 +227,6 @@ def _run_codex_runtime_command(arg_string: str) -> str:
     """Codex runtime switch is not applicable in Antigravity mode."""
     return "Codex runtime switch is not applicable in Antigravity mode."
 
-    with _CODEX_RUNTIME_LOCK:
-        try:
-            from api import config as webui_config
-
-            active_config = webui_config.get_config()
-
-            def _persist_config(config_data: dict) -> None:
-                webui_config._save_yaml_config_file(
-                    webui_config._get_config_path(),
-                    config_data,
-                )
-                webui_config.reload_config()
-
-            status = apply(active_config, new_value, persist_callback=_persist_config)
-        except Exception as exc:
-            logger.warning("Failed to execute /codex-runtime", exc_info=True)
-            raise RuntimeError("Failed to update Codex runtime") from exc
-
-    return str(getattr(status, "message", "") or "(no output)")
-
 
 def _run_reload_mcp_command() -> str:
     """Execute the MCP reconnect path and return a short user-facing summary."""

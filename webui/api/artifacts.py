@@ -55,7 +55,7 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
     """Scan and list all artifacts for the active or recent conversations."""
     target_conv_id = conv_id or _resolve_conv_id_for_session(session_id or "")
     brain_dirs = _get_brain_dirs()
-    
+
     artifacts = []
     seen_paths = set()
 
@@ -78,12 +78,12 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
             if rel_path in seen_paths:
                 continue
             seen_paths.add(rel_path)
-            
+
             ext = p.suffix.lower()
             kind = "markdown" if ext in [".md", ".markdown", ".txt"] else ("image" if ext in [".png", ".jpg", ".jpeg", ".webp", ".svg"] else ("code" if ext in [".py", ".sh", ".js", ".ts", ".json", ".yaml", ".yml", ".sql", ".csv"] else ("html" if ext in [".html", ".htm"] else "other")))
             if kind == "other":
                 continue
-                
+
             try:
                 st = p.stat()
                 artifacts.append({
@@ -131,7 +131,8 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
                         seen_paths.add(p.name)
                         ext = p.suffix.lower()
                         kind = "markdown" if ext in [".md", ".txt"] else ("image" if ext in [".png", ".jpg", ".svg"] else ("code" if ext in [".py", ".sh", ".json", ".yaml", ".yml"] else "other"))
-                        if kind == "other": continue
+                        if kind == "other":
+                            continue
                         try:
                             st = p.stat()
                             artifacts.append({
@@ -179,14 +180,14 @@ def get_artifact_content(file_path: str) -> Dict[str, Any]:
     """Retrieve full content of an artifact file."""
     if not file_path:
         return {"error": "file_path parameter required"}
-        
+
     p = Path(file_path)
     if not p.exists() or not p.is_file():
         return {"error": f"Artifact file not found: {file_path}"}
-        
+
     ext = p.suffix.lower()
     is_binary = ext in [".png", ".jpg", ".jpeg", ".webp", ".pdf", ".tar", ".gz", ".zip"]
-    
+
     if is_binary:
         import base64
         try:

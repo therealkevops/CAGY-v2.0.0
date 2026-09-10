@@ -1,0 +1,51 @@
+# ruff.toml — Antigravity (CAGY) WebUI Python linter config
+# Sprint S6: linting infrastructure.
+# Philosophy: catch real bugs first, silence pure style noise on large legacy files.
+# Add rules incrementally as the codebase is cleaned up.
+
+target-version = "py311"
+line-length = 130   # generous — don't reformat 28k-line routes.py
+
+[lint]
+# ── Enabled rule groups ────────────────────────────────────────────────────────
+select = [
+    "F",    # Pyflakes: undefined names, unused imports/vars, redefined symbols
+    "E4",   # Import style (E401 multiple imports, E402 module-level placement)
+    "E7",   # Statement style (E711 comparison to None, E712 comparison to True)
+    "E9",   # Runtime errors (syntax errors, IO errors) — always fatal
+    "W291", # trailing-whitespace
+    "W292", # missing-newline-at-end-of-file
+    "W293", # blank-line-with-whitespace
+]
+
+# ── Globally ignored rules ─────────────────────────────────────────────────────
+ignore = [
+    "E402",  # module-level import not at top — many files use guarded / lazy imports
+    "E401",  # multiple imports on one line — legacy, will clean up later
+    "E731",  # lambda assignment — used deliberately for ImportError fallback stubs
+    "E741",  # ambiguous variable name (l, O, I) — widespread in loop vars, clean up separately
+    "F401",  # unused imports — many are re-exported or used in TYPE_CHECKING blocks
+    "F811",  # redefinition of unused name — sometimes intentional (conditional imports)
+    "F841",  # unused variable — clean up separately
+]
+
+# ── Per-file overrides ─────────────────────────────────────────────────────────
+[lint.per-file-ignores]
+# God-files: don't block CI on style noise until they are broken up
+"webui/api/routes.py"    = ["E701", "E702", "E711", "E712", "F841"]
+"webui/api/streaming.py" = ["E701", "E702", "E711", "E712", "F841"]
+"webui/api/models.py"    = ["E701", "E702", "E711", "E712", "F841"]
+"webui/api/config.py"    = ["E701", "E702", "E711", "E712", "F841"]
+# session_recovery and session_discoverability are CLI tools — they have print() intentionally
+"webui/api/session_recovery.py"        = ["T201"]
+"webui/api/session_discoverability.py" = ["T201"]
+# startup.py intentional print() before logging is configured
+"webui/api/startup.py" = ["T201"]
+
+[lint.isort]
+# Keep import order stable — don't reorder aggressively
+force-sort-within-sections = false
+
+[format]
+# Don't auto-format — just lint for now
+skip-magic-trailing-comma = false

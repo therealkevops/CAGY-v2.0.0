@@ -43,6 +43,26 @@ if [ "$1" = "--container" ]; then
     exit $EXIT_CODE
 fi
 
+# ── Linting ────────────────────────────────────────────────────────────────────
+
+echo -e "${YELLOW}[lint] Running Python linter (ruff)...${NC}"
+if python3 -m ruff check webui/api/; then
+    echo -e "${GREEN}✓ Python lint passed${NC}"
+else
+    echo -e "${RED}✗ Python lint failed — run: python3 -m ruff check webui/api/${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}[lint] Checking JS syntax...${NC}"
+if node -c webui/static/*.js > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ JS syntax check passed${NC}"
+else
+    echo -e "${RED}✗ JS syntax error detected — run: node -c webui/static/<file>.js${NC}"
+    exit 1
+fi
+
+# ── Unit tests ─────────────────────────────────────────────────────────────────
+
 echo -e "${YELLOW}[info] Executing hermetic test suite on host...${NC}"
 python3 -m unittest discover -s tests -p "test_*.py" -v
 EXIT_CODE=$?
