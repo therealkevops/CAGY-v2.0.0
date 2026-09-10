@@ -143,23 +143,23 @@ def list_mcp_hub_data() -> Dict[str, Any]:
     """Aggregate all MCP servers, tool schemas, and built-in AGY tools."""
     mcp_data = _load_agy_mcp_json()
     servers_dict = mcp_data.get("mcpServers", {})
-    
+
     server_list = []
     active_count = 0
 
     for name, s_cfg in servers_dict.items():
         if not isinstance(s_cfg, dict):
             continue
-        
+
         transport = "http" if ("url" in s_cfg) else "stdio"
         enabled = s_cfg.get("enabled", True)
         if enabled:
             active_count += 1
-            
+
         command_str = s_cfg.get("command", "")
         if s_cfg.get("args") and isinstance(s_cfg["args"], list):
             command_str += " " + " ".join(str(a) for a in s_cfg["args"])
-            
+
         server_list.append({
             "name": name,
             "transport": transport,

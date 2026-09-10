@@ -65,9 +65,7 @@ async function loadAndRenderFileDiff(filePath) {
   diffWrap.innerHTML = '<div class="diff-loading"><span class="loading-spinner"></span> Loading visual diff...</div>';
 
   try {
-    const res = await fetch(`/api/diff/file?path=${encodeURIComponent(filePath)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(`/api/diff/file?path=${encodeURIComponent(filePath)}`);
     _currentDiffData = data;
     renderSideBySideDiff(diffWrap, data);
   } catch (err) {

@@ -532,10 +532,8 @@ async function renderSessionArtifacts(){
   // Query AGY brain artifacts & workspace documents
   try {
     const sessionId = (S && S.session && S.session.session_id) || '';
-    const res = await fetch(`/api/artifacts?session_id=${encodeURIComponent(sessionId)}`);
-    if(res.ok){
-      const data = await res.json();
-      if(Array.isArray(data.artifacts)){
+    const data = await apiFetch(`/api/artifacts?session_id=${encodeURIComponent(sessionId)}`);
+    if(data && Array.isArray(data.artifacts)){
         const seen = new Set(items.map(i => i.path));
         for(const art of data.artifacts){
           const path = art.absolute_path || art.relative_path;
@@ -613,9 +611,8 @@ async function openArtifactPath(path){
   const ws = (S.session && S.session.workspace || '').replace(/\\/g,'/');
   if(path.startsWith('/') && (!ws || !path.startsWith(ws))){
     try {
-      const res = await fetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
-      if(res.ok){
-        const data = await res.json();
+      const data = await apiFetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
+      if(data){
         if(data.is_binary && data.data_url){
           showPreview('img');
           const img = $('previewImg');
@@ -646,9 +643,8 @@ async function openArtifactPath(path){
   if(!rel) rel = '.';
   try{
     if(!(await _workspacePathExists(rel))){
-      const res = await fetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
-      if(res.ok){
-        const data = await res.json();
+      const data = await apiFetch(`/api/artifacts/content?path=${encodeURIComponent(path)}`);
+      if(data){
         if(path.endsWith('.md')){
           showPreview('md');
           renderMarkdownPreviewContent({ content: data.content || '' });

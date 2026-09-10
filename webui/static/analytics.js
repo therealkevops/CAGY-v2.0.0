@@ -37,9 +37,7 @@ async function loadAnalyticsPanel(force = false) {
     const url = targetSid
       ? `/api/analytics/efficiency?session_id=${encodeURIComponent(targetSid)}`
       : '/api/analytics/efficiency';
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(url);
     _analyticsData = data;
 
     renderAnalyticsSidebar(data);
@@ -110,11 +108,8 @@ async function populateAnalyticsSessionPicker() {
     sessions = S.sessions;
   } else {
     try {
-      const res = await fetch('/api/sessions');
-      if (res.ok) {
-        const d = await res.json();
-        sessions = d.sessions || d || [];
-      }
+      const d = await apiFetch('/api/sessions');
+      sessions = (d && d.sessions) || d || [];
     } catch (_) {}
   }
 

@@ -224,13 +224,12 @@ async function submitSkillWizard() {
   };
 
   try {
-    const res = await fetch('/api/skills/scaffold', {
+    const data = await apiFetch('/api/skills/scaffold', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Scaffolding failed');
+    if (!data || !data.ok) throw new Error((data && data.error) || 'Scaffolding failed');
 
     showToast(`✓ Created ${data.kind === 'rule' ? 'rule' : 'skill'}: ${data.name}`);
     _skillsData = null;
