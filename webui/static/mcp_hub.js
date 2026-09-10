@@ -13,9 +13,7 @@ async function loadMcpHub(force = false) {
   if (!listEl) return;
 
   try {
-    const res = await fetch('/api/mcp/hub');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch('/api/mcp/hub');
     _mcpHubData = data;
     renderMcpHubView(data);
   } catch (err) {
@@ -195,12 +193,11 @@ function setMcpCategoryFilter(cat) {
 
 async function toggleMcpServerState(name, enabled) {
   try {
-    const res = await fetch('/api/mcp/hub/toggle', {
+    await apiFetch('/api/mcp/hub/toggle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, enabled })
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     await loadMcpHub();
   } catch (err) {
     alert(`Failed to toggle MCP server: ${err.message}`);
@@ -300,13 +297,12 @@ async function testMcpConnection() {
   }
 
   try {
-    const res = await fetch('/api/mcp/hub/test', {
+    const data = await apiFetch('/api/mcp/hub/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transport, command, url, env: envObj })
     });
-    const data = await res.json();
-    if (res.ok && data.ok) {
+    if (data && data.ok) {
       if (statusEl) {
         statusEl.className = 'mcp-test-status success';
         statusEl.textContent = `✓ ${data.message || 'Connected successfully'} (${data.latency_ms || 0}ms)`;
@@ -314,7 +310,7 @@ async function testMcpConnection() {
     } else {
       if (statusEl) {
         statusEl.className = 'mcp-test-status error';
-        statusEl.textContent = `✗ Probe failed: ${data.error || 'Server unreachable'}`;
+        statusEl.textContent = `✗ Probe failed: ${(data && data.error) || 'Server unreachable'}`;
       }
     }
   } catch (err) {
@@ -385,12 +381,11 @@ async function submitMcpServerForm() {
   };
 
   try {
-    const res = await fetch('/api/mcp/hub/add', {
+    await apiFetch('/api/mcp/hub/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     closeAddMcpServerModal();
     await loadMcpHub();
   } catch (err) {
@@ -403,12 +398,11 @@ async function deleteMcpServerByName(name) {
   if (!confirm(`Are you sure you want to remove MCP server "${name}"?`)) return;
 
   try {
-    const res = await fetch('/api/mcp/hub/delete', {
+    await apiFetch('/api/mcp/hub/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name })
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (_selectedMcpServer && _selectedMcpServer.name === name) {
       _selectedMcpServer = null;
     }

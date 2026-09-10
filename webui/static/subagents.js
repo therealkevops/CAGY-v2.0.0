@@ -36,9 +36,7 @@ async function loadSubagents(force = false, requestedSessionId = null) {
     }
 
     const query = (sessionId && sessionId !== 'default') ? `?session_id=${encodeURIComponent(sessionId)}` : '';
-    const res = await fetch(`/api/subagents${query}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(`/api/subagents${query}`);
     _subagentsData = data;
     if (data.selected_session_id) {
       _currentSwarmSessionId = data.selected_session_id;
@@ -334,9 +332,7 @@ async function inspectSubagent(sub) {
   // Load Transcript if subagent conversation id exists
   if (sub.conversation_id) {
     try {
-      const res = await fetch(`/api/subagents/detail?id=${encodeURIComponent(sub.conversation_id)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const tData = await res.json();
+      const tData = await apiFetch(`/api/subagents/detail?id=${encodeURIComponent(sub.conversation_id)}`);
       _currentSubagentRawSteps = tData.steps || [];
       renderFilteredTimeline();
       if (stepCountEl) stepCountEl.textContent = String(tData.total_steps || (_currentSubagentRawSteps.length));
