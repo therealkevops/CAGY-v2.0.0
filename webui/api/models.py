@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+import sqlite3
 import uuid
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -5571,10 +5572,6 @@ def state_db_has_session(sid: str) -> bool:
     """
     if not sid:
         return False
-    try:
-        import sqlite3
-    except ImportError:
-        return False
     db_path = _active_state_db_path()
     if not db_path.exists():
         return False
@@ -5790,10 +5787,6 @@ def agent_session_rows_existing(
     wanted = {str(sid).strip() for sid in (session_ids or []) if str(sid or "").strip()}
     if not wanted:
         return frozenset()
-    try:
-        import sqlite3
-    except ImportError:
-        return frozenset(wanted)
     db_path = _agent_state_db_path(profile=profile)
     if db_path is None:
         return frozenset(wanted)
@@ -5845,10 +5838,6 @@ def agent_session_zero_message_sids(
     """
     wanted = {str(sid).strip() for sid in (session_ids or []) if str(sid or "").strip()}
     if not wanted:
-        return frozenset()
-    try:
-        import sqlite3
-    except ImportError:
         return frozenset()
     db_path = _agent_state_db_path(profile=profile)
     if db_path is None:
@@ -5947,10 +5936,6 @@ def _read_state_db_sidebar_overrides(
     else:
         count_wanted = {str(sid) for sid in count_session_ids if sid} & wanted
     if not wanted or not db_path.exists():
-        return {}
-    try:
-        import sqlite3
-    except ImportError:
         return {}
     ids = list(wanted)
     chunk_size = 500
@@ -7336,7 +7321,6 @@ def _sqlite_content_fingerprint(db_path: Path):
     except OSError:
         return None
     try:
-        import sqlite3
         # Read-only + a tiny busy timeout: a fingerprint read must NEVER stall the
         # /api/sessions hot path when state.db is briefly locked by a writer.
         # On lock (or any error) we return None and the caller falls back to the
@@ -8251,10 +8235,6 @@ def get_state_db_session_messages(
     query and is available only for an unbounded, active, current-segment read.
     Existing callers keep the historical list return by default.
     """
-    try:
-        import sqlite3
-    except ImportError:
-        return _state_db_session_messages_result([], None, with_revision=with_revision)
 
     if isinstance(profile, str) and profile:
         db_path = _get_profile_home(profile) / 'state.db'
@@ -8470,10 +8450,6 @@ def get_state_db_session_message_prefix_summary(
     identities. Missing databases are an authoritative empty prefix and are not
     created by this read path.
     """
-    try:
-        import sqlite3
-    except ImportError:
-        return None
 
     if not sid:
         return None
@@ -8542,10 +8518,6 @@ def get_state_db_session_message_keys_before_timestamp(
     tail-read path, so schemas that cannot prove the merge-visible identity
     force a full read.
     """
-    try:
-        import sqlite3
-    except ImportError:
-        return None
 
     if not sid:
         return None
@@ -8602,10 +8574,6 @@ def get_state_db_session_message_keys_before_timestamp(
 
 def get_state_db_session_summary(sid, *, profile=None) -> dict:
     """Return a cheap message count/timestamp summary for one state.db session."""
-    try:
-        import sqlite3
-    except ImportError:
-        return {"message_count": 0, "last_message_at": 0.0}
 
     if isinstance(profile, str) and profile:
         db_path = _get_profile_home(profile) / 'state.db'
@@ -10674,7 +10642,6 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
     int
         Number of complete conversation rounds.
     """
-    import os, sqlite3, datetime
 
     try:
         from api.profiles import get_active_hermes_home
@@ -10827,10 +10794,6 @@ def _delete_cli_session_locked(sid, hermes_home) -> bool:
     Returns True when the requested state is absent after cleanup, False on an
     operational error.
     """
-    try:
-        import sqlite3
-    except ImportError:
-        return False
 
     # Process any leftover cleanup manifests from a previous failed run.
     # This runs before the DB-existence check so pending artifact
@@ -11233,10 +11196,6 @@ def _process_stale_cleanup_manifests(hermes_home) -> bool:
     never interleaved across concurrent delete calls. Returns ``True`` only
     when every discovered retry record was processed completely.
     """
-    try:
-        import sqlite3
-    except ImportError:
-        return False
     db_path = hermes_home / "state.db"
     sessions_dir = hermes_home / "sessions"
     if not sessions_dir.exists():
