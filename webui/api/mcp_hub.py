@@ -3,6 +3,7 @@ Model Context Protocol (MCP) Server Hub for Antigravity (AGY) & CAGY WebUI.
 Manages mcp.json and runtime server/tool catalogs.
 """
 
+import logging
 import os
 import json
 import time
@@ -10,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 def _get_mcp_json_paths() -> List[Path]:
     """Return possible locations of Antigravity mcp.json files."""
@@ -32,7 +35,7 @@ def _load_agy_mcp_json() -> Dict[str, Any]:
                 if isinstance(data, dict):
                     return data
             except Exception:
-                pass
+                logger.debug("Failed to parse mcp.json at %s", p, exc_info=True)
     return {"mcpServers": {}}
 
 def _save_agy_mcp_json(data: Dict[str, Any]):
@@ -42,7 +45,7 @@ def _save_agy_mcp_json(data: Dict[str, Any]):
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception:
-            pass
+            logger.warning("Failed to save mcp.json at %s", p, exc_info=True)
 
 BUILT_IN_AGY_TOOLS = [
     {

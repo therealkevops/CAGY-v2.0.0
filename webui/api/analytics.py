@@ -9,9 +9,12 @@ Calculates:
 
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+import logging
 import os
 import json
 import time
+
+logger = logging.getLogger(__name__)
 
 try:
     from api.vault import scan_vault, get_vault_dir
@@ -67,7 +70,7 @@ def compute_efficiency_metrics(
             try:
                 total_vault_words += len(note_file.read_text(encoding="utf-8").split())
             except Exception:
-                pass
+                logger.debug("Failed to read vault note %s for word count", note_file, exc_info=True)
 
     # Read compiled rules
     rule_file = workspace_path / ".gemini" / "rules" / "knowledge_vault.md"
@@ -81,7 +84,7 @@ def compute_efficiency_metrics(
             rule_tokens = estimate_tokens(rule_text)
             rule_mtime = rule_file.stat().st_mtime
         except Exception:
-            pass
+            logger.debug("Failed to read compiled rules file %s", rule_file, exc_info=True)
 
     # Memory Leverage Ratio (MLR)
     memory_leverage_ratio = round(total_vault_words / max(1, rule_tokens), 1) if rule_tokens > 0 else 1.0
@@ -92,7 +95,7 @@ def compute_efficiency_metrics(
         try:
             target_session = get_session(session_id)
         except Exception:
-            pass
+            logger.debug("Failed to get session %s for analytics", session_id, exc_info=True)
 
     if not target_session:
         try:
@@ -100,7 +103,7 @@ def compute_efficiency_metrics(
             if sessions:
                 target_session = sorted(sessions, key=lambda s: getattr(s, 'updated_at', 0) or 0, reverse=True)[0]
         except Exception:
-            pass
+            logger.debug("Failed to list sessions for analytics fallback", exc_info=True)
 
     session_metrics = {
         "session_id": getattr(target_session, "session_id", None) if target_session else None,
@@ -203,6 +206,7 @@ def compute_efficiency_metrics(
     try:
         total_sessions_count = len(list_sessions() or [])
     except Exception:
+        logger.debug("Failed to count sessions for avoided-turns estimate", exc_info=True)
         total_sessions_count = 1
     avoided_turns = max(1, num_notes * min(max(total_sessions_count, 1), 10))
     est_tokens_saved = avoided_turns * 4_500

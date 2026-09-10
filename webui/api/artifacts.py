@@ -3,11 +3,14 @@ Artifacts & Visual Canvas API for Antigravity (AGY) & CAGY WebUI.
 Manages brain artifacts, scratch files, reports, diagrams, and generated media.
 """
 
+import logging
 import os
 import json
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 def _get_brain_dirs() -> List[Path]:
     """Return list of candidate brain directories."""
@@ -45,7 +48,7 @@ def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
                 if session_id in data:
                     return data[session_id]
             except Exception:
-                pass
+                logger.debug("Failed to parse session map %s", mf, exc_info=True)
     return session_id
 
 def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = None) -> Dict[str, Any]:
@@ -95,7 +98,7 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
                     "is_scratch": "scratch" in parts
                 })
             except Exception:
-                pass
+                logger.debug("Failed to stat artifact file %s", p, exc_info=True)
 
     # 1. Scan target conversation if specified
     if target_conv_id:
@@ -111,6 +114,7 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
                 if cdir.is_dir():
                     scan_dir(cdir, cdir.name)
         except Exception:
+            logger.warning("Failed to scan brain directory %s for artifacts", bdir, exc_info=True)
             continue
 
     # Also scan workspace reports, knowledge base, and root markdown documents
@@ -142,7 +146,7 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
                                 "is_scratch": False
                             })
                         except Exception:
-                            pass
+                            logger.debug("Failed to stat workspace artifact %s", p, exc_info=True)
         # Scan root markdown files
         for p in ws.glob("*.md"):
             if p.is_file() and p.name not in seen_paths:
@@ -161,7 +165,7 @@ def list_artifacts(session_id: Optional[str] = None, conv_id: Optional[str] = No
                         "is_scratch": False
                     })
                 except Exception:
-                    pass
+                    logger.debug("Failed to stat root markdown %s", p, exc_info=True)
 
     artifacts.sort(key=lambda a: a.get("mtime", 0), reverse=True)
     return {

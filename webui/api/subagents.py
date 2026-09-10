@@ -3,12 +3,15 @@ Subagent Swarm Management & Discovery for Antigravity (AGY) CLI.
 Parses multi-agent swarms, lifecycle states, hierarchy trees, and transcripts.
 """
 
+import logging
 import os
 import json
 import re
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 def _get_brain_dirs() -> List[Path]:
     """Return list of possible brain directory locations across container and host."""
@@ -64,7 +67,7 @@ def _load_session_map() -> Dict[str, str]:
                     if isinstance(v, str) and not k.startswith("workspace") and k not in res:
                         res[k] = v
             except Exception:
-                pass
+                logger.debug("Failed to parse agy_session_map.json at %s", mf, exc_info=True)
     return res
 
 def _resolve_conv_id_for_session(session_id: str) -> Optional[str]:
@@ -98,7 +101,7 @@ def discover_all_swarm_sessions() -> List[Dict[str, Any]]:
                         "model": d.get("model", "")
                     }
             except Exception:
-                pass
+                logger.debug("Failed to parse session file %s", sf, exc_info=True)
 
     # Discover conversations and parse subagents
     sessions_found: Dict[str, Dict[str, Any]] = {}
@@ -181,8 +184,9 @@ def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
                     try:
                         lines.append(json.loads(l))
                     except Exception:
-                        pass
+                        logger.debug("Skipping malformed transcript line in %s", transcript_file)
     except Exception:
+        logger.warning("Failed to read transcript file %s", transcript_file, exc_info=True)
         return []
 
     for i, step in enumerate(lines):
@@ -194,12 +198,14 @@ def _parse_transcript_for_subagents(conv_dir: Path) -> List[Dict[str, Any]]:
                     try:
                         args = json.loads(args)
                     except Exception:
+                        logger.debug("Failed to parse invoke_subagent args JSON in %s", conv_dir.name)
                         args = {}
                 sub_list = args.get("Subagents", [])
                 if isinstance(sub_list, str):
                     try:
                         sub_list = json.loads(sub_list)
                     except Exception:
+                        logger.debug("Failed to parse Subagents list JSON in %s", conv_dir.name)
                         sub_list = []
 
                 # Look ahead for conversationIds in the next tool execution response
@@ -332,14 +338,14 @@ def list_subagents(session_id: Optional[str] = None, conv_id: Optional[str] = No
                                                 tools.append(tname)
                                                 last_act = f"Executed {tname}"
                                     except Exception:
-                                        pass
+                                        logger.debug("Skipping malformed line in subagent transcript %s", cid)
                             sub["tool_count"] = len(tools)
                             sub["tools_used"] = list(set(tools))
                             sub["step_count"] = step_cnt
                             if last_act:
                                 sub["last_activity"] = last_act
                         except Exception:
-                            pass
+                            logger.debug("Failed to enrich subagent %s from transcript", cid, exc_info=True)
 
     # Build tree hierarchy
     root_info = {
@@ -436,6 +442,7 @@ def get_subagent_transcript(subagent_id: str) -> Dict[str, Any]:
                         "tool_calls": step.get("tool_calls", [])
                     })
                 except Exception:
+                    logger.debug("Skipping malformed step in transcript %s", subagent_id)
                     continue
     except Exception as e:
         return {"error": str(e)}
