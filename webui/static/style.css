@@ -7,8 +7,8 @@
   /* ── Light mode (default) — neutral graphite workbench ── */
   :root {
     color-scheme:light;
-    --bg:#FFFFFF;--sidebar:#F3F3F3;--surface:#FFFFFF;--surface-subtle:#F7F7F7;--surface-subtle-hover:#EFEFEF;
-    --border:#E2E2E2;--border2:#CFCFCF;--border-subtle:#E8E8E8;--border-muted:#D6D6D6;
+    --bg:#FFFFFF;--sidebar:#F3F3F3;--surface:#FFFFFF;
+    --border:#E2E2E2;--border2:#CFCFCF;
     --text:#242424;--strong:#111111;--muted:#707070;--em:#4F4F4F;
     --accent:#303030;--accent-hover:#171717;--accent-bg:rgba(0,0,0,0.07);--accent-bg-strong:rgba(0,0,0,0.13);--accent-text:#303030;--accent-contrast:#FFFFFF;--panel-head-primary-fg:#FFFFFF;
     --blue:#5F5F5F;--gold:#303030;--focus-ring:rgba(0,0,0,0.18);--focus-glow:rgba(0,0,0,0.06);
@@ -118,8 +118,8 @@
   /* ── Dark mode (default) — neutral graphite workbench ── */
   :root.dark {
     color-scheme:dark;
-    --bg:#151614;--sidebar:#242624;--surface:#1B1C1A;--surface-subtle:#20211F;--surface-subtle-hover:#292B28;
-    --border:#343631;--border2:#4B4D47;--border-subtle:#2A2C28;--border-muted:#3D3F3A;
+    --bg:#151614;--sidebar:#242624;--surface:#1B1C1A;
+    --border:#343631;--border2:#4B4D47;
     --text:#ECEBE4;--strong:#FAF9F3;--muted:#A7A79D;--em:#D7D6CE;
     --accent:#D7D6CE;--accent-hover:#F4F3EC;--accent-bg:rgba(255,255,255,0.08);--accent-bg-strong:rgba(255,255,255,0.14);--accent-text:#D7D6CE;--accent-contrast:#151614;--panel-head-primary-fg:#151614;
     --blue:#C9C8C0;--gold:#D7D6CE;--focus-ring:rgba(244,243,236,0.22);--focus-glow:rgba(244,243,236,0.08);
@@ -426,8 +426,8 @@
   }
   :root.dark[data-skin="default"]{
     color-scheme:dark;
-    --bg:#0D0D1A;--sidebar:#141425;--surface:#1A1A2E;--surface-subtle:#1F1F36;--surface-subtle-hover:#28283F;
-    --border:#2A2A40;--border2:#3A3A55;--border-subtle:#222236;--border-muted:#32324C;
+    --bg:#0D0D1A;--sidebar:#141425;--surface:#1A1A2E;
+    --border:#2A2A40;--border2:#3A3A55;
     --text:#F0E6D3;--strong:#FFF8E7;--muted:#9A8F7A;--em:#C8B99A;
     --accent:#FFD700;--accent-hover:#FFE033;--accent-bg:rgba(255,215,0,0.10);--accent-bg-strong:rgba(255,215,0,0.20);--accent-text:#FFD700;--accent-contrast:#0D0D1A;--panel-head-primary-fg:#0D0D1A;
     --blue:#38BDF8;--gold:#FFD700;--focus-ring:rgba(255,215,0,.30);--focus-glow:rgba(255,215,0,.08);
@@ -1005,7 +1005,7 @@
   .toast-copy,.toast-dismiss{border:1px solid currentColor;background:transparent;color:inherit;border-radius:8px;padding:4px 8px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;opacity:.85;}
   .toast-copy:hover,.toast-copy:focus-visible,.toast-dismiss:hover,.toast-dismiss:focus-visible{opacity:1;background:color-mix(in srgb,currentColor 10%,transparent);outline:none;}
   .toast.warning{background:color-mix(in srgb,var(--warning) 14%,var(--surface));border-color:color-mix(in srgb,var(--warning) 45%,var(--surface));color:var(--warning);}
-  .reconnect-banner{display:none;background:var(--surface);border:1px solid var(--accent-bg-strong);border-radius:10px;padding:10px 16px;margin:10px auto;max-width:780px;font-size:13px;color:var(--accent-text);display:none;align-items:center;justify-content:space-between;gap:12px;}
+  .reconnect-banner{display:none;background:var(--surface);border:1px solid var(--accent-bg-strong);border-radius:10px;padding:10px 16px;margin:10px auto;max-width:780px;font-size:13px;color:var(--accent-text);align-items:center;justify-content:space-between;gap:12px;}
   .reconnect-banner.visible{display:flex;}
   .reconnect-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--accent-bg-strong);border:1px solid var(--accent-bg-strong);color:var(--accent-text);cursor:pointer;}
   .reconnect-btn:hover{background:var(--accent-bg-strong);}
@@ -1181,7 +1181,7 @@
   .has-tooltip::after{content:attr(data-tooltip);position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);background:var(--surface);border:1px solid var(--accent-bg-strong);color:var(--text);font-size:11.5px;font-weight:600;letter-spacing:.02em;padding:5px 10px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:1500;box-shadow:0 8px 24px rgba(0,0,0,.65),0 0 0 1px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.04) inset;opacity:0;transition:opacity .14s ease;transition-delay:0s;}
   .has-tooltip:hover::after,.has-tooltip:focus-visible::after{opacity:1;transition-delay:.15s;}
   /* For bottom-positioned tooltips (panel header buttons, non-rail elements) */
-  .has-tooltip--bottom::after{left:50%;top:auto;bottom:auto;transform:translateX(-50%);top:calc(100% + 8px);}
+  .has-tooltip--bottom::after{left:50%;bottom:auto;transform:translateX(-50%);top:calc(100% + 8px);}
   /* For bottom-positioned tooltips on a trigger that sits flush with its
      container's right edge — anchors the tooltip's RIGHT edge to the trigger
      so the label extends inward (to the left) instead of overflowing past the
@@ -1245,26 +1245,6 @@
   .skill-toggle.enabled{background:var(--accent-bg-strong);border-color:var(--accent);}
   .skill-toggle::after{content:'';position:absolute;top:1px;left:1px;width:10px;height:10px;border-radius:50%;background:var(--muted);transition:transform .15s;}
   .skill-toggle.enabled::after{transform:translateX(14px);background:var(--accent-text);}
-  /* Memory panel */
-
-  .notes-source-card{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);padding:14px 16px;margin:0 0 12px;}
-  .notes-source-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;}
-  .notes-source-tools{margin:10px 0 0 18px;padding:0;color:var(--muted);font-size:12px;line-height:1.55;}
-  .notes-search-card{gap:12px;}
-  .notes-search-form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
-  .notes-search-form select,.notes-search-form input{min-height:34px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);padding:6px 10px;}
-  .notes-search-form input{flex:1;min-width:220px;}
-  .notes-search-form button{min-height:34px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s,background .15s;}
-  .notes-search-form button:hover{border-color:var(--accent);color:var(--accent);background:var(--panel-soft);}
-  .notes-search-form button:disabled{opacity:.55;cursor:default;}
-  .notes-search-results{display:grid;gap:8px;}
-  .notes-ai-recent-list{display:grid;gap:8px;margin-top:10px;}
-  .notes-ai-recent-head strong{display:inline-flex;align-items:center;gap:7px;}
-  .notes-ai-recent-item span{display:inline-flex;align-items:center;gap:6px;}
-  .notes-result-card{display:grid;gap:4px;width:100%;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--panel-soft);color:var(--text);padding:10px 12px;cursor:pointer;}
-  .notes-result-card:hover{border-color:var(--accent);}
-  .notes-result-card span{color:var(--muted);font-size:.9rem;}
-  .notes-preview-card .memory-content{max-height:420px;overflow:auto;}
 .field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px;opacity:.8;}
   select{width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:8px 28px 8px 10px;font-size:12px;outline:none;appearance:none;margin-bottom:6px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;}
   select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg);}
@@ -3213,7 +3193,6 @@ body.resizing .sidebar{transition:none!important;}
   overflow:hidden;
   color:var(--muted);
   transition:background .18s ease,color .18s ease;
-  overflow:hidden;
 }
 .transparent-event-row .tool-card-header:hover,
 .transparent-event-row .thinking-card-header:hover{background:var(--hover-bg);color:var(--text);}
