@@ -55,9 +55,13 @@ class TestApiEndpoints(unittest.TestCase):
 
     def _get(self, path: str):
         req = urllib.request.Request(f"{self.base_url}{path}")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = resp.read().decode("utf-8")
-            return resp.status, json.loads(data) if data else {}
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read().decode("utf-8")
+                return resp.status, json.loads(data) if data else {}
+        except urllib.error.HTTPError as err:
+            data = err.read().decode("utf-8")
+            return err.code, json.loads(data) if data else {}
 
     def _post(self, path: str, payload: dict):
         req = urllib.request.Request(
@@ -66,9 +70,13 @@ class TestApiEndpoints(unittest.TestCase):
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = resp.read().decode("utf-8")
-            return resp.status, json.loads(data) if data else {}
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read().decode("utf-8")
+                return resp.status, json.loads(data) if data else {}
+        except urllib.error.HTTPError as err:
+            data = err.read().decode("utf-8")
+            return err.code, json.loads(data) if data else {}
 
     def test_health_endpoints(self):
         """Verify /health and /api/health/agent endpoints."""
@@ -127,6 +135,41 @@ class TestApiEndpoints(unittest.TestCase):
         self.assertEqual(status, 200)
         retrieved_session = data.get("session", {})
         self.assertEqual(retrieved_session.get("session_id"), session_id)
+
+    def test_cors_preflight(self):
+        """Verify OPTIONS preflight returns proper CORS headers for same-origin."""
+        origin = f"http://127.0.0.1:{self.port}"
+        req = urllib.request.Request(
+            f"{self.base_url}/api/sessions",
+            headers={"Origin": origin},
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            headers = {k.title(): v for k, v in dict(resp.headers).items()}
+            self.assertEqual(headers.get("Access-Control-Allow-Origin"), origin)
+            self.assertIn("Access-Control-Allow-Methods", headers)
+
+    def test_nonexistent_endpoint_returns_404(self):
+        """Verify requesting unknown endpoint yields 404 cleanly."""
+        req = urllib.request.Request(f"{self.base_url}/api/not_a_valid_route_12345")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                status = resp.status
+        except urllib.error.HTTPError as err:
+            status = err.code
+        self.assertEqual(status, 404)
+
+    def test_session_recovery_endpoints(self):
+        """Verify GET /api/session/recovery/audit and POST /api/session/recovery/repair-safe."""
+        status, audit = self._get("/api/session/recovery/audit")
+        self.assertEqual(status, 200)
+        self.assertIn("status", audit)
+        self.assertIn("summary", audit)
+
+        status, repair = self._post("/api/session/recovery/repair-safe", {})
+        self.assertIn(status, (200, 409))
+        self.assertIn("clean", repair)
 
 
 if __name__ == "__main__":
