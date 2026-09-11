@@ -425,9 +425,7 @@ async function cmdRecall(args){
 
   showToast(`Recalling "${query}" from Knowledge Vault...`);
   try {
-    const res = await fetch(`/api/vault/search?q=${encodeURIComponent(query)}&content=1`);
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(`/api/vault/search?q=${encodeURIComponent(query)}&content=1`);
     const results = (data && data.results) || [];
 
     if(!results.length){
@@ -522,9 +520,7 @@ async function cmdGaps(args){
     const url = activeSpace && activeSpace !== 'all'
       ? `/api/vault/health?space=${encodeURIComponent(activeSpace)}`
       : '/api/vault/health';
-    const res = await fetch(url);
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(url);
 
     const totalNotes = data.total_notes || 0;
     const totalEdges = data.total_edges || 0;
@@ -603,7 +599,7 @@ async function cmdDigest(args){
   showToast('Digesting text into atomic vault note...');
   try {
     const activeSpace = (typeof _activeSpaceFilter !== 'undefined' && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
-    const res = await fetch('/api/vault/digest', {
+    const data = await apiFetch('/api/vault/digest', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -612,9 +608,7 @@ async function cmdDigest(args){
         category: 'notes'
       })
     });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error || 'Failed to digest note');
+    if(!data || !data.ok) throw new Error((data && data.error) || 'Failed to digest note');
 
     const tagsStr = (data.tags && data.tags.length) ? data.tags.map(t => `#${t}`).join(' ') : '';
     const targetsStr = (data.targets_linked && data.targets_linked.length)
@@ -660,7 +654,7 @@ function cmdDeepMode(args){
   // Task execution mode: /deepmode <task description>
   // Ensure DeepMode is enabled in settings in background
   try {
-    fetch('/api/agy/settings', {
+    apiFetch('/api/agy/settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({deepmode: true, effort: 'high'})
@@ -677,8 +671,7 @@ function cmdDeepMode(args){
 async function _handleDeepModeToggle(subcmd){
   if (!subcmd || subcmd === 'status') {
     try {
-      const res = await fetch('/api/agy/settings');
-      const data = await res.json();
+      const data = await apiFetch('/api/agy/settings');
       const isActive = !!data.deepmode;
       const effort = data.effort || (isActive ? 'high' : 'medium');
       const statusBadge = isActive
@@ -708,12 +701,11 @@ async function _handleDeepModeToggle(subcmd){
 
   const shouldEnable = (subcmd === 'on' || subcmd === 'enable');
   try {
-    const res = await fetch('/api/agy/settings', {
+    const data = await apiFetch('/api/agy/settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({deepmode: shouldEnable, effort: shouldEnable ? 'high' : 'medium'})
     });
-    const data = await res.json();
     if (shouldEnable) {
       if (typeof showToast === 'function') showToast('DeepMode enabled (Solar/Hermes autonomous mode)');
       S.messages.push({
@@ -766,10 +758,9 @@ function cmdArtifacts(){
 async function cmdQuota(){
   showToast('Fetching live Antigravity quota...');
   try {
-    const res = await fetch('/api/agy/quota');
-    const data = await res.json();
-    if(!data.ok || !data.quotas || !data.quotas.length){
-      const errMsg = data.error || 'No quota details available.';
+    const data = await apiFetch('/api/agy/quota');
+    if(!data || !data.ok || !data.quotas || !data.quotas.length){
+      const errMsg = (data && data.error) || 'No quota details available.';
       S.messages.push({role:'assistant', content:`⚠️ **Antigravity Quota Status**\n\n${errMsg}`});
       renderMessages();
       return;
@@ -794,8 +785,7 @@ async function cmdEffort(args){
   const level = String(args || '').trim().toLowerCase();
   if(!level){
     try {
-      const res = await fetch('/api/agy/settings');
-      const data = await res.json();
+      const data = await apiFetch('/api/agy/settings');
       const current = data.effort || 'medium';
       S.messages.push({role:'assistant', content:`🧠 **Antigravity Reasoning Effort**\n\nCurrent effort level: **\`${current}\`**\n\nTo change reasoning depth for thinking models (e.g. Gemini 3.7 Flash Thinking), use:\n- \`/effort low\` (Fast, concise reasoning)\n- \`/effort medium\` (Standard balanced thinking)\n- \`/effort high\` (Deep strategic reasoning & multi-step analysis)`});
       renderMessages();
@@ -811,12 +801,11 @@ async function cmdEffort(args){
     return;
   }
   try {
-    const res = await fetch('/api/agy/settings', {
+    const data = await apiFetch('/api/agy/settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({effort: level})
     });
-    const data = await res.json();
     showToast(`Reasoning effort set to ${level}`);
     S.messages.push({role:'assistant', content:`🧠 **Reasoning Effort Updated**\n\nAgent reasoning depth set to **\`${data.effort || level}\`** for subsequent turns.`});
     renderMessages();
@@ -830,8 +819,7 @@ async function cmdMode(args){
   const mode = String(args || '').trim().toLowerCase();
   if(!mode){
     try {
-      const res = await fetch('/api/agy/settings');
-      const data = await res.json();
+      const data = await apiFetch('/api/agy/settings');
       const current = data.mode || 'accept-edits';
       S.messages.push({role:'assistant', content:`🛠️ **Antigravity Execution Mode**\n\nCurrent execution mode: **\`${current}\`**\n\nAvailable modes:\n- \`/mode accept-edits\` (Paired autonomous coding & tool execution)\n- \`/mode plan\` (Architectural planning and review without writing files)`});
       renderMessages();
@@ -847,12 +835,11 @@ async function cmdMode(args){
     return;
   }
   try {
-    const res = await fetch('/api/agy/settings', {
+    const data = await apiFetch('/api/agy/settings', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({mode: mode})
     });
-    const data = await res.json();
     showToast(`Execution mode set to ${mode}`);
     S.messages.push({role:'assistant', content:`🛠️ **Execution Mode Updated**\n\nAgent execution mode set to **\`${data.mode || mode}\`** for subsequent turns.`});
     renderMessages();
@@ -865,8 +852,7 @@ async function cmdMode(args){
 async function cmdStatus(){
   showToast('Checking environment diagnostics...');
   try {
-    const res = await fetch('/api/agy/status');
-    const data = await res.json();
+    const data = await apiFetch('/api/agy/status');
     const isCont = data.container;
     const shieldBadge = isCont ? '🛡️ **Active** (Linux Container Namespace)' : '⚠️ **Host Native** (Not containerized)';
     const content = `### 🖥️ Antigravity Environment & Runtime Diagnostics
@@ -892,8 +878,7 @@ async function cmdStatus(){
 
 async function cmdSkills(){
   try {
-    const res = await fetch('/api/skills');
-    const data = await res.json();
+    const data = await apiFetch('/api/skills');
     const skills = Array.isArray(data) ? data : (data.skills || []);
     if(!skills.length){
       S.messages.push({role:'assistant', content:'📁 **Antigravity Skills**\n\nNo custom skills found in workspace. Skills are located in `/workspace/skills` or `~/.gemini/antigravity-cli/builtin/skills`.'});
@@ -1018,15 +1003,12 @@ async function cmdModel(args){
   // CLI resolves against the full catalog, so /model must too. (#3368)
   let modelsData=null;
   try {
-    const resp=await fetch(new URL('api/models',document.baseURI||location.href).href);
-    if(resp.ok){
-      modelsData=await resp.json();
-      const aliases=modelsData.aliases||{};
-      for(const [alias,modelId] of Object.entries(aliases)){
-        if(alias.toLowerCase()===q){
-          q=modelId.toLowerCase(); // resolve alias to real model id e.g. "deepseek/deepseek-v4-flash"
-          break;
-        }
+    modelsData=await apiFetch(new URL('api/models',document.baseURI||location.href).href);
+    const aliases=(modelsData&&modelsData.aliases)||{};
+    for(const [alias,modelId] of Object.entries(aliases)){
+      if(alias.toLowerCase()===q){
+        q=modelId.toLowerCase(); // resolve alias to real model id e.g. "deepseek/deepseek-v4-flash"
+        break;
       }
     }
   } catch(_){/* non-critical, fall through to fuzzy match */}
@@ -1058,7 +1040,7 @@ async function cmdModel(args){
     if(!match && !versionedNoSnap && S&&S.session&&S.session.session_id){
       const provider=q.slice(0,q.indexOf('/'));
       try{
-        const resp=await fetch(new URL('api/session/update',document.baseURI||location.href).href,{
+        await apiFetch(new URL('api/session/update',document.baseURI||location.href).href,{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({
@@ -1067,13 +1049,11 @@ async function cmdModel(args){
             model_provider:provider,
           }),
         });
-        if(resp.ok){
-          S.session.model=q;
-          S.session.model_provider=provider;
-          if(typeof syncTopbar==='function') syncTopbar();
-          showToast(t('switched_to')+q);
-          return;
-        }
+        S.session.model=q;
+        S.session.model_provider=provider;
+        if(typeof syncTopbar==='function') syncTopbar();
+        showToast(t('switched_to')+q);
+        return;
       }catch(_){/* fall through to "no model match" */}
     }
   }

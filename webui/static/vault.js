@@ -93,9 +93,7 @@ async function loadVault(force = false) {
     const url = (_activeSpaceFilter && _activeSpaceFilter !== 'all')
       ? `/api/vault/graph?space=${encodeURIComponent(_activeSpaceFilter)}`
       : '/api/vault/graph';
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await apiFetch(url);
     _vaultData = data;
     _allGraphNodes = data.nodes || [];
     _allGraphEdges = data.edges || [];
@@ -206,9 +204,7 @@ function onVaultSearchInput(val) {
 
   _vaultSearchDebounceTimer = setTimeout(async () => {
     try {
-      const res = await fetch(`/api/vault/search?q=${encodeURIComponent(q)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/vault/search?q=${encodeURIComponent(q)}`);
       renderVaultSearchResults(data.results || [], q);
     } catch (err) {
       if (listEl) {
@@ -299,10 +295,8 @@ async function setVaultHealthFilter(filter) {
   } else if (_vaultHealthFilter === 'unresolved') {
     listEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">Analyzing unresolved links...</div>';
     try {
-      const res = await fetch('/api/vault/health');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const health = await res.json();
-      const unresolved = health.unresolved_links || [];
+      const health = await apiFetch('/api/vault/health');
+      const unresolved = (health && health.unresolved_links) || [];
 
       if (!unresolved.length) {
         listEl.innerHTML = '<div class="vault-empty-list" style="color:var(--accent)">✨ No unresolved links! All wikilinks resolve properly.</div>';
@@ -603,9 +597,7 @@ async function loadVaultNote(relPath, openSidebar = true, openInEditor = false) 
   if (!clean.endsWith('.md')) clean += '.md';
 
   try {
-    const res = await fetch(`/api/vault/note?path=${encodeURIComponent(clean)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const note = await res.json();
+    const note = await apiFetch(`/api/vault/note?path=${encodeURIComponent(clean)}`);
     _activeVaultNote = note;
 
     renderVaultSidebarList(_vaultData.nodes || []);
@@ -925,9 +917,8 @@ async function renderVaultRelationsForCurrentPreview(path) {
   if (!path || !path.startsWith('knowledge/')) return;
   const rel = path.replace(/^knowledge\//, '');
   try {
-    const res = await fetch(`/api/vault/note?path=${encodeURIComponent(rel)}`);
-    if (res.ok) {
-      const note = await res.json();
+    const note = await apiFetch(`/api/vault/note?path=${encodeURIComponent(rel)}`);
+    if (note) {
       _activeVaultNote = note;
       renderVaultRelationsInPreview(note);
       highlightVaultGraphNode(note.path);
@@ -1067,10 +1058,9 @@ async function updateVaultCategorySelection() {
     try {
       const activeSpace = (_activeSpaceFilter && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
       const spaceParam = activeSpace !== 'global' ? `&space=${encodeURIComponent(activeSpace)}` : '';
-      const res = await fetch(`/api/vault/template?category=decisions&title=Sample${spaceParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        _nextAdrNumber = data.next_adr || 1;
+      const data = await apiFetch(`/api/vault/template?category=decisions&title=Sample${spaceParam}`);
+      if (data && data.next_adr) {
+        _nextAdrNumber = data.next_adr;
       }
     } catch (_) {
       _nextAdrNumber = 1;
@@ -1134,12 +1124,9 @@ async function submitVaultNewNote() {
   try {
     const activeSpace = (_activeSpaceFilter && _activeSpaceFilter !== 'all') ? _activeSpaceFilter : 'global';
     const spaceParam = activeSpace !== 'global' ? `&space=${encodeURIComponent(activeSpace)}` : '';
-    const tRes = await fetch(`/api/vault/template?category=${encodeURIComponent(_selectedVaultCategory)}&title=${encodeURIComponent(title)}${spaceParam}`);
+    const tData = await apiFetch(`/api/vault/template?category=${encodeURIComponent(_selectedVaultCategory)}&title=${encodeURIComponent(title)}${spaceParam}`);
     let content = `# ${title}\n\n`;
-    if (tRes.ok) {
-      const tData = await tRes.json();
-      if (tData.template) content = tData.template;
-    }
+    if (tData && tData.template) content = tData.template;
 
     const rawTags = (tagsInput ? tagsInput.value : '').trim();
     if (rawTags) {
@@ -1148,20 +1135,19 @@ async function submitVaultNewNote() {
     }
 
     const saveRel = targetPath.replace(/^knowledge\//, '');
-    const sRes = await fetch('/api/vault/note', {
+    const sData = await apiFetch('/api/vault/note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: saveRel, content: content })
     });
-    const sData = await sRes.json();
 
-    if (sData.ok) {
+    if (sData && sData.ok) {
       if (typeof showToast === 'function') showToast(`Created ${saveRel}`, 2500, 'success');
       closeVaultNewNoteModal();
       await loadVault(true);
       loadVaultNote(saveRel, true, false);
     } else {
-      if (typeof showToast === 'function') showToast(sData.error || 'Failed to create note', 3000, 'error');
+      if (typeof showToast === 'function') showToast((sData && sData.error) || 'Failed to create note', 3000, 'error');
     }
   } catch (err) {
     if (typeof showToast === 'function') showToast(`Error creating note: ${err.message}`, 3000, 'error');
@@ -1172,13 +1158,12 @@ async function submitVaultNewNote() {
 
 async function saveNewNote(path, content) {
   try {
-    const res = await fetch('/api/vault/note', {
+    const data = await apiFetch('/api/vault/note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: path, content: content })
     });
-    const data = await res.json();
-    if (data.ok) {
+    if (data && data.ok) {
       showToast(`Created ${path}`, 2000, 'success');
       await loadVault(true);
       loadVaultNote(path, true, false);
@@ -1203,13 +1188,12 @@ async function syncVaultRules() {
   }
 
   try {
-    const res = await fetch('/api/vault/sync', { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
+    const data = await apiFetch('/api/vault/sync', { method: 'POST' });
+    if (data && data.ok) {
       const dietBadge = data.diet_mode ? ' (Context Diet Active ⚡)' : '';
       showToast(`Compiled ${data.total_compiled_notes} notes to native Antigravity rules${dietBadge}!`, 3000, 'success');
     } else {
-      showToast(data.error || 'Sync failed', 3000, 'error');
+      showToast((data && data.error) || 'Sync failed', 3000, 'error');
     }
   } catch (err) {
     showToast(err.message, 3000, 'error');
@@ -1230,16 +1214,15 @@ async function auditAndHealVault() {
   if (btn) {
     origHtml = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Auditing...`;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Compiling...`;
   }
 
   try {
     const spaceParam = _activeSpaceFilter && _activeSpaceFilter !== 'all' ? `?space=${encodeURIComponent(_activeSpaceFilter)}` : '';
-    const lintRes = await fetch(`/api/vault/lint${spaceParam}`);
-    const lintData = await lintRes.json();
+    const lintData = await apiFetch(`/api/vault/lint${spaceParam}`);
 
-    if (!lintData.ok) {
-      showToast(lintData.error || 'Audit failed', 3000, 'error');
+    if (!lintData || !lintData.ok) {
+      showToast((lintData && lintData.error) || 'Audit failed', 3000, 'error');
       return;
     }
 
@@ -1248,17 +1231,16 @@ async function auditAndHealVault() {
 
     if (healable > 0) {
       if (btn) btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 0.6s linear infinite"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Healing...`;
-      const healRes = await fetch('/api/vault/heal', {
+      const healData = await apiFetch('/api/vault/heal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ space: _activeSpaceFilter })
       });
-      const healData = await healRes.json();
-      if (healData.ok) {
+      if (healData && healData.ok) {
         showToast(`Auto-healed ${healData.healed_count} broken link(s)!`, 4000, 'success');
         await loadVault(true);
       } else {
-        showToast(healData.error || 'Healing failed', 3000, 'error');
+        showToast((healData && healData.error) || 'Healing failed', 3000, 'error');
       }
     } else if (issues === 0) {
       showToast(`Vault audit clean: all ${lintData.total_notes} notes & links 100% healthy!`, 3500, 'success');
@@ -2094,9 +2076,8 @@ async function openVaultQuickSwitcher(initialQuery = '') {
   // If vault nodes not loaded yet, fetch graph nodes
   if (!_allGraphNodes || !_allGraphNodes.length) {
     try {
-      const res = await fetch('/api/vault/graph');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/api/vault/graph');
+      if (data) {
         _vaultData = data;
         _allGraphNodes = data.nodes || [];
       }
