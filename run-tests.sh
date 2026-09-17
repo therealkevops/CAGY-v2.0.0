@@ -19,6 +19,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo ""
     echo "Options:"
     echo "  (no args)       Run hermetic test suite on local host"
+    echo "  --coverage      Run tests with code coverage report (fail-under threshold)"
     echo "  --container     Run test suite inside running agy-unified Docker container"
     echo "  --compatibility Run CLI compatibility probe against live agy engine"
     echo "  --help          Show this help message"
@@ -53,19 +54,39 @@ else
     exit 1
 fi
 
-echo -e "${YELLOW}[lint] Checking JS syntax...${NC}"
-if node -c webui/static/*.js > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ JS syntax check passed${NC}"
+echo -e "${YELLOW}[lint] Checking JS syntax across all static files...${NC}"
+JS_ERRORS=0
+for f in webui/static/*.js; do
+    if ! node -c "$f" > /dev/null 2>&1; then
+        echo -e "${RED}✗ JS syntax error in $f — run: node -c $f${NC}"
+        JS_ERRORS=$((JS_ERRORS + 1))
+    fi
+done
+if [ $JS_ERRORS -eq 0 ]; then
+    echo -e "${GREEN}✓ JS syntax check passed (all $(ls -1 webui/static/*.js | wc -l | tr -d ' ') static files)${NC}"
 else
-    echo -e "${RED}✗ JS syntax error detected — run: node -c webui/static/<file>.js${NC}"
     exit 1
 fi
 
-# ── Unit tests ─────────────────────────────────────────────────────────────────
+# ── Unit tests & Coverage ──────────────────────────────────────────────────────
 
-echo -e "${YELLOW}[info] Executing hermetic test suite on host...${NC}"
-python3 -m unittest discover -s tests -p "test_*.py" -v
-EXIT_CODE=$?
+if [ "$1" = "--coverage" ] || [ "$COVERAGE" = "1" ]; then
+    if python3 -c "import coverage" > /dev/null 2>&1; then
+        echo -e "${YELLOW}[coverage] Executing test suite with coverage analysis...${NC}"
+        python3 -m coverage run --source=webui/api -m unittest discover -s tests -p "test_*.py"
+        echo -e "${BLUE}──────────────────────────────────────────────────────${NC}"
+        python3 -m coverage report -m --fail-under=50
+        EXIT_CODE=$?
+    else
+        echo -e "${YELLOW}[coverage] python coverage module not detected; falling back to standard test suite.${NC}"
+        python3 -m unittest discover -s tests -p "test_*.py" -v
+        EXIT_CODE=$?
+    fi
+else
+    echo -e "${YELLOW}[info] Executing hermetic test suite on host...${NC}"
+    python3 -m unittest discover -s tests -p "test_*.py" -v
+    EXIT_CODE=$?
+fi
 
 if [ $EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✓ All tests passed successfully!${NC}"
