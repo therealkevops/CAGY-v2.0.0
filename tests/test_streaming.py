@@ -26,6 +26,8 @@ from api.config import (
 )
 from api.models import Session
 from api.streaming import (
+    StreamTurnContext,
+    StreamingUsageCollector,
     _compact_for_echo_compare,
     _run_agent_streaming,
     _sse,
@@ -203,6 +205,87 @@ class TestStreamingExecutionLifecycle(unittest.TestCase):
         finally:
             with STREAMS_LOCK:
                 STREAMS.pop(stream_id, None)
+
+
+class TestStreamTurnContextAndUsageCollector(unittest.TestCase):
+    """Test StreamTurnContext data encapsulation and StreamingUsageCollector telemetry."""
+
+    def test_stream_turn_context_defaults_and_cancellation(self):
+        """Verify StreamTurnContext initialization, fields, and cancel check."""
+        ctx = StreamTurnContext(
+            session_id="sess-001",
+            msg_text="test prompt",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-001",
+        )
+        self.assertEqual(ctx.session_id, "sess-001")
+        self.assertEqual(ctx.msg_text, "test prompt")
+        self.assertEqual(ctx.model, "gemini-3.8-flash")
+        self.assertEqual(ctx.workspace, "/tmp/ws")
+        self.assertEqual(ctx.stream_id, "stream-001")
+        self.assertFalse(ctx.ephemeral)
+        self.assertFalse(ctx.is_cancelled())
+
+        cancel_evt = threading.Event()
+        ctx.cancel_event = cancel_evt
+        self.assertFalse(ctx.is_cancelled())
+        cancel_evt.set()
+        self.assertTrue(ctx.is_cancelled())
+
+    def test_streaming_usage_collector_estimates_and_tool_tracking(self):
+        """Verify prompt seeding, tool delta bumps, and seen_tool_call_ids."""
+        ctx = StreamTurnContext(
+            session_id="sess-002",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-002",
+        )
+        collector = StreamingUsageCollector(ctx)
+
+        # Initially 0
+        self.assertEqual(collector.seed_live_prompt_estimate(), 0)
+
+        # Bump with tool messages (mocking _bounded_live_tool_prompt_delta for hermetic unit testing)
+        with unittest.mock.patch("api.streaming._bounded_live_tool_prompt_delta", return_value=42):
+            bumped = collector.bump_live_prompt_estimate([{"role": "tool", "content": "file contents"}])
+            self.assertEqual(bumped, 42)
+            self.assertEqual(collector.live_prompt_estimate_tokens[0], 42)
+
+        # Seen tool IDs tracking
+        self.assertNotIn("call-1", collector.seen_tool_call_ids)
+        collector.seen_tool_call_ids.add("call-1")
+        self.assertIn("call-1", collector.seen_tool_call_ids)
+
+    def test_streaming_usage_collector_snapshot_with_agent_mock(self):
+        """Verify snapshot extraction from agent and session attributes."""
+        ctx = StreamTurnContext(
+            session_id="sess-003",
+            msg_text="telemetry test",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-003",
+        )
+        collector = StreamingUsageCollector(ctx)
+
+        # Mock agent attributes
+        mock_agent = MagicMock()
+        mock_agent.session_prompt_tokens = 1500
+        mock_agent.session_completion_tokens = 320
+        mock_agent.session_estimated_cost_usd = 0.0045
+        mock_agent.session_cache_read_tokens = 500
+        mock_agent.session_cache_write_tokens = 200
+        mock_agent.context_compressor = None
+        ctx.agent = mock_agent
+
+        snapshot = collector.snapshot()
+        self.assertEqual(snapshot["input_tokens"], 1500)
+        self.assertEqual(snapshot["output_tokens"], 320)
+        self.assertEqual(snapshot["estimated_cost"], 0.0045)
+        self.assertEqual(snapshot["cache_read_tokens"], 500)
+        self.assertEqual(snapshot["cache_write_tokens"], 200)
+        self.assertIn("cache_hit_percent", snapshot)
 
 
 if __name__ == "__main__":

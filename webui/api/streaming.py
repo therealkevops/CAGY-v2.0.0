@@ -22,8 +22,9 @@ import time
 import traceback
 import copy
 import inspect
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -8732,6 +8733,320 @@ def _refresh_cached_agent_primary_runtime_snapshot(agent) -> None:
             rt['is_anthropic_oauth'] = getattr(agent, '_is_anthropic_oauth')
 
 
+@dataclass
+class StreamTurnContext:
+    """Encapsulates runtime state, threading flags, and buffers for a single agent streaming turn."""
+
+    session_id: str
+    msg_text: str
+    model: str
+    workspace: str
+    stream_id: str
+    attachments: Optional[Any] = None
+    ephemeral: bool = False
+    model_provider: Optional[str] = None
+    goal_related: bool = False
+    moa_config: Optional[Any] = None
+
+    # Routing and queues
+    turn_route_model: Optional[str] = None
+    turn_route_provider: Optional[str] = None
+    q: Optional[Any] = None
+    run_journal: Optional[Any] = None
+    cancel_event: Optional[threading.Event] = None
+    put: Optional[Callable[[str, Any], None]] = None
+
+    # Agent and session state
+    s: Optional[Any] = None
+    agent: Optional[Any] = None
+    rt: Dict[str, Any] = field(default_factory=dict)
+    success_writeback_committed: bool = False
+    captured_terminal_error: List[Optional[str]] = field(default_factory=lambda: [None])
+
+    # Environment snapshots and restoration
+    old_cwd: Optional[str] = None
+    old_exec_ask: Optional[Any] = None
+    old_session_key: Optional[str] = None
+    old_session_id: Optional[str] = None
+    old_session_platform: Optional[str] = None
+    old_hermes_home: Optional[str] = None
+    old_profile_env: Dict[str, Any] = field(default_factory=dict)
+    result: Optional[Any] = None
+    result_partial_pre_call_context: List[Any] = field(default_factory=list)
+
+    # Session identity and tokens
+    turn_session_identity_tokens: Optional[Any] = None
+    streaming_cron_profile_home_token: Optional[Any] = None
+    turn_pending_source: str = 'webui'
+    streaming_hermes_home_override_ctx: Tuple[Any, Any, bool] = (None, None, False)
+    streaming_skill_home_snapshot: Optional[Any] = None
+    restore_streaming_skill_home_modules: bool = False
+    acquired_streaming_skill_home_patch_lock: bool = False
+
+    # Checkpoint and agent locks
+    checkpoint_stop: Optional[threading.Event] = None
+    ckpt_thread: Optional[threading.Thread] = None
+    agent_lock: Optional[Any] = None
+
+    # Usage collector
+    usage_collector: Optional['StreamingUsageCollector'] = None
+
+    def is_cancelled(self) -> bool:
+        """Check if cancel flag is set for this turn."""
+        return bool(self.cancel_event and self.cancel_event.is_set())
+
+
+class StreamingUsageCollector:
+    """Encapsulates mid-stream telemetry, live usage snapshotting, and 1 Hz ticker thread."""
+
+    def __init__(
+        self,
+        ctx: 'StreamTurnContext',
+        *,
+        agent_getter: Optional[Callable[[], Any]] = None,
+        session_getter: Optional[Callable[[], Any]] = None,
+    ):
+        self.ctx = ctx
+        self._agent_getter = agent_getter
+        self._session_getter = session_getter
+        self.live_prompt_estimate_tokens = [0]
+        self.live_prompt_exact_tokens = [0]
+        self.live_prompt_estimate_tool_delta_tokens = [0]
+        self.seen_tool_call_ids: Set[str] = set()
+        self.real_ctx_cache: List[Optional[int]] = [None]
+        self.session_cache: List[Optional[Any]] = [None]
+        self.metering_stop = threading.Event()
+        self.metering_thread: Optional[threading.Thread] = threading.Thread(
+            target=self._metering_ticker, daemon=True
+        )
+
+    def get_agent(self) -> Any:
+        if self.ctx.agent is not None:
+            return self.ctx.agent
+        if self._agent_getter is not None:
+            return self._agent_getter()
+        return None
+
+    def get_session(self) -> Any:
+        if self.ctx.s is not None:
+            return self.ctx.s
+        if self._session_getter is not None:
+            return self._session_getter()
+        return None
+
+    def current_session(self) -> Any:
+        return _live_usage_session_snapshot(
+            self.ctx.session_id,
+            self.get_session(),
+            self.session_cache,
+        )
+
+    def seed_live_prompt_estimate(self) -> int:
+        """Capture the latest exact prompt size before adding live tool deltas."""
+        if self.live_prompt_estimate_tokens[0] > 0:
+            return self.live_prompt_estimate_tokens[0]
+        _base = 0
+        _agent = self.get_agent()
+        if _agent is not None:
+            try:
+                _cc = getattr(_agent, 'context_compressor', None)
+                if _cc:
+                    _base = getattr(_cc, 'last_prompt_tokens', 0) or 0
+            except Exception:
+                logger.debug("Silent exception in seed_live_prompt_estimate", exc_info=True)
+                _base = 0
+        if not _base:
+            try:
+                _session_obj = self.current_session()
+                _base = getattr(_session_obj, 'last_prompt_tokens', 0) or 0
+            except Exception:
+                logger.debug("Silent exception in seed_live_prompt_estimate", exc_info=True)
+                _base = 0
+        self.live_prompt_estimate_tokens[0] = int(_base or 0)
+        self.live_prompt_exact_tokens[0] = self.live_prompt_estimate_tokens[0]
+        return self.live_prompt_estimate_tokens[0]
+
+    def bump_live_prompt_estimate(self, messages) -> int:
+        """Increment a rough next-prompt estimate from live tool activity."""
+        if not messages:
+            return self.live_prompt_estimate_tokens[0]
+        self.seed_live_prompt_estimate()
+        _usage = live_usage_prompt_estimate_after_tool_delta(
+            base_prompt_tokens=self.live_prompt_exact_tokens[0],
+            exact_prompt_tokens=self.live_prompt_exact_tokens[0],
+            messages=messages,
+            turn_tool_prompt_tokens=self.live_prompt_estimate_tool_delta_tokens[0],
+        )
+        self.live_prompt_estimate_tokens[0] = _usage['last_prompt_tokens']
+        self.live_prompt_estimate_tool_delta_tokens[0] = _usage['turn_tool_prompt_tokens']
+        return self.live_prompt_estimate_tokens[0]
+
+    def snapshot(self) -> dict:
+        """Best-effort live usage payload for mid-stream UI updates.
+
+        During tool execution the final `done` event has not fired yet, but the
+        frontend still benefits from seeing the latest known token / context
+        values. These are exact for the most recent model call and a truthful
+        lower bound for the pending next call after a tool result is appended.
+        """
+        _usage = {
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'estimated_cost': 0,
+            'cache_read_tokens': 0,
+            'cache_write_tokens': 0,
+            'cache_hit_percent': None,
+            'context_length': 0,
+            'threshold_tokens': 0,
+            'last_prompt_tokens': 0,
+            'post_compression_context_tokens_estimate': None,
+        }
+        _session_obj = self.current_session()
+
+        _agent = self.get_agent()
+        if _agent is not None:
+            try:
+                _usage['input_tokens'] = getattr(_agent, 'session_prompt_tokens', 0) or 0
+                _usage['output_tokens'] = getattr(_agent, 'session_completion_tokens', 0) or 0
+                _usage['estimated_cost'] = getattr(_agent, 'session_estimated_cost_usd', 0) or 0
+                _usage['cache_read_tokens'] = getattr(_agent, 'session_cache_read_tokens', 0) or 0
+                _usage['cache_write_tokens'] = getattr(_agent, 'session_cache_write_tokens', 0) or 0
+            except Exception:
+                logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                pass
+            try:
+                _cc = getattr(_agent, 'context_compressor', None)
+                if _cc:
+                    _cc_cl_u = getattr(_cc, 'context_length', 0) or 0
+                    if self.real_ctx_cache[0] is None:
+                        _resolved_real = 0
+                        try:
+                            _sm_u = str(getattr(_agent, 'model', '') or '').strip()
+                            _prov_u = str(getattr(_agent, 'provider', '') or '').strip()
+                            _base_u = str(getattr(_agent, 'base_url', '') or '').strip()
+                            _key_u = getattr(_agent, 'api_key', '') or ''
+                            if _sm_u:
+                                try:
+                                    from api.routes import (
+                                        _context_length_lookup_inputs_for_model as _cli_u,
+                                        _should_accept_session_context_length_refresh as _accept_u,
+                                    )
+                                    from agent.model_metadata import get_model_context_length as _g_u
+                                    try:
+                                        from api.config import get_config_for_profile_home as _gch_u
+                                        from api.profiles import get_hermes_home_for_profile as _ghp_u
+                                        _ph_u = _ghp_u(getattr(_session_obj, 'profile', None))
+                                        _cfg_u = _gch_u(_ph_u)
+                                    except Exception:
+                                        logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                                        from api.config import get_config as _gc_u
+                                        _cfg_u = _gc_u()
+                                    _lk_u = _cli_u(
+                                        _sm_u,
+                                        _prov_u,
+                                        base_url=_base_u,
+                                        api_key=_key_u,
+                                        cfg=_cfg_u if isinstance(_cfg_u, dict) else {},
+                                    )
+                                    _real_u = _g_u(
+                                        _sm_u,
+                                        _lk_u.base_url,
+                                        api_key=_lk_u.api_key,
+                                        config_context_length=_lk_u.config_context_length,
+                                        provider=_lk_u.provider or _prov_u or '',
+                                        custom_providers=_lk_u.custom_providers,
+                                    ) or 0
+                                    if (
+                                        _real_u and _real_u != _cc_cl_u
+                                        and _accept_u(_cc_cl_u, _real_u)
+                                    ):
+                                        _resolved_real = _real_u
+                                except TypeError:
+                                    try:
+                                        from api.routes import (
+                                            _should_accept_session_context_length_refresh as _accept2_u,
+                                        )
+                                        from agent.model_metadata import get_model_context_length as _g2_u
+                                        _real_u = _g2_u(_sm_u, _base_u) or 0
+                                        if (
+                                            _real_u and _real_u != _cc_cl_u
+                                            and _accept2_u(_cc_cl_u, _real_u)
+                                        ):
+                                            _resolved_real = _real_u
+                                    except Exception:
+                                        logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                                        pass
+                                except Exception:
+                                    logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                                    pass
+                        except Exception:
+                            logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                            _resolved_real = 0
+                        self.real_ctx_cache[0] = _resolved_real
+                    if self.real_ctx_cache[0]:
+                        _orig_cc_cl = getattr(_cc, 'context_length', 0) or 0
+                        _orig_thresh = getattr(_cc, 'threshold_tokens', 0) or 0
+                        _cc_cl_u = self.real_ctx_cache[0]
+                        if _orig_cc_cl > 0 and _orig_thresh > 0:
+                            _scaled_thresh = int(_orig_thresh * self.real_ctx_cache[0] / _orig_cc_cl)
+                            _usage['context_length'] = _cc_cl_u
+                            _usage['threshold_tokens'] = _scaled_thresh
+                            _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
+                        else:
+                            _usage['context_length'] = _cc_cl_u
+                            _usage['threshold_tokens'] = _orig_thresh
+                            _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
+                    else:
+                        _usage['context_length'] = _cc_cl_u
+                        _usage['threshold_tokens'] = getattr(_cc, 'threshold_tokens', 0) or 0
+                        _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
+            except Exception:
+                logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                pass
+
+        if _session_obj is not None:
+            for _field in ('input_tokens', 'output_tokens', 'estimated_cost', 'cache_read_tokens', 'cache_write_tokens', 'context_length', 'threshold_tokens', 'last_prompt_tokens'):
+                if not _usage.get(_field):
+                    try:
+                        _usage[_field] = getattr(_session_obj, _field, 0) or 0
+                    except Exception:
+                        logger.debug("Silent exception in StreamingUsageCollector.snapshot", exc_info=True)
+                        pass
+            _post_compression_estimate = getattr(
+                _session_obj, 'post_compression_context_tokens_estimate', None,
+            )
+            if isinstance(_post_compression_estimate, int) and _post_compression_estimate > 0:
+                _usage['post_compression_context_tokens_estimate'] = _post_compression_estimate
+
+        _real_prompt_tokens = int(_usage.get('last_prompt_tokens') or 0)
+        _usage['cache_hit_percent'] = prompt_cache_hit_percent(
+            _usage.get('cache_read_tokens') or 0,
+            _usage.get('input_tokens') or 0,
+        )
+        if _real_prompt_tokens and _real_prompt_tokens != self.live_prompt_exact_tokens[0]:
+            self.live_prompt_exact_tokens[0] = _real_prompt_tokens
+            self.live_prompt_estimate_tokens[0] = _real_prompt_tokens
+            self.live_prompt_estimate_tool_delta_tokens[0] = 0
+        elif self.live_prompt_estimate_tokens[0] > _real_prompt_tokens:
+            _usage['last_prompt_tokens'] = self.live_prompt_estimate_tokens[0]
+
+        return _usage
+
+    def _metering_ticker(self):
+        while True:
+            interval = meter().get_interval()
+            if interval >= 10.0:
+                break  # nothing active — stop the ticker
+            if self.metering_stop.wait(interval):
+                break  # stream was cancelled or ended — exit
+            stats = meter().get_stats(self.ctx.stream_id)
+            stats['session_id'] = self.ctx.session_id
+            stats['usage'] = self.snapshot()
+            put_fn = self.ctx.put
+            if put_fn is not None:
+                put_fn('metering', stats)
+
+
 def _run_agent_streaming(
     session_id,
     msg_text,
@@ -8816,313 +9131,38 @@ def _run_agent_streaming(
         STREAM_LIVE_TOOL_CALLS[stream_id] = []  # start accumulating tool calls (#1361 §B)
 
     agent = None
-    _live_prompt_estimate_tokens = [0]
-    _live_prompt_exact_tokens = [0]
-    _live_prompt_estimate_tool_delta_tokens = [0]
-    _live_prompt_estimate_seen_ids = set()
-    # Per-stream cache for the real per-model context_length (#3256 perf).
-    # _live_usage_snapshot() runs on every metering tick (~10x/sec during
-    # streaming); recomputing get_model_context_length() there triggered a
-    # config read + potential metadata/network probe on every token for
-    # non-default models (e.g. claude-opus-4.7-1m), freezing the stream while
-    # the default model was unaffected. The value is constant for a given
-    # (model, base_url, provider) within one stream, so resolve it at most
-    # once. Sentinel: None=not computed, 0=not applicable/failed, >0=real cap.
-    _real_ctx_cache = [None]
-    _live_usage_session_cache = [None]
 
-    def _current_live_usage_session():
-        return _live_usage_session_snapshot(
-            session_id,
-            s,
-            _live_usage_session_cache,
-        )
+    ctx = StreamTurnContext(
+        session_id=session_id,
+        msg_text=msg_text,
+        model=model,
+        workspace=workspace,
+        stream_id=stream_id,
+        attachments=attachments,
+        ephemeral=ephemeral,
+        model_provider=model_provider,
+        goal_related=goal_related,
+        moa_config=moa_config,
+        turn_route_model=_turn_route_model,
+        turn_route_provider=_turn_route_provider,
+        q=q,
+        run_journal=run_journal,
+        cancel_event=cancel_event,
+    )
+    usage_collector = StreamingUsageCollector(
+        ctx,
+        agent_getter=lambda: agent,
+        session_getter=lambda: s,
+    )
+    ctx.usage_collector = usage_collector
 
-    def _seed_live_prompt_estimate() -> int:
-        """Capture the latest exact prompt size before adding live tool deltas."""
-        if _live_prompt_estimate_tokens[0] > 0:
-            return _live_prompt_estimate_tokens[0]
-        _base = 0
-        _agent = agent
-        if _agent is not None:
-            try:
-                _cc = getattr(_agent, 'context_compressor', None)
-                if _cc:
-                    _base = getattr(_cc, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                logger.debug("Silent exception in _seed_live_prompt_estimate", exc_info=True)
-                _base = 0
-        if not _base:
-            try:
-                _session_obj = _current_live_usage_session()
-                _base = getattr(_session_obj, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                logger.debug("Silent exception in _seed_live_prompt_estimate", exc_info=True)
-                _base = 0
-        _live_prompt_estimate_tokens[0] = int(_base or 0)
-        _live_prompt_exact_tokens[0] = _live_prompt_estimate_tokens[0]
-        return _live_prompt_estimate_tokens[0]
-
-    def _bump_live_prompt_estimate(messages) -> int:
-        """Increment a rough next-prompt estimate from live tool activity."""
-        if not messages:
-            return _live_prompt_estimate_tokens[0]
-        _seed_live_prompt_estimate()
-        _usage = live_usage_prompt_estimate_after_tool_delta(
-            base_prompt_tokens=_live_prompt_exact_tokens[0],
-            exact_prompt_tokens=_live_prompt_exact_tokens[0],
-            messages=messages,
-            turn_tool_prompt_tokens=_live_prompt_estimate_tool_delta_tokens[0],
-        )
-        _live_prompt_estimate_tokens[0] = _usage['last_prompt_tokens']
-        _live_prompt_estimate_tool_delta_tokens[0] = _usage['turn_tool_prompt_tokens']
-        return _live_prompt_estimate_tokens[0]
-
-    def _live_usage_snapshot():
-        """Best-effort live usage payload for mid-stream UI updates.
-
-        During tool execution the final `done` event has not fired yet, but the
-        frontend still benefits from seeing the latest known token / context
-        values. These are exact for the most recent model call and a truthful
-        lower bound for the pending next call after a tool result is appended.
-        """
-        _usage = {
-            'input_tokens': 0,
-            'output_tokens': 0,
-            'estimated_cost': 0,
-            'cache_read_tokens': 0,
-            'cache_write_tokens': 0,
-            'cache_hit_percent': None,
-            'context_length': 0,
-            'threshold_tokens': 0,
-            'last_prompt_tokens': 0,
-            'post_compression_context_tokens_estimate': None,
-        }
-        _session_obj = _current_live_usage_session()
-
-        _agent = agent
-        if _agent is not None:
-            try:
-                _usage['input_tokens'] = getattr(_agent, 'session_prompt_tokens', 0) or 0
-                _usage['output_tokens'] = getattr(_agent, 'session_completion_tokens', 0) or 0
-                _usage['estimated_cost'] = getattr(_agent, 'session_estimated_cost_usd', 0) or 0
-                _usage['cache_read_tokens'] = getattr(_agent, 'session_cache_read_tokens', 0) or 0
-                _usage['cache_write_tokens'] = getattr(_agent, 'session_cache_write_tokens', 0) or 0
-            except Exception:
-                logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                pass
-            try:
-                _cc = getattr(_agent, 'context_compressor', None)
-                if _cc:
-                    _cc_cl_u = getattr(_cc, 'context_length', 0) or 0
-                    # Stale-compressor self-heal (#3256, broadened): the
-                    # agent-side compressor caches a context_length from the
-                    # model it was *built/last-updated* with. After an in-place
-                    # model switch (or when agent_init seeded it with the global
-                    # model.context_length cap), that cached value can be the
-                    # WRONG model's window — e.g. a session on claude-opus-4.8
-                    # (1M / 936k prompt on Copilot) whose compressor still holds
-                    # claude-opus-4.5's 168k. The original guard only corrected
-                    # the narrow case where the cached value equalled the config
-                    # cap exactly; a leftover *other-model* value (168k) slipped
-                    # straight through to the live usage payload. Broaden it:
-                    # ALWAYS resolve the real per-model window for the agent's
-                    # CURRENT model and, when that differs from the cached value,
-                    # surface the real one. Frontend hydration (GET /api/session)
-                    # already does this; this aligns the streaming path with it
-                    # so "refresh shows 1M, send-a-message drops to 168k" can't
-                    # happen.
-                    # PERF: resolve at most once per stream (cached in
-                    # _real_ctx_cache). This snapshot runs on every metering
-                    # tick; doing the config read + metadata lookup per tick
-                    # froze non-default-model streams.
-                    if _real_ctx_cache[0] is None:
-                        _resolved_real = 0  # 0 = no correction / lookup failed
-                        try:
-                            _sm_u = str(getattr(_agent, 'model', '') or '').strip()
-                            _prov_u = str(getattr(_agent, 'provider', '') or '').strip()
-                            _base_u = str(getattr(_agent, 'base_url', '') or '').strip()
-                            _key_u = getattr(_agent, 'api_key', '') or ''
-                            if _sm_u:
-                                # Resolve the real window through the SAME helper
-                                # hydration uses (routes._context_length_lookup_inputs_for_model
-                                # + get_model_context_length). This honors the
-                                # nested per-model config override
-                                # (model.<provider>.models.<model>.context_length,
-                                # e.g. claude-opus-4.8 -> 1,000,000) and custom-
-                                # provider keys, so the streaming/SSE path and the
-                                # GET /api/session path land on the IDENTICAL value.
-                                # Reusing the helper (instead of hand-reading the
-                                # flat top-level model.context_length, which is
-                                # None here) is what prevents a new mismatch like
-                                # "refresh shows 1M, send-a-message shows 936k".
-                                try:
-                                    from api.routes import (
-                                        _context_length_lookup_inputs_for_model as _cli_u,
-                                        _should_accept_session_context_length_refresh as _accept_u,
-                                    )
-                                    from agent.model_metadata import get_model_context_length as _g_u
-                                    # Resolve the SESSION's own profile config, not
-                                    # the ambient one. This worker is a detached
-                                    # thread that does NOT inherit the per-request
-                                    # thread-local profile context, so a bare
-                                    # get_config() resolves the process-global
-                                    # (default) profile (#3294) — for a non-default
-                                    # profile that pins a different per-model
-                                    # context_length, that would surface the WRONG
-                                    # profile's window in the live payload. Read the
-                                    # session's profile home explicitly, mirroring
-                                    # the worker's own _cfg resolution below.
-                                    try:
-                                        from api.config import get_config_for_profile_home as _gch_u
-                                        from api.profiles import get_hermes_home_for_profile as _ghp_u
-                                        _ph_u = _ghp_u(getattr(_session_obj, 'profile', None))
-                                        _cfg_u = _gch_u(_ph_u)
-                                    except Exception:
-                                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                                        from api.config import get_config as _gc_u
-                                        _cfg_u = _gc_u()
-                                    _lk_u = _cli_u(
-                                        _sm_u,
-                                        _prov_u,
-                                        base_url=_base_u,
-                                        api_key=_key_u,
-                                        cfg=_cfg_u if isinstance(_cfg_u, dict) else {},
-                                    )
-                                    _real_u = _g_u(
-                                        _sm_u,
-                                        _lk_u.base_url,
-                                        api_key=_lk_u.api_key,
-                                        config_context_length=_lk_u.config_context_length,
-                                        provider=_lk_u.provider or _prov_u or '',
-                                        custom_providers=_lk_u.custom_providers,
-                                    ) or 0
-                                    # Only treat it as a correction when the real
-                                    # window is valid AND disagrees with the
-                                    # compressor's cached value. Equal => nothing
-                                    # to fix, leave the fast path untouched.
-                                    # #4248: never let a low-confidence 256k metadata
-                                    # fallback clobber a LARGER cached window — that
-                                    # would reintroduce the very "drops to a smaller
-                                    # window mid-stream" regression this guard fixes.
-                                    # Reuse the exact acceptance gate hydration uses.
-                                    # NOTE: we deliberately omit model_changed (=False
-                                    # default) here, unlike hydration. The streaming
-                                    # path can't cheaply know if the model changed
-                                    # since the compressor was seeded, so we err
-                                    # toward the LARGER window (auto-compress fires
-                                    # late, not early — the safe direction), and the
-                                    # next GET /api/session hydration self-heals any
-                                    # genuine downward 256k case via model_changed.
-                                    if (
-                                        _real_u and _real_u != _cc_cl_u
-                                        and _accept_u(_cc_cl_u, _real_u)
-                                    ):
-                                        _resolved_real = _real_u
-                                except TypeError:
-                                    # Older hermes-agent: legacy 2-arg form.
-                                    try:
-                                        from api.routes import (
-                                            _should_accept_session_context_length_refresh as _accept2_u,
-                                        )
-                                        from agent.model_metadata import get_model_context_length as _g2_u
-                                        _real_u = _g2_u(_sm_u, _base_u) or 0
-                                        if (
-                                            _real_u and _real_u != _cc_cl_u
-                                            and _accept2_u(_cc_cl_u, _real_u)
-                                        ):
-                                            _resolved_real = _real_u
-                                    except Exception:
-                                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                                        pass
-                                except Exception:
-                                    logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                                    pass
-                        except Exception:
-                            logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                            _resolved_real = 0
-                        _real_ctx_cache[0] = _resolved_real
-                    # Apply the cached real cap when the guard determined one.
-                    if _real_ctx_cache[0]:
-                        # Also rescale threshold_tokens by the same ratio so the
-                        # auto-compress trigger reflects the real window, not
-                        # the stale global cap (e.g. 197.2k @ 232K cap → ~850k
-                        # @ 1M real cap).
-                        _orig_cc_cl = getattr(_cc, 'context_length', 0) or 0
-                        _orig_thresh = getattr(_cc, 'threshold_tokens', 0) or 0
-                        _cc_cl_u = _real_ctx_cache[0]
-                        if _orig_cc_cl > 0 and _orig_thresh > 0:
-                            _scaled_thresh = int(_orig_thresh * _real_ctx_cache[0] / _orig_cc_cl)
-                            _usage['context_length'] = _cc_cl_u
-                            _usage['threshold_tokens'] = _scaled_thresh
-                            _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
-                        else:
-                            _usage['context_length'] = _cc_cl_u
-                            _usage['threshold_tokens'] = _orig_thresh
-                            _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
-                    else:
-                        _usage['context_length'] = _cc_cl_u
-                        _usage['threshold_tokens'] = getattr(_cc, 'threshold_tokens', 0) or 0
-                        _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                pass
-
-        if _session_obj is not None:
-            for _field in ('input_tokens', 'output_tokens', 'estimated_cost', 'cache_read_tokens', 'cache_write_tokens', 'context_length', 'threshold_tokens', 'last_prompt_tokens'):
-                if not _usage.get(_field):
-                    try:
-                        _usage[_field] = getattr(_session_obj, _field, 0) or 0
-                    except Exception:
-                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
-                        pass
-            _post_compression_estimate = getattr(
-                _session_obj, 'post_compression_context_tokens_estimate', None,
-            )
-            if isinstance(_post_compression_estimate, int) and _post_compression_estimate > 0:
-                _usage['post_compression_context_tokens_estimate'] = _post_compression_estimate
-
-        _real_prompt_tokens = int(_usage.get('last_prompt_tokens') or 0)
-        _usage['cache_hit_percent'] = prompt_cache_hit_percent(
-            _usage.get('cache_read_tokens') or 0,
-            _usage.get('input_tokens') or 0,
-        )
-        if _real_prompt_tokens and _real_prompt_tokens != _live_prompt_exact_tokens[0]:
-            _live_prompt_exact_tokens[0] = _real_prompt_tokens
-            _live_prompt_estimate_tokens[0] = _real_prompt_tokens
-            _live_prompt_estimate_tool_delta_tokens[0] = 0
-        elif _live_prompt_estimate_tokens[0] > _real_prompt_tokens:
-            _usage['last_prompt_tokens'] = _live_prompt_estimate_tokens[0]
-
-        return _usage
-
-    # Metering ticker — emits a metering event at 1 Hz while sessions are active.
-    # When get_interval() returns >= 10.0 (no active sessions), the ticker exits
-    # so no idle readings are emitted and the SSE consumer sees nothing.
-    #
-    # #4633/#2476: begin_session() and the ticker .start() are deferred into the
-    # outer `try` below so the outer `finally` (which pops STREAMS/CANCEL_FLAGS)
-    # always runs its paired end_session()/_metering_stop.set() teardown. A raise
-    # between here and that `try` would otherwise leak the _sessions[stream_id]
-    # entry — get_stats() only prunes sessions with first_token_ts > 0, so a
-    # zero-token turn (pre-flight cancel, setup raise) is never reclaimed and its
-    # count inflates the SSE `active` field. Deferring .start() until after `put`
-    # is defined also removes a latent start-before-put ordering window.
-    _metering_stop = threading.Event()
-
-    def _metering_ticker():
-        while True:
-            interval = meter().get_interval()
-            if interval >= 10.0:
-                break  # nothing active — stop the ticker
-            if _metering_stop.wait(interval):
-                break  # stream was cancelled or ended — exit
-            stats = meter().get_stats(stream_id)
-            stats['session_id'] = session_id
-            stats['usage'] = _live_usage_snapshot()
-            put('metering', stats)
-
-    _metering_thread = threading.Thread(target=_metering_ticker, daemon=True)
+    # Bind closures to usage_collector for backward-compatibility with downstream phases
+    _live_usage_snapshot = usage_collector.snapshot
+    _seed_live_prompt_estimate = usage_collector.seed_live_prompt_estimate
+    _bump_live_prompt_estimate = usage_collector.bump_live_prompt_estimate
+    _live_prompt_estimate_seen_ids = usage_collector.seen_tool_call_ids
+    _metering_stop = usage_collector.metering_stop
+    _metering_thread = usage_collector.metering_thread
 
     _success_writeback_committed = False
 
@@ -9154,6 +9194,7 @@ def _run_agent_streaming(
             q.put_nowait(queue_item)
         except Exception:
             logger.debug("Failed to put event to queue")
+    ctx.put = put
 
     # #5940: capture a terminal (non-retryable) provider error the Agent emits via
     # its lifecycle status_callback. The Agent aborts a non-retryable API error
@@ -9230,7 +9271,7 @@ def _run_agent_streaming(
         # Co-located with the existing env-restore lifecycle: set here, reset
         # in the outer finally next to _clear_thread_env().
         _turn_session_identity_tokens = _set_turn_session_identity(session_id)
-        s = get_session(session_id)
+        s = ctx.s = get_session(session_id)
         _turn_pending_source = getattr(s, 'pending_user_source', None) or 'webui'
         _active_turn_identity = _active_turn_authority(s, stream_id, msg_text)
         update_active_run(stream_id, phase="running", session_id=session_id)
