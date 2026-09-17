@@ -27,6 +27,7 @@ from api.config import (
 from api.models import Session
 from api.streaming import (
     StreamTurnContext,
+    StreamingCallbacks,
     StreamingUsageCollector,
     _compact_for_echo_compare,
     _run_agent_streaming,
@@ -286,6 +287,137 @@ class TestStreamTurnContextAndUsageCollector(unittest.TestCase):
         self.assertEqual(snapshot["cache_read_tokens"], 500)
         self.assertEqual(snapshot["cache_write_tokens"], 200)
         self.assertIn("cache_hit_percent", snapshot)
+
+
+class TestStreamingCallbacks(unittest.TestCase):
+    """Test StreamingCallbacks event dispatch, echo stripping, and agent kwargs binding."""
+
+    def test_streaming_callbacks_token_handling(self):
+        """Verify on_token appends to partial buffer and emits token event."""
+        events = []
+        stream_id = "test-stream-cb-token"
+        ctx = StreamTurnContext(
+            session_id="sess-cb-1",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            put=lambda ev, data: events.append((ev, data)),
+        )
+        with STREAMS_LOCK:
+            config.STREAM_PARTIAL_TEXT[stream_id] = ""
+
+        try:
+            callbacks = StreamingCallbacks(ctx)
+            callbacks.on_token("Hello ")
+            callbacks.on_token("world!")
+
+            self.assertTrue(callbacks.token_sent)
+            self.assertTrue(ctx.token_sent)
+            self.assertEqual(config.STREAM_PARTIAL_TEXT[stream_id], "Hello world!")
+            token_events = [e for e in events if e[0] == "token"]
+            self.assertEqual(len(token_events), 2)
+            self.assertEqual(token_events[0][1]["text"], "Hello ")
+            self.assertEqual(token_events[1][1]["text"], "world!")
+        finally:
+            with STREAMS_LOCK:
+                config.STREAM_PARTIAL_TEXT.pop(stream_id, None)
+
+    def test_streaming_callbacks_reasoning_and_echo_stripping(self):
+        """Verify on_reasoning buffering, segment indexing, and echo suppression."""
+        events = []
+        stream_id = "test-stream-cb-reasoning"
+        ctx = StreamTurnContext(
+            session_id="sess-cb-2",
+            msg_text="think",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            put=lambda ev, data: events.append((ev, data)),
+        )
+        with STREAMS_LOCK:
+            config.STREAM_REASONING_TEXT[stream_id] = ""
+
+        try:
+            callbacks = StreamingCallbacks(ctx)
+            callbacks.on_reasoning("I am pondering ")
+            callbacks.on_reasoning("the problem.")
+            callbacks.flush_reasoning_buffer()
+
+            self.assertIn("I am pondering the problem.", callbacks.reasoning_segments[0])
+            self.assertEqual(config.STREAM_REASONING_TEXT[stream_id], "I am pondering the problem.")
+            reasoning_events = [e for e in events if e[0] == "reasoning"]
+            self.assertGreaterEqual(len(reasoning_events), 1)
+
+            # Test echo stripping
+            callbacks.strip_reasoning_output_echo("the problem.")
+            self.assertNotIn("the problem.", callbacks.reasoning_segments.get(0, ""))
+        finally:
+            with STREAMS_LOCK:
+                config.STREAM_REASONING_TEXT.pop(stream_id, None)
+
+    def test_streaming_callbacks_tool_lifecycle(self):
+        """Verify tool start and complete callbacks track calls and emit SSE events."""
+        events = []
+        stream_id = "test-stream-cb-tool"
+        ctx = StreamTurnContext(
+            session_id="sess-cb-3",
+            msg_text="run tool",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            put=lambda ev, data: events.append((ev, data)),
+        )
+        ctx.usage_collector = StreamingUsageCollector(ctx)
+        with STREAMS_LOCK:
+            config.STREAM_LIVE_TOOL_CALLS[stream_id] = []
+
+        try:
+            callbacks = StreamingCallbacks(ctx)
+            callbacks.on_tool_start("tool-001", "bash", {"command": "echo 123"})
+            self.assertEqual(len(callbacks.live_tool_calls), 1)
+            self.assertEqual(callbacks.live_tool_calls[0]["name"], "bash")
+            self.assertEqual(callbacks.live_tool_calls[0]["tid"], "tool-001")
+
+            callbacks.on_tool_complete("tool-001", "bash", {"command": "echo 123"}, "123\n")
+            self.assertTrue(callbacks.live_tool_calls[0]["done"])
+            self.assertEqual(callbacks.live_tool_calls[0]["snippet"], "123\n")
+            self.assertEqual(ctx.checkpoint_activity[0], 1)
+
+            event_names = [e[0] for e in events]
+            self.assertIn("tool", event_names)
+            self.assertIn("tool_complete", event_names)
+        finally:
+            with STREAMS_LOCK:
+                config.STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)
+
+    def test_streaming_callbacks_bind_to_agent_kwargs(self):
+        """Verify bind_to_agent_kwargs wires all supported callback signatures."""
+        ctx = StreamTurnContext(
+            session_id="sess-cb-4",
+            msg_text="bind",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-cb-4",
+        )
+        callbacks = StreamingCallbacks(ctx)
+        agent_kwargs = {}
+        agent_params = {
+            "stream_delta_callback",
+            "reasoning_callback",
+            "tool_progress_callback",
+            "interim_assistant_callback",
+            "tool_start_callback",
+            "tool_complete_callback",
+        }
+        callbacks.bind_to_agent_kwargs(agent_kwargs, agent_params)
+
+        self.assertEqual(agent_kwargs["stream_delta_callback"], callbacks.on_token)
+        self.assertEqual(agent_kwargs["reasoning_callback"], callbacks.on_reasoning)
+        self.assertEqual(agent_kwargs["tool_progress_callback"], callbacks.on_tool)
+        self.assertEqual(agent_kwargs["interim_assistant_callback"], callbacks.on_interim_assistant)
+        self.assertEqual(agent_kwargs["tool_start_callback"], callbacks.on_tool_start)
+        self.assertEqual(agent_kwargs["tool_complete_callback"], callbacks.on_tool_complete)
 
 
 if __name__ == "__main__":

@@ -8788,8 +8788,12 @@ class StreamTurnContext:
     ckpt_thread: Optional[threading.Thread] = None
     agent_lock: Optional[Any] = None
 
-    # Usage collector
+    # Usage collector and callbacks
     usage_collector: Optional['StreamingUsageCollector'] = None
+    callbacks: Optional['StreamingCallbacks'] = None
+    checkpoint_activity: List[int] = field(default_factory=lambda: [0])
+    agent_params: Set[str] = field(default_factory=set)
+    token_sent: bool = False
 
     def is_cancelled(self) -> bool:
         """Check if cancel flag is set for this turn."""
@@ -9045,6 +9049,447 @@ class StreamingUsageCollector:
             put_fn = self.ctx.put
             if put_fn is not None:
                 put_fn('metering', stats)
+
+
+class StreamingCallbacks:
+    """Encapsulates streaming callback handlers for tokens, reasoning, and tool calls."""
+
+    def __init__(self, ctx: StreamTurnContext):
+        self.ctx = ctx
+        self._token_sent: bool = False
+        self.reasoning_segments: Dict[int, str] = {}
+        self.current_reasoning_idx: int = 0
+        self.tool_boundary_advanced: bool = False
+        self.live_tool_calls: List[Dict[str, Any]] = []
+        self.live_tool_event_start_ids: Set[str] = set()
+        self.live_tool_event_complete_ids: Set[str] = set()
+
+        self._metering_last_emit: List[float] = [time.monotonic() - 1]
+        self._reasoning_last_put: List[float] = [0.0]
+        self._reasoning_buffer: List[str] = ['']
+        self._metering_output_deltas: List[int] = [0]
+        self._metering_reasoning_deltas: List[int] = [0]
+
+    @property
+    def token_sent(self) -> bool:
+        return self._token_sent
+
+    @token_sent.setter
+    def token_sent(self, val: bool) -> None:
+        self._token_sent = bool(val)
+        if self.ctx is not None:
+            self.ctx.token_sent = bool(val)
+
+    def flush_reasoning_buffer(self) -> None:
+        """Emit any coalesced-but-not-yet-flushed reasoning text immediately."""
+        if self._reasoning_buffer[0]:
+            if self.ctx.put:
+                self.ctx.put('reasoning', {'text': self._reasoning_buffer[0]})
+            self._reasoning_buffer[0] = ''
+
+    def emit_metering(self) -> None:
+        now = time.monotonic()
+        if now - self._metering_last_emit[0] < 0.1:
+            return
+        self._metering_last_emit[0] = now
+        stats = meter().get_stats(self.ctx.stream_id)
+        stats['session_id'] = self.ctx.session_id
+        if self.ctx.usage_collector:
+            stats['usage'] = self.ctx.usage_collector.snapshot()
+        stats.setdefault('tps_available', False)
+        stats.setdefault('estimated', False)
+        if self.ctx.put:
+            self.ctx.put('metering', stats)
+
+    def is_visible_output_echo(self, text: str) -> bool:
+        candidate = _compact_for_echo_compare(text)
+        if not candidate:
+            return False
+        visible_output = STREAM_PARTIAL_TEXT.get(self.ctx.stream_id, '')
+        visible_tail = _compact_for_echo_compare(
+            visible_output[-max(len(str(text)) * 2, 512):]
+        )
+        if visible_tail and visible_tail.endswith(candidate):
+            return True
+        if len(candidate) < 80:
+            return False
+        visible_compact = _compact_for_echo_compare(visible_output)
+        return bool(visible_compact and candidate in visible_compact)
+
+    def strip_reasoning_output_echo(self, text: str) -> bool:
+        stream_id = self.ctx.stream_id
+        removed = False
+        if stream_id in STREAM_REASONING_TEXT:
+            next_text, did_remove = _strip_compact_echo_suffix(
+                STREAM_REASONING_TEXT.get(stream_id, ''),
+                text,
+            )
+            if did_remove:
+                STREAM_REASONING_TEXT[stream_id] = next_text
+                removed = True
+        next_buffer, did_remove_buffer = _strip_compact_echo_suffix(self._reasoning_buffer[0], text)
+        if did_remove_buffer:
+            self._reasoning_buffer[0] = next_buffer
+            removed = True
+        for idx in (self.current_reasoning_idx, self.current_reasoning_idx - 1):
+            if idx not in self.reasoning_segments:
+                continue
+            next_segment, did_remove_segment = _strip_compact_echo_suffix(
+                self.reasoning_segments.get(idx, ''),
+                text,
+            )
+            if not did_remove_segment:
+                continue
+            if next_segment:
+                self.reasoning_segments[idx] = next_segment
+            else:
+                self.reasoning_segments.pop(idx, None)
+            removed = True
+            break
+        return removed
+
+    def tool_args_snapshot(self, args: Any) -> dict:
+        args_snap = {}
+        if isinstance(args, dict):
+            for k, v in list(args.items())[:4]:
+                s2 = str(v)
+                cap = _TOOL_ARG_CONTENT_CAP if str(k).lower() in _TOOL_ARG_CONTENT_KEYS else 120
+                args_snap[k] = s2[:cap] + ('...' if len(s2) > cap else '')
+        return args_snap
+
+    def record_live_tool_start(self, tool_call_id: str, name: str, args: Any) -> bool:
+        if not tool_call_id:
+            return False
+        if self.ctx.usage_collector and tool_call_id in self.ctx.usage_collector.seen_tool_call_ids:
+            return False
+        if self.ctx.usage_collector:
+            self.ctx.usage_collector.seen_tool_call_ids.add(tool_call_id)
+        _tool_call = {
+            'id': tool_call_id,
+            'type': 'function',
+            'function': {
+                'name': str(name or ''),
+                'arguments': json.dumps(args if isinstance(args, dict) else {}, ensure_ascii=False, sort_keys=True),
+            },
+        }
+        if self.ctx.usage_collector:
+            self.ctx.usage_collector.bump_live_prompt_estimate([{
+                'role': 'assistant',
+                'content': '',
+                'tool_calls': [_tool_call],
+            }])
+        return True
+
+    def record_live_tool_complete(self, tool_call_id: str, name: str, function_result: Any) -> bool:
+        if not tool_call_id:
+            return False
+        _result_text = _tool_result_snippet(function_result)
+        if self.ctx.usage_collector:
+            self.ctx.usage_collector.bump_live_prompt_estimate([{
+                'role': 'tool',
+                'name': str(name or ''),
+                'tool_call_id': tool_call_id,
+                'content': _result_text,
+            }])
+        return True
+
+    def on_token(self, text: Optional[str]) -> None:
+        if text is None:
+            return  # end-of-stream sentinel
+        self.flush_reasoning_buffer()
+        self.token_sent = True
+        stream_id = self.ctx.stream_id
+        if stream_id in STREAM_PARTIAL_TEXT:
+            STREAM_PARTIAL_TEXT[stream_id] += str(text)
+        if self.ctx.put:
+            self.ctx.put('token', {'text': text})
+        self._metering_output_deltas[0] += 1
+        meter().record_token(stream_id, self._metering_output_deltas[0])
+        self.emit_metering()
+
+    def on_reasoning(self, text: Optional[str]) -> None:
+        if text is None:
+            self.flush_reasoning_buffer()
+            return
+        self.tool_boundary_advanced = False
+        reasoning_delta = str(text)
+        if self.is_visible_output_echo(reasoning_delta):
+            return
+        self.reasoning_segments[self.current_reasoning_idx] = (
+            self.reasoning_segments.get(self.current_reasoning_idx, '') + reasoning_delta
+        )
+        stream_id = self.ctx.stream_id
+        if stream_id in STREAM_REASONING_TEXT:
+            STREAM_REASONING_TEXT[stream_id] += reasoning_delta
+        self._reasoning_buffer[0] += reasoning_delta
+        now = time.monotonic()
+        if now - self._reasoning_last_put[0] >= 0.1:
+            self._reasoning_last_put[0] = now
+            if self.ctx.put:
+                self.ctx.put('reasoning', {'text': self._reasoning_buffer[0]})
+            self._reasoning_buffer[0] = ''
+        self._metering_reasoning_deltas[0] += 1
+        meter().record_reasoning(stream_id, self._metering_reasoning_deltas[0])
+        self.emit_metering()
+
+    def on_interim_assistant(self, text: Optional[str], **cb_kwargs) -> None:
+        self.current_reasoning_idx += 1
+        if text is None:
+            return
+        visible = str(text).strip()
+        if not visible:
+            return
+        reasoning_echo = self.strip_reasoning_output_echo(visible)
+        already_streamed = bool(cb_kwargs.get('already_streamed', False)) or self.is_visible_output_echo(visible)
+        payload = {
+            'text': visible,
+            'already_streamed': already_streamed,
+        }
+        if reasoning_echo:
+            payload['reasoning_echo'] = True
+        if self.ctx.put:
+            self.ctx.put('interim_assistant', payload)
+
+    def on_tool(self, *cb_args, **cb_kwargs) -> None:
+        self.flush_reasoning_buffer()
+        event_type = None
+        name = None
+        preview = None
+        args = None
+
+        if len(cb_args) >= 4:
+            event_type, name, preview, args = cb_args[:4]
+        elif len(cb_args) == 3:
+            name, preview, args = cb_args
+            event_type = 'tool.started'
+        elif len(cb_args) == 2:
+            event_type, name = cb_args
+        elif len(cb_args) == 1:
+            name = cb_args[0]
+            event_type = 'tool.started'
+
+        if event_type in ('reasoning.available', '_thinking'):
+            reason_text = preview if event_type == 'reasoning.available' else name
+            if reason_text:
+                reason_delta = str(reason_text)
+                if self.is_visible_output_echo(reason_delta):
+                    return
+                self.reasoning_segments[self.current_reasoning_idx] = (
+                    self.reasoning_segments.get(self.current_reasoning_idx, '') + reason_delta
+                )
+                stream_id = self.ctx.stream_id
+                if stream_id in STREAM_REASONING_TEXT:
+                    STREAM_REASONING_TEXT[stream_id] += reason_delta
+                if self.ctx.put:
+                    self.ctx.put('reasoning', {'text': reason_delta})
+                self._metering_reasoning_deltas[0] += 1
+                meter().record_reasoning(stream_id, self._metering_reasoning_deltas[0])
+                self.emit_metering()
+            return
+
+        if not self.tool_boundary_advanced and self.current_reasoning_idx in self.reasoning_segments:
+            self.current_reasoning_idx += 1
+            self.tool_boundary_advanced = True
+
+        args_snap = self.tool_args_snapshot(args)
+        stream_id = self.ctx.stream_id
+        session_id = self.ctx.session_id
+        agent_params = self.ctx.agent_params
+
+        if event_type in (None, 'tool.started') and 'tool_start_callback' in agent_params:
+            return
+
+        if event_type in (None, 'tool.started'):
+            self.live_tool_calls.append({
+                'name': name,
+                'args': args if isinstance(args, dict) else {},
+            })
+            if stream_id in STREAM_LIVE_TOOL_CALLS:
+                STREAM_LIVE_TOOL_CALLS[stream_id].append({
+                    'name': name,
+                    'args': args if isinstance(args, dict) else {},
+                    'done': False,
+                })
+            if self.ctx.put:
+                self.ctx.put('tool', {
+                    'event_type': event_type or 'tool.started',
+                    'name': name,
+                    'preview': preview,
+                    'args': args_snap,
+                })
+            _tool_stats = meter().get_stats(stream_id)
+            _tool_stats['session_id'] = session_id
+            if self.ctx.usage_collector:
+                _tool_stats['usage'] = self.ctx.usage_collector.snapshot()
+            if self.ctx.put:
+                self.ctx.put('metering', _tool_stats)
+            try:
+                from api.route_approvals import (
+                    _lock as _approval_lock,
+                    reconcile_gateway_pending_mirror_locked as _reconcile_gateway_pending_mirror_locked,
+                )
+                from tools.approval import has_blocking_approval as _has_blocking_approval
+                if _has_blocking_approval(session_id):
+                    p = None
+                    with _approval_lock:
+                        p, pending_count, _changed = _reconcile_gateway_pending_mirror_locked(session_id)
+                        if p:
+                            p = {**p, "pending_count": pending_count}
+                    if p and self.ctx.put:
+                        self.ctx.put('approval', p)
+            except ImportError:
+                pass
+            return
+
+        if event_type == 'tool.completed' and 'tool_complete_callback' in agent_params:
+            return
+
+        if event_type == 'tool.completed':
+            for live_tc in reversed(self.live_tool_calls):
+                if live_tc.get('done'):
+                    continue
+                if not name or live_tc.get('name') == name:
+                    live_tc['done'] = True
+                    live_tc['duration'] = cb_kwargs.get('duration')
+                    live_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
+                    break
+            if stream_id in STREAM_LIVE_TOOL_CALLS:
+                for shared_tc in reversed(STREAM_LIVE_TOOL_CALLS[stream_id]):
+                    if shared_tc.get('done'):
+                        continue
+                    if not name or shared_tc.get('name') == name:
+                        shared_tc['done'] = True
+                        shared_tc['duration'] = cb_kwargs.get('duration')
+                        shared_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
+                        break
+            self.ctx.checkpoint_activity[0] += 1
+            if self.ctx.put:
+                self.ctx.put('tool_complete', {
+                    'event_type': event_type,
+                    'name': name,
+                    'preview': preview,
+                    'args': args_snap,
+                    'duration': cb_kwargs.get('duration'),
+                    'is_error': bool(cb_kwargs.get('is_error', False)),
+                })
+            if self.ctx.put:
+                emit_todo_state(
+                    self.ctx.put,
+                    name=name,
+                    function_result=(
+                        cb_kwargs.get('result')
+                        if cb_kwargs.get('result') is not None
+                        else preview
+                    ),
+                    session_id=session_id,
+                    stream_id=stream_id,
+                )
+            _tool_stats = meter().get_stats(stream_id)
+            _tool_stats['session_id'] = session_id
+            if self.ctx.usage_collector:
+                _tool_stats['usage'] = self.ctx.usage_collector.snapshot()
+            if self.ctx.put:
+                self.ctx.put('metering', _tool_stats)
+            return
+
+    def on_tool_start(self, tool_call_id: str, name: str, args: Any) -> None:
+        try:
+            self.record_live_tool_start(tool_call_id, name, args)
+            stream_id = self.ctx.stream_id
+            session_id = self.ctx.session_id
+            if tool_call_id and tool_call_id not in self.live_tool_event_start_ids:
+                self.live_tool_event_start_ids.add(tool_call_id)
+                self.live_tool_calls.append({
+                    'name': name,
+                    'args': args if isinstance(args, dict) else {},
+                    'tid': tool_call_id,
+                })
+                if stream_id in STREAM_LIVE_TOOL_CALLS:
+                    STREAM_LIVE_TOOL_CALLS[stream_id].append({
+                        'name': name,
+                        'args': args if isinstance(args, dict) else {},
+                        'done': False,
+                        'tid': tool_call_id,
+                    })
+                if self.ctx.put:
+                    self.ctx.put('tool', {
+                        'event_type': 'tool.started',
+                        'name': name,
+                        'preview': None,
+                        'args': self.tool_args_snapshot(args),
+                        'tid': tool_call_id,
+                    })
+            _tool_stats = meter().get_stats(stream_id)
+            _tool_stats['session_id'] = session_id
+            if self.ctx.usage_collector:
+                _tool_stats['usage'] = self.ctx.usage_collector.snapshot()
+            if self.ctx.put:
+                self.ctx.put('metering', _tool_stats)
+        except Exception:
+            logger.debug('Failed to update live prompt estimate on tool start', exc_info=True)
+
+    def on_tool_complete(self, tool_call_id: str, name: str, args: Any, function_result: Any) -> None:
+        try:
+            self.record_live_tool_complete(tool_call_id, name, function_result)
+            stream_id = self.ctx.stream_id
+            session_id = self.ctx.session_id
+            if tool_call_id and tool_call_id not in self.live_tool_event_complete_ids:
+                self.live_tool_event_complete_ids.add(tool_call_id)
+                result_snippet = _tool_result_snippet(function_result)
+                for live_tc in reversed(self.live_tool_calls):
+                    if live_tc.get('done'):
+                        continue
+                    if live_tc.get('tid') == tool_call_id or (not live_tc.get('tid') and live_tc.get('name') == name):
+                        live_tc['done'] = True
+                        live_tc['snippet'] = result_snippet
+                        break
+                if stream_id in STREAM_LIVE_TOOL_CALLS:
+                    for shared_tc in reversed(STREAM_LIVE_TOOL_CALLS[stream_id]):
+                        if shared_tc.get('done'):
+                            continue
+                        if shared_tc.get('tid') == tool_call_id or (not shared_tc.get('tid') and shared_tc.get('name') == name):
+                            shared_tc['done'] = True
+                            shared_tc['snippet'] = result_snippet
+                            break
+                self.ctx.checkpoint_activity[0] += 1
+                if self.ctx.put:
+                    self.ctx.put('tool_complete', {
+                        'event_type': 'tool.completed',
+                        'name': name,
+                        'preview': result_snippet,
+                        'args': self.tool_args_snapshot(args),
+                        'tid': tool_call_id,
+                        'is_error': False,
+                    })
+                if self.ctx.put:
+                    emit_todo_state(
+                        self.ctx.put,
+                        name=name,
+                        function_result=function_result,
+                        session_id=session_id,
+                        stream_id=stream_id,
+                    )
+            _tool_stats = meter().get_stats(stream_id)
+            _tool_stats['session_id'] = session_id
+            if self.ctx.usage_collector:
+                _tool_stats['usage'] = self.ctx.usage_collector.snapshot()
+            if self.ctx.put:
+                self.ctx.put('metering', _tool_stats)
+        except Exception:
+            logger.debug('Failed to update live prompt estimate on tool completion', exc_info=True)
+
+    def bind_to_agent_kwargs(self, agent_kwargs: dict, agent_params: set) -> None:
+        """Wire streaming callbacks into agent kwargs."""
+        self.ctx.agent_params = agent_params
+        agent_kwargs['stream_delta_callback'] = self.on_token
+        agent_kwargs['reasoning_callback'] = self.on_reasoning
+        agent_kwargs['tool_progress_callback'] = self.on_tool
+        if 'interim_assistant_callback' in agent_params:
+            agent_kwargs['interim_assistant_callback'] = self.on_interim_assistant
+        if 'tool_start_callback' in agent_params:
+            agent_kwargs['tool_start_callback'] = self.on_tool_start
+        if 'tool_complete_callback' in agent_params:
+            agent_kwargs['tool_complete_callback'] = self.on_tool_complete
 
 
 def _run_agent_streaming(
@@ -9587,511 +10032,23 @@ def _run_agent_streaming(
             )
 
         try:
-            _token_sent = False  # tracks whether any streamed tokens were sent
             _self_healed = False  # (#1401) prevents infinite self-heal retries
-            # Per-message reasoning: dict maps assistant-message index → accumulated text
-            # (#3587) replaces the flat _reasoning_text string so each intermediate
-            # assistant turn (before tool calls) keeps its own reasoning segment.
-            _reasoning_segments: dict = {}
-            _current_reasoning_idx = 0
-            _tool_boundary_advanced = False
-            _live_tool_calls = []  # tool progress fallback when final messages omit tool IDs
 
-            # Throttle: emit metering events at most every 100 ms so the per-message
-            # TPS label feels live during fast token streams without flooding SSE.
-            _metering_last_emit = [time.monotonic() - 1]  # fire immediately on first token
-            _reasoning_last_put = [0.0]
-            _reasoning_buffer = ['']
-            _metering_output_deltas = [0]
-            _metering_reasoning_deltas = [0]
+            callbacks = StreamingCallbacks(ctx)
+            ctx.callbacks = callbacks
 
-            def _flush_reasoning_buffer():
-                # #4729: emit any coalesced-but-not-yet-flushed reasoning text immediately.
-                # The ~10 Hz throttle in on_reasoning leaves a sub-100ms tail in the buffer;
-                # the agent never calls reasoning_callback(None), and reasoning can transition
-                # to tool calls / visible output, so we must flush at every boundary that
-                # closes or reorders the live reasoning stream — otherwise the tail is
-                # silently lost from the live Thinking view (the frontend appends deltas).
-                if _reasoning_buffer[0]:
-                    put('reasoning', {'text': _reasoning_buffer[0]})
-                    _reasoning_buffer[0] = ''
-
-
-            def _emit_metering():
-                now = time.monotonic()
-                if now - _metering_last_emit[0] < 0.1:
-                    return
-                _metering_last_emit[0] = now
-                stats = meter().get_stats(stream_id)
-                stats['session_id'] = session_id
-                stats['usage'] = _live_usage_snapshot()
-                stats.setdefault('tps_available', False)
-                stats.setdefault('estimated', False)
-                put('metering', stats)
-
-            def _is_visible_output_echo(text: str) -> bool:
-                candidate = _compact_for_echo_compare(text)
-                if not candidate:
-                    return False
-                visible_output = STREAM_PARTIAL_TEXT.get(stream_id, '')
-                visible_tail = _compact_for_echo_compare(
-                    visible_output[-max(len(str(text)) * 2, 512):]
-                )
-                if visible_tail and visible_tail.endswith(candidate):
-                    return True
-                # Some runtimes can report a prefix of the already-streamed final
-                # answer through reasoning after visible output has completed. That
-                # prefix is not a tail echo, so catch only substantial chunks that
-                # are already present in the visible assistant stream. Short text
-                # stays on the stricter suffix path to avoid hiding genuine
-                # reasoning that happens to reuse an answer phrase.
-                if len(candidate) < 80:
-                    return False
-                visible_compact = _compact_for_echo_compare(visible_output)
-                return bool(visible_compact and candidate in visible_compact)
-
-            def _strip_reasoning_output_echo(text: str) -> bool:
-                nonlocal _reasoning_segments
-                removed = False
-                if stream_id in STREAM_REASONING_TEXT:
-                    next_text, did_remove = _strip_compact_echo_suffix(
-                        STREAM_REASONING_TEXT.get(stream_id, ''),
-                        text,
-                    )
-                    if did_remove:
-                        STREAM_REASONING_TEXT[stream_id] = next_text
-                        removed = True
-                next_buffer, did_remove_buffer = _strip_compact_echo_suffix(_reasoning_buffer[0], text)
-                if did_remove_buffer:
-                    _reasoning_buffer[0] = next_buffer
-                    removed = True
-                for idx in (_current_reasoning_idx, _current_reasoning_idx - 1):
-                    if idx not in _reasoning_segments:
-                        continue
-                    next_segment, did_remove_segment = _strip_compact_echo_suffix(
-                        _reasoning_segments.get(idx, ''),
-                        text,
-                    )
-                    if not did_remove_segment:
-                        continue
-                    if next_segment:
-                        _reasoning_segments[idx] = next_segment
-                    else:
-                        _reasoning_segments.pop(idx, None)
-                    removed = True
-                    break
-                return removed
-
-            def on_token(text):
-                nonlocal _token_sent
-                if text is None:
-                    return  # end-of-stream sentinel
-                # #4729: visible output is starting — flush any buffered reasoning tail
-                # first so the live Thinking stream is complete before/at the transition.
-                _flush_reasoning_buffer()
-                _token_sent = True
-                # Accumulate partial text so cancel_stream() can persist it (#893).
-                #
-                # STREAMS_LOCK contract for the three STREAM_* buffers (partial text,
-                # reasoning, live tool calls): the per-token hot path below mirrors
-                # into them WITHOUT holding STREAMS_LOCK, while snapshot readers hold
-                # STREAMS_LOCK (_snapshot_and_append_partial_on_error / cancel_stream).
-                # This is deliberate and safe for two reasons, NOT because `+=` is one
-                # bytecode (it is not — `d[k] += s` compiles to load/add/STORE_SUBSCR):
-                #  1. Single writer: only this streaming thread ever writes a given
-                #     stream_id's buffers, so there is no writer/writer race to tear.
-                #  2. Reader/writer atomicity under the GIL: `+=` builds a complete new
-                #     immutable str, then the final STORE_SUBSCR that binds it into the
-                #     dict is a single atomic bytecode; a concurrent reader's dict.get
-                #     therefore returns either the old or the new *complete* string
-                #     object (strings are immutable — never a half-built one). Same for
-                #     the atomic list.append / single-key dict writes on the other two.
-                # So a reader sees a complete-but-possibly-stale value, never a torn one.
-                # The snapshot is a best-effort partial that later journal/SSE events
-                # reconcile, so exact-latest is not required. Taking STREAMS_LOCK per
-                # token would add real contention against readers copying large buffers
-                # and would entangle the documented LOCK -> STREAMS_LOCK ordering — not
-                # worth it for a recoverable staleness window.
-                if stream_id in STREAM_PARTIAL_TEXT:
-                    STREAM_PARTIAL_TEXT[stream_id] += str(text)
-                put('token', {'text': text})
-                # Update live throughput from stream delta callbacks, not from
-                # byte/character length. If a backend cannot provide live deltas,
-                # the frontend hides TPS rather than showing an estimate.
-                _metering_output_deltas[0] += 1
-                meter().record_token(stream_id, _metering_output_deltas[0])
-                _emit_metering()
-
-            def on_reasoning(text):
-                nonlocal _reasoning_segments, _current_reasoning_idx, _tool_boundary_advanced
-                if text is None:
-                    # Flush any remaining coalesced reasoning buffer so the last
-                    # partial window is not lost when the reasoning phase ends.
-                    _flush_reasoning_buffer()
-                    return
-                _tool_boundary_advanced = False
-                reasoning_delta = str(text)
-                # Some runtimes mirror user-visible progress text through the
-                # reasoning channel after it already streamed as normal assistant
-                # output. Treat that as an echo, otherwise the UI renders the
-                # same sentence again inside a Thinking card.
-                if _is_visible_output_echo(reasoning_delta):
-                    return
-                # Accumulate into the current message's segment (#3587)
-                _reasoning_segments[_current_reasoning_idx] = (
-                    _reasoning_segments.get(_current_reasoning_idx, '') + reasoning_delta
-                )
-                # Mirror full concatenation to shared dict so cancel_stream() can persist
-                # it (#1361 §A). Cancel only creates one partial message, so the flat
-                # concatenation is correct there.
-                # Lock-free GIL-atomic mirror — see the STREAMS_LOCK contract in on_token.
-                if stream_id in STREAM_REASONING_TEXT:
-                    STREAM_REASONING_TEXT[stream_id] += reasoning_delta
-                # Accumulate into a coalescing buffer so every delta reaches the
-                # browser — reasoning deltas are incremental, not idempotent.
-                _reasoning_buffer[0] += reasoning_delta
-                # Throttle reasoning SSE events to ~10 Hz to avoid overwhelming the
-                # frontend renderer. Each event triggers _parseStreamState() which
-                # scans the full accumulated text — 10k+ reasoning tokens/second
-                # builds up and locks the JS main thread. The user still sees live
-                # Thinking updates, just at a sustainable rate.
-                now = time.monotonic()
-                if now - _reasoning_last_put[0] >= 0.1:
-                    _reasoning_last_put[0] = now
-                    put('reasoning', {'text': _reasoning_buffer[0]})
-                    _reasoning_buffer[0] = ''
-                # Track reasoning deltas in the meter so live TPS reflects all AI output.
-                _metering_reasoning_deltas[0] += 1
-                meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
-                _emit_metering()
-
-            def on_interim_assistant(text, **cb_kwargs):
-                nonlocal _current_reasoning_idx
-                # Advance the per-message reasoning index unconditionally (#3587):
-                # even if this callback fires with empty text, a new assistant
-                # segment is starting and subsequent reasoning must be attributed
-                # to the next message.
-                _current_reasoning_idx += 1
-                if text is None:
-                    return
-                visible = str(text).strip()
-                if not visible:
-                    return
-                reasoning_echo = _strip_reasoning_output_echo(visible)
-                already_streamed = bool(cb_kwargs.get('already_streamed', False)) or _is_visible_output_echo(visible)
-                payload = {
-                    'text': visible,
-                    'already_streamed': already_streamed,
-                }
-                if reasoning_echo:
-                    payload['reasoning_echo'] = True
-                put('interim_assistant', payload)
-
-            # Pre-initialise the activity counter here so on_tool (which
-            # closes over it) never captures an unbound name even if this
-            # block is reordered later (Issue #765).
-            _checkpoint_activity = [0]
-            _live_tool_event_start_ids = set()
-            _live_tool_event_complete_ids = set()
-
-            def _tool_args_snapshot(args):
-                args_snap = {}
-                if isinstance(args, dict):
-                    for k, v in list(args.items())[:4]:
-                        s2 = str(v)
-                        cap = _TOOL_ARG_CONTENT_CAP if str(k).lower() in _TOOL_ARG_CONTENT_KEYS else 120
-                        args_snap[k] = s2[:cap] + ('...' if len(s2) > cap else '')
-                return args_snap
-
-            def _record_live_tool_start(tool_call_id, name, args):
-                if not tool_call_id or tool_call_id in _live_prompt_estimate_seen_ids:
-                    return False
-                _live_prompt_estimate_seen_ids.add(tool_call_id)
-                _tool_call = {
-                    'id': tool_call_id,
-                    'type': 'function',
-                    'function': {
-                        'name': str(name or ''),
-                        'arguments': json.dumps(args if isinstance(args, dict) else {}, ensure_ascii=False, sort_keys=True),
-                    },
-                }
-                _bump_live_prompt_estimate([{
-                    'role': 'assistant',
-                    'content': '',
-                    'tool_calls': [_tool_call],
-                }])
-                return True
-
-            def _record_live_tool_complete(tool_call_id, name, function_result):
-                if not tool_call_id:
-                    return False
-                _result_text = _tool_result_snippet(function_result)
-                _bump_live_prompt_estimate([{
-                    'role': 'tool',
-                    'name': str(name or ''),
-                    'tool_call_id': tool_call_id,
-                    'content': _result_text,
-                }])
-                return True
-
-            def on_tool(*cb_args, **cb_kwargs):
-                nonlocal _reasoning_segments, _current_reasoning_idx, _tool_boundary_advanced
-                # #4729: a tool boundary closes/reorders the live reasoning stream — flush
-                # any buffered reasoning tail first so it isn't stranded behind the tool event.
-                _flush_reasoning_buffer()
-                event_type = None
-                name = None
-                preview = None
-                args = None
-
-                if len(cb_args) >= 4:
-                    event_type, name, preview, args = cb_args[:4]
-                elif len(cb_args) == 3:
-                    name, preview, args = cb_args
-                    event_type = 'tool.started'
-                elif len(cb_args) == 2:
-                    event_type, name = cb_args
-                elif len(cb_args) == 1:
-                    name = cb_args[0]
-                    event_type = 'tool.started'
-
-                if event_type in ('reasoning.available', '_thinking'):
-                    reason_text = preview if event_type == 'reasoning.available' else name
-                    if reason_text:
-                        reason_delta = str(reason_text)
-                        # Older tool-progress paths can mirror the same visible
-                        # progress text already emitted through stream_delta_callback.
-                        # Suppress those echoes like the dedicated reasoning callback.
-                        if _is_visible_output_echo(reason_delta):
-                            return
-                        # Accumulate into the current message's segment (#3587)
-                        _reasoning_segments[_current_reasoning_idx] = (
-                            _reasoning_segments.get(_current_reasoning_idx, '') + reason_delta
-                        )
-                        # Mirror full concatenation to shared dict (#1361 §A)
-                        # Lock-free GIL-atomic mirror — see STREAMS_LOCK contract in on_token.
-                        if stream_id in STREAM_REASONING_TEXT:
-                            STREAM_REASONING_TEXT[stream_id] += reason_delta
-                        put('reasoning', {'text': reason_delta})
-                        _metering_reasoning_deltas[0] += 1
-                        meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
-                        _emit_metering()
-                    return
-
-                # (#3587) Advance reasoning index at tool-call boundaries.
-                # on_interim_assistant is suppressed for contentless tool-call
-                # messages (run_agent.py:3834), so the index never advances
-                # there. The first tool.started event after reasoning indicates
-                # a new assistant message boundary.
-                if not _tool_boundary_advanced and _current_reasoning_idx in _reasoning_segments:
-                    _current_reasoning_idx += 1
-                    _tool_boundary_advanced = True
-
-                args_snap = _tool_args_snapshot(args)
-
-                # Modern Hermes Agent builds can call both tool_progress_callback
-                # and the structured tool_start/tool_complete callbacks for the
-                # same tool. Prefer the structured path when it is supported so
-                # the browser receives one tid-tagged tool card per real call.
-                if event_type in (None, 'tool.started') and 'tool_start_callback' in _agent_params:
-                    return
-
-                if event_type in (None, 'tool.started'):
-                    _live_tool_calls.append({
-                        'name': name,
-                        'args': args if isinstance(args, dict) else {},
-                    })
-                    # Mirror to shared dict so cancel_stream() can persist it (#1361 §B)
-                    # Lock-free GIL-atomic mirror — see STREAMS_LOCK contract in on_token.
-                    if stream_id in STREAM_LIVE_TOOL_CALLS:
-                        STREAM_LIVE_TOOL_CALLS[stream_id].append({
-                            'name': name,
-                            'args': args if isinstance(args, dict) else {},
-                            'done': False,
-                        })
-                    put('tool', {
-                        'event_type': event_type or 'tool.started',
-                        'name': name,
-                        'preview': preview,
-                        'args': args_snap,
-                    })
-                    _tool_stats = meter().get_stats(stream_id)
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                    # Fallback: poll for pending approval in case notify_cb wasn't
-                    # registered (e.g. older approval module without gateway support).
-                    try:
-                        from api.route_approvals import (
-                            _gateway_queues as _approval_gateway_queues,
-                            _lock as _approval_lock,
-                            _pending as _approval_pending,
-                            reconcile_gateway_pending_mirror_locked as _reconcile_gateway_pending_mirror_locked,
-                        )
-                        from tools.approval import has_blocking_approval as _has_blocking_approval
-                        if _has_blocking_approval(session_id):
-                            p = None
-                            with _approval_lock:
-                                p, pending_count, _changed = _reconcile_gateway_pending_mirror_locked(session_id)
-                                if p:
-                                    p = {**p, "pending_count": pending_count}
-                            if p:
-                                put('approval', p)
-                    except ImportError:
-                        pass
-                    return
-
-                if event_type == 'tool.completed' and 'tool_complete_callback' in _agent_params:
-                    return
-
-                if event_type == 'tool.completed':
-                    for live_tc in reversed(_live_tool_calls):
-                        if live_tc.get('done'):
-                            continue
-                        if not name or live_tc.get('name') == name:
-                            live_tc['done'] = True
-                            live_tc['duration'] = cb_kwargs.get('duration')
-                            live_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
-                            break
-                    # Mirror done state to shared dict (#1361 §B)
-                    if stream_id in STREAM_LIVE_TOOL_CALLS:
-                        for shared_tc in reversed(STREAM_LIVE_TOOL_CALLS[stream_id]):
-                            if shared_tc.get('done'):
-                                continue
-                            if not name or shared_tc.get('name') == name:
-                                shared_tc['done'] = True
-                                shared_tc['duration'] = cb_kwargs.get('duration')
-                                shared_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
-                                break
-                    # Signal the checkpoint thread that new work has completed (Issue #765).
-                    # Each completed tool call is a meaningful unit of progress worth persisting.
-                    _checkpoint_activity[0] += 1
-                    put('tool_complete', {
-                        'event_type': event_type,
-                        'name': name,
-                        'preview': preview,
-                        'args': args_snap,
-                        'duration': cb_kwargs.get('duration'),
-                        'is_error': bool(cb_kwargs.get('is_error', False)),
-                    })
-                    # Mirror the todo tool's in-memory state into a
-                    # dedicated SSE event so the Todos panel can update
-                    # in real-time without waiting for the turn to
-                    # settle. The helper guards on name=='todo', sends
-                    # the full snapshot (idempotent under SSE replay)
-                    # and swallows internal errors so emission never
-                    # breaks tool delivery. Prefer the structured
-                    # `result` kwarg from modern Hermes builds; fall
-                    # back to the truncated `preview` only when the
-                    # callback was invoked without one (older builds).
-                    #
-                    # Graceful degradation on old builds: `preview` is a
-                    # truncated snippet, so its JSON is usually unparseable.
-                    # parse_todo_tool_result() then returns None and NO
-                    # todo_state event is emitted — live panel updates are
-                    # silently unavailable on pre-`result` builds. This is
-                    # intended: the panel still hydrates via cold-load on the
-                    # next session GET; it just won't update mid-stream.
-                    emit_todo_state(
-                        put,
-                        name=name,
-                        function_result=(
-                            cb_kwargs.get('result')
-                            if cb_kwargs.get('result') is not None
-                            else preview
-                        ),
-                        session_id=session_id,
-                        stream_id=stream_id,
-                    )
-                    _tool_stats = meter().get_stats(stream_id)
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                    return
-
-            def on_tool_start(tool_call_id, name, args):
-                try:
-                    _record_live_tool_start(tool_call_id, name, args)
-                    if tool_call_id and tool_call_id not in _live_tool_event_start_ids:
-                        _live_tool_event_start_ids.add(tool_call_id)
-                        _live_tool_calls.append({
-                            'name': name,
-                            'args': args if isinstance(args, dict) else {},
-                            'tid': tool_call_id,
-                        })
-                        # Mirror to shared dict so cancel_stream() can persist it (#1361 §B)
-                        # Lock-free GIL-atomic mirror — see STREAMS_LOCK contract in on_token.
-                        if stream_id in STREAM_LIVE_TOOL_CALLS:
-                            STREAM_LIVE_TOOL_CALLS[stream_id].append({
-                                'name': name,
-                                'args': args if isinstance(args, dict) else {},
-                                'done': False,
-                                'tid': tool_call_id,
-                            })
-                        put('tool', {
-                            'event_type': 'tool.started',
-                            'name': name,
-                            'preview': None,
-                            'args': _tool_args_snapshot(args),
-                            'tid': tool_call_id,
-                        })
-                    _tool_stats = meter().get_stats(stream_id)
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                except Exception:
-                    logger.debug('Failed to update live prompt estimate on tool start', exc_info=True)
-
-            def on_tool_complete(tool_call_id, name, args, function_result):
-                try:
-                    _record_live_tool_complete(tool_call_id, name, function_result)
-                    if tool_call_id and tool_call_id not in _live_tool_event_complete_ids:
-                        _live_tool_event_complete_ids.add(tool_call_id)
-                        result_snippet = _tool_result_snippet(function_result)
-                        for live_tc in reversed(_live_tool_calls):
-                            if live_tc.get('done'):
-                                continue
-                            if live_tc.get('tid') == tool_call_id or (not live_tc.get('tid') and live_tc.get('name') == name):
-                                live_tc['done'] = True
-                                live_tc['snippet'] = result_snippet
-                                break
-                        if stream_id in STREAM_LIVE_TOOL_CALLS:
-                            for shared_tc in reversed(STREAM_LIVE_TOOL_CALLS[stream_id]):
-                                if shared_tc.get('done'):
-                                    continue
-                                if shared_tc.get('tid') == tool_call_id or (not shared_tc.get('tid') and shared_tc.get('name') == name):
-                                    shared_tc['done'] = True
-                                    shared_tc['snippet'] = result_snippet
-                                    break
-                        _checkpoint_activity[0] += 1
-                        put('tool_complete', {
-                            'event_type': 'tool.completed',
-                            'name': name,
-                            'preview': result_snippet,
-                            'args': _tool_args_snapshot(args),
-                            'tid': tool_call_id,
-                            'is_error': False,
-                        })
-                        # Mirror the todo tool's in-memory state into
-                        # a dedicated SSE event so the Todos panel can
-                        # update in real-time without waiting for the
-                        # turn to settle. See the legacy path above
-                        # for the contract; the helper handles the
-                        # name guard, payload shape, and swallow-all
-                        # error policy.
-                        emit_todo_state(
-                            put,
-                            name=name,
-                            function_result=function_result,
-                            session_id=session_id,
-                            stream_id=stream_id,
-                        )
-                    _tool_stats = meter().get_stats(stream_id)
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                except Exception:
-                    logger.debug('Failed to update live prompt estimate on tool completion', exc_info=True)
+            # Bind closures to callbacks for backward-compatibility with downstream code
+            on_token = callbacks.on_token
+            on_reasoning = callbacks.on_reasoning
+            on_interim_assistant = callbacks.on_interim_assistant
+            on_tool = callbacks.on_tool
+            on_tool_start = callbacks.on_tool_start
+            on_tool_complete = callbacks.on_tool_complete
+            _flush_reasoning_buffer = callbacks.flush_reasoning_buffer
+            _reasoning_segments = callbacks.reasoning_segments
+            _live_tool_calls = callbacks.live_tool_calls
+            _checkpoint_activity = ctx.checkpoint_activity
+            _token_sent = callbacks.token_sent
 
             _AIAgent = _get_ai_agent()
             if _AIAgent is None:
@@ -10285,7 +10242,7 @@ def _run_agent_streaming(
             # (fixes: TypeError: AIAgent.__init__() got an unexpected keyword
             # argument 'credential_pool' — issue #772)
             import inspect as _inspect
-            _agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
+            _agent_params = ctx.agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
 
             # CLI-parity max-iteration budget: read config.yaml's
             # agent.max_turns and pass it to AIAgent when supported. Without
@@ -11256,7 +11213,7 @@ def _run_agent_streaming(
                 elif _tool_limit_reached and not _session_lacks_final_assistant_answer(s.messages):
                     _mark_latest_assistant_tool_limit_status(s.messages)
                 # _token_sent tracks whether on_token() was called (any streamed text)
-                if _terminal_failure or (not _assistant_added and not _token_sent):
+                if _terminal_failure or (not _assistant_added and not callbacks.token_sent):
                     if cancel_event.is_set():
                         _finalize_cancelled_turn(s, ephemeral=ephemeral, stream_id=stream_id)
                         if not ephemeral:
@@ -11335,6 +11292,7 @@ def _run_agent_streaming(
                                 _SAC.move_to_end(session_id)
                             # Retry the conversation once with fresh credentials
                             _self_healed = True
+                            callbacks.token_sent = False
                             _token_sent = False
                             try:
                                 (
@@ -12652,6 +12610,7 @@ def _run_agent_streaming(
                         _SAC2[session_id] = (_heal_agent, _agent_sig)
                         _SAC2.move_to_end(session_id)
                     # Retry the conversation
+                    callbacks.token_sent = False
                     _token_sent = False
                     try:
                         (
