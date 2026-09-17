@@ -293,8 +293,11 @@ Save, archive, and reload conversation histories directly within your active wor
 CAGY includes a comprehensive automated test suite covering syntax compilation, the `run_agent.py` CLI streaming bridge, dynamic model discovery, session persistence, and core REST API endpoints:
 
 ```bash
-# Run hermetic test suite locally on host
+# Run hermetic test suite locally on host (127 tests + Python ruff and JS linters)
 ./run-tests.sh
+
+# Run test suite with code coverage analysis
+./run-tests.sh --coverage
 
 # Run test suite inside the running Docker container
 ./run-tests.sh --container
