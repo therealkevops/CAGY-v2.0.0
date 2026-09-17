@@ -44,13 +44,13 @@ The CAGY platform is engineered from the ground up to solve the fundamental fric
 
 ```mermaid
 graph TD
-    subgraph Traditional Harness (Unbounded Context Debt)
+    subgraph Traditional["Traditional Harness (Unbounded Context Debt)"]
         T1["Turn 1 (2,000 tok)"] --> T5["Turn 5 (15,000 tok)"]
         T5 --> T15["Turn 15 (45,000 tok)"]
         T15 --> T25["Turn 25 (85,000 tok)<br>⚠️ High Cost, Attention Decay, Missed Instructions"]
     end
 
-    subgraph CAGY Context Diet & Knowledge Vault
+    subgraph CAGY["CAGY Context Diet & Knowledge Vault"]
         C1["Turn 1: Turn-0 Rules Recall (600 tok)"] --> C5["Turns 2-10: Rapid Execution"]
         C5 --> C12["Turn 12: Context Debt Alert (25,000 tok)"]
         C12 --> M["1-Click /memorize Takeaways"]

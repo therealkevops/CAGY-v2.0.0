@@ -549,7 +549,6 @@ async function renderSessionArtifacts(){
           }
         }
       }
-    }
   } catch(_) {}
 
   if(count) count.textContent = String(items.length);

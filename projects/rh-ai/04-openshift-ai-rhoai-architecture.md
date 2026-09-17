@@ -53,7 +53,30 @@ flowchart TD
 
 ---
 
-## 2. Operator Architecture: DSC and DSCI Custom Resources
+## 2. Operator Architecture: DSC and DSCI in Plain English
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    RHOAI OPERATOR IN PLAIN ENGLISH                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  THE "BUILDING FOUNDATION VS OFFICE FURNITURE" MENTAL MODEL:                │
+│                                                                             │
+│  1. `DSCInitialization` (DSCI) = "The Foundation & Utilities"              │
+│     • Lays down the electrical wiring, plumbing, and security doors.         │
+│     • Sets up the Istio Service Mesh network, Knative serverless routing,   │
+│       TLS security certificates, and Prometheus monitoring across the whole │
+│       cluster. You configure this once.                                     │
+│                                                                             │
+│  2. `DataScienceCluster` (DSC) = "The Modular Office Tools"                │
+│     • Brings in the specific equipment your teams need:                     │
+│       - Data Science Workbenches (Jupyter/VS Code)                          │
+│       - Distributed Training (Ray & Kueue)                                  │
+│       - High-Throughput Serving (KServe & vLLM)                             │
+│       - Compliance & Auditing (TrustyAI & Model Registry)                   │
+│     • Everything is toggled with one line: `managementState: Managed`       │
+│       or `Removed`. If you don't need Ray, turn it off; the building stands! │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 RHOAI is deployed and managed via the `rhods-operator`. The operator enforces a declarative desired-state model driven by two cluster-scoped Custom Resources (CRs):
 
@@ -243,9 +266,9 @@ Storage is the lifeline of enterprise AI. RHOAI standardizes on **Red Hat OpenSh
 flowchart LR
     ODF["OpenShift Data Foundation (Ceph)"]
     
-    ODF -->|Ceph RBD (Block)| S1["Workbenches & Notebook Volumes\n(Low-latency POSIX RWO)"]
-    ODF -->|CephFS (Shared File)| S2["Distributed Training Datasets\n(High-throughput Shared RWX)"]
-    ODF -->|NooBaa (Object S3)| S3["Model Checkpoints & Pipeline Artifacts\n(S3 API compatible OCI/Object)"]
+    ODF -->|"Ceph RBD (Block)"| S1["Workbenches & Notebook Volumes\n(Low-latency POSIX RWO)"]
+    ODF -->|"CephFS (Shared File)"| S2["Distributed Training Datasets\n(High-throughput Shared RWX)"]
+    ODF -->|"NooBaa (Object S3)"| S3["Model Checkpoints & Pipeline Artifacts\n(S3 API compatible OCI/Object)"]
 ```
 
 1. **Ceph RBD (Block Storage - `ReadWriteOnce`)**:

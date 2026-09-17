@@ -13,7 +13,8 @@
 async function apiFetch(url, options = {}) {
   let resp;
   try {
-    resp = await fetch(url, options);
+    const fetchOpts = { credentials: 'include', ...options };
+    resp = await fetch(url, fetchOpts);
   } catch (err) {
     console.error('[apiFetch] Network error:', url, err);
     throw new Error(`Network error contacting ${url}: ${err.message}`);

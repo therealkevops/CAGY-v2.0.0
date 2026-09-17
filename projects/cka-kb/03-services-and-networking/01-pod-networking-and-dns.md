@@ -29,7 +29,7 @@ flowchart TD
         PhysicalNIC["Physical NIC (192.168.1.11)"]
     end
 
-    Eth0 <-->|Virtual Ethernet Cable (veth pair)| VethA
+    Eth0 <-->|"Virtual Ethernet Cable (veth pair)"| VethA
     VethA <--> Bridge
     Bridge <--> PhysicalNIC
 ```

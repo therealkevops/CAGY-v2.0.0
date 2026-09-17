@@ -6,7 +6,29 @@
 
 ---
 
-## 1. Domain-Specific GenAI vs. Generic Chatbots
+## 1. Domain-Specific GenAI vs. Generic Chatbots in Plain English
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 DOMAIN-SPECIFIC AI ASSISTANTS IN PLAIN ENGLISH              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  THE "AMATEUR MECHANIC" PROBLEM (Generic Chatbots like ChatGPT):             │
+│  • Generic chatbots are like an eager intern who skimmed a 5-year-old blog  │
+│    post on the internet.                                                    │
+│  • When asked to write Ansible or debug Kubernetes, they hallucinate YAML    │
+│    parameters that don't exist, suggest deprecated modules that fail in     │
+│    Ansible 2.15+, and have zero idea what your corporate network looks like. │
+│  • They might accidentally copy proprietary code with restrictive licenses! │
+│                                                                             │
+│  THE "CERTIFIED MASTER ENGINEER" SOLUTION (Red Hat Lightspeed):             │
+│  • Built on IBM Granite Code, fine-tuned exclusively on millions of certified│
+│    Red Hat Ansible playbooks, Kubernetes manifests, and Linux sysadmin docs. │
+│  • Grounded in live cluster telemetry (Prometheus) and Red Hat advisories.  │
+│  • Generates syntax that passes linting on the first try.                    │
+│  • Scans every suggested line against known open-source licenses so your    │
+│    company never gets sued for copyright infringement (CSM).                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 Generic commercial foundation models (ChatGPT, Claude) struggle with enterprise infrastructure automation:
 1. **Hallucinated Syntax & Deprecated Modules**: They frequently invent non-existent Ansible module parameters or use deprecated syntax incompatible with Ansible Core 2.15+.

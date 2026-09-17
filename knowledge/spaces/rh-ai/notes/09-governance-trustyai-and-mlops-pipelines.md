@@ -50,11 +50,39 @@ flowchart TD
 
 ---
 
-## 2. TrustyAI: Bias, Fairness & Explainability
+## 2. TrustyAI: Bias, Fairness & Explainability in Plain English
 
-**TrustyAI** is an OpenShift operator that attaches to model serving endpoints to provide continuous auditing:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    AI GOVERNANCE IN PLAIN ENGLISH                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. FAIRNESS (SPD & DIR) = "The Mortgage Loan Approval Audit"               │
+│     • A bank tests an AI model on 1,000 mortgage applicants: 500 Men        │
+│       (Privileged Group) and 500 Women (Unprivileged Group).                │
+│     • Results: 400 Men approved (80%), but only 300 Women approved (60%).   │
+│     • SPD (Statistical Parity Difference) = 60% - 80% = -0.20 (-20% gap).   │
+│       Measures the absolute approval penalty suffered by the group.         │
+│     • DIR (Disparate Impact Ratio) = 60% / 80% = 0.75.                      │
+│       US EEOC law mandates the "Four-Fifths Rule" (DIR >= 0.80). At 0.75,   │
+│       the bank is guilty of systemic discrimination by federal statute!     │
+│     • TrustyAI calculates SPD and DIR live on incoming requests every 5 sec.│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  2. EXPLAINABILITY (LIME & SHAP) = "The Forensic Accounting Detective"      │
+│     • When Loan Applicant #4192 is rejected, federal law requires an adverse│
+│       action notice with explicit reasons. You cannot tell regulators:      │
+│       "Neuron #412 in layer 14 fired a negative float."                     │
+│     • LIME & SHAP act like forensic detectives running hundreds of "what-if"│
+│       simulations around that specific applicant's data:                    │
+│       - What if income was $5k higher? What if debt was 10% lower?          │
+│     • Output: A plain-English ledger showing exactly what tipped the scale: │
+│       • Debt-to-Income (46%) ──► -35 points penalty                         │
+│       • Missed payment (6 mos ago) ──► -25 points penalty                   │
+│       • Stable employment (+4 yrs) ──► +15 points credit                    │
+│       • Result: Rejection caused primarily by Debt-to-Income and Late Pay.  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### 2.1 Fairness Metrics: SPD & DIR
+### 2.1 Fairness Metrics: SPD & DIR Formulas
 TrustyAI monitors outcomes across protected attributes (e.g., gender, age, race):
 
 1. **Statistical Parity Difference (SPD)**:
@@ -159,6 +187,30 @@ def alignment_pipeline(taxonomy_git: str = "https://github.com/corp/taxonomy.git
 
 ## 5. Securing the AI Supply Chain: Sigstore & Cosign
 
+### The "Digital Wax Seal on an Armored Truck" Mental Model
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 AI SUPPLY CHAIN SECURITY IN PLAIN ENGLISH                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  THE HIDDEN THREAT:                                                         │
+│  • In Python, loading model weights (.bin or .pkl) can execute arbitrary    │
+│    Python code. A downloaded model from the internet can contain malware,   │
+│    data exfiltration scripts, or reverse shells!                            │
+│  • Even if weights are SafeTensors, an attacker could silently swap the     │
+│    model file for one that approves fraudulent loans.                       │
+│                                                                             │
+│  THE SIGSTORE / COSIGN SOLUTION:                                            │
+│  • Like putting a tamper-proof digital wax seal on an armored truck.        │
+│  • When your corporate MLOps pipeline finishes training and auditing a      │
+│    model, Cosign stamps the model artifact with your corporate private key. │
+│  • When OpenShift AI attempts to launch a KServe inference pod, the cluster │
+│    Admission Controller intercepts the launch and verifies the wax seal.    │
+│  • If the file was tampered with by even 1 byte, or if an engineer tries to │
+│    deploy an uncertified public model, OpenShift refuses to boot the pod!   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 Loading untrusted model weights exposes clusters to Remote Code Execution (RCE) via Python `pickle` exploits. Red Hat implements a secure supply chain:
 
 ```mermaid
@@ -192,6 +244,46 @@ cosign sign --key k8s://team-nlp/cosign-key \
 # 2. Verify signature before deployment
 cosign verify --key k8s://team-nlp/cosign-key \
   quay.internal.corp/models/granite-8b-custom:v1.2
+```
+
+---
+
+## 6. Real-World Pipeline Walkthrough: Regulated Banking Credit Decision Model
+
+Here is how TrustyAI, Model Registry, and Pipelines coordinate in an end-to-end banking workflow:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ REAL-WORLD SCENARIO: Commercial Bank Credit Underwriting Assistant          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. 02:00 - Automated Pipeline Trigger:                                      │
+│    Data Science Pipeline ingests 200,000 anonymized loan repayment records. │
+│    Ray cluster fine-tunes IBM Granite 8B on underwriting criteria.          │
+│                                                                             │
+│ 2. 03:30 - Pre-Deployment TrustyAI Audit Gate:                              │
+│    The pipeline runs an automated validation suite against a golden test    │
+│    benchmark of 5,000 historical loan applications.                         │
+│    • Evaluates Disparate Impact Ratio (DIR) across gender & ethnicity.      │
+│    • Test result: DIR = 0.86 (> 0.80 EEOC legal threshold). Pass!          │
+│    • If DIR had been 0.74, the pipeline would immediately fail and alert    │
+│      compliance officers without deploying.                                 │
+│                                                                             │
+│ 3. 03:45 - Model Registry & Cryptographic Signing:                          │
+│    Model weights are registered in the OpenShift Model Registry as          │
+│    `credit-granite:v2.4`. Cosign signs the SafeTensors digest in Quay.      │
+│                                                                             │
+│ 4. 04:00 - GitOps Promotion to KServe:                                      │
+│    ArgoCD detects the signed release and updates the KServe deployment.     │
+│    OpenShift Admission Controller verifies the Cosign signature and starts  │
+│    the vLLM runtime.                                                        │
+│                                                                             │
+│ 5. Live Production - Continuous TrustyAI Auditing:                          │
+│    • TrustyAI payload processor streams live inference requests into PVC.   │
+│    • Prometheus metrics track rolling SPD and DIR over 24-hour windows.     │
+│    • When a denied customer appeals, underwriters click "Explain" in the    │
+│      web portal, instantly rendering LIME/SHAP feature-attribution charts   │
+│      satisfying FCRA adverse-action disclosure requirements.                │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

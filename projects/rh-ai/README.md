@@ -45,17 +45,17 @@ flowchart TD
         ODF["OpenShift Data Foundation (Ceph RBD / CephFS / NooBaa S3)"]
     end
 
-    Layer1 --> Layer2
-    Layer2 --> Layer3
-    Layer3 --> Layer4
-    Layer4 --> Layer5
+    ODF --> RHOAI
+    RHOAI --> IL
+    GM --> TY
+    TY --> AL
 ```
 
 ---
 
 ## 📚 Complete Knowledge Base Navigation
 
-The knowledge base is structured into 12 exhaustive engineering modules covering strategy, systems, alignment, serving, governance, hardware, competitive positioning, and inference engine architectures:
+The knowledge base is structured into 18 exhaustive engineering modules covering strategy, systems, alignment, serving, governance, hardware, competitive positioning, and inference engine architectures:
 
 | Module | Title & Focus Area | Key Architectural Topics |
 | :---: | :--- | :--- |
@@ -71,6 +71,12 @@ The knowledge base is structured into 12 exhaustive engineering modules covering
 | [**10**](10-hardware-acceleration-and-cluster-sizing.md) | [**Hardware Acceleration, GPU Math & Cluster Sizing Guide**](10-hardware-acceleration-and-cluster-sizing.md) | Heterogeneous compute (NVIDIA, AMD MI300X, Intel Gaudi), VRAM formulas, TPOT memory bandwidth, cluster archetypes A/B/C. |
 | [**11**](11-executive-pitch-competition-and-swot-analysis.md) | [**Executive Pitch, Competitive Landscape & SWOT Analysis**](11-executive-pitch-competition-and-swot-analysis.md) | C-suite narrative, competitive battlecards (AWS, Azure, GCP, Databricks, VMware, NVIDIA), full SWOT analysis, and discovery framework. |
 | [**12**](12-nvidia-nim-vllm-llmd-and-lora-adapters.md) | [**NVIDIA NIM, vLLM, LLM-D & Dynamic LoRA Adapters**](12-nvidia-nim-vllm-llmd-and-lora-adapters.md) | NVIDIA NIM architecture vs native vLLM, LLM-D prefix-aware routing & split prefill/decode, Punica multi-LoRA execution, and OpenShift manifests. |
+| [**13**](13-enterprise-ai-security-and-governance.md) | [**Enterprise AI Security & Governance: Pitch Guide**](13-enterprise-ai-security-and-governance.md) | The 5 pillars of AI security, OWASP Top 10 for LLMs, prompt injection defense, Sigstore/Cosign signing, Granite Guardian, and CISO battlecard. |
+| [**14**](14-enterprise-retrieval-augmented-generation-rag.md) | [**Enterprise Retrieval-Augmented Generation (RAG)**](14-enterprise-retrieval-augmented-generation-rag.md) | Open-book vs closed-book exam model, RAG vs fine-tuning, step-by-step vector pipeline, 4 enterprise traps, ACL document security, and TrustyAI triad. |
+| [**15**](15-nutanix-enterprise-ai-nkp-vllm-and-llmd.md) | [**Nutanix Enterprise AI (NAI), NKP, vLLM & LLM-D**](15-nutanix-enterprise-ai-nkp-vllm-and-llmd.md) | Nutanix NAI architecture, NKP Kubernetes, vLLM core engine, `llm-d` distributed fleet routing, and RHOAI on AHV comparison. |
+| [**16**](16-infiniband-vs-rocev2-ai-networking.md) | [**InfiniBand vs. RoCEv2 for AI Infrastructure**](16-infiniband-vs-rocev2-ai-networking.md) | Plain-English comparison, hardware credit flow control vs PFC/ECN, NVIDIA Spectrum-X, Cisco Silicon One, and OpenShift Multus SR-IOV. |
+| [**17**](17-common-private-training-and-inferencing-architectures.md) | [**Common Private Training & Inferencing Architectures**](17-common-private-training-and-inferencing-architectures.md) | The 6 standard enterprise patterns: edge appliances, centralized hubs, distributed fleets, LoRA/QLoRA, InstructLab factories, and continual pre-training. |
+| [**18**](18-nvidia-dgx-pod-high-level-architecture.md) | [**NVIDIA DGX POD & SuperPOD: High-Level Architecture**](18-nvidia-dgx-pod-high-level-architecture.md) | Scalable Units (32 nodes / 256 GPUs), NVSwitch 900 GB/s mesh, 8-rail compute topology, GPUDirect Storage, and 40 kW+ rack facilities. |
 
 ---
 

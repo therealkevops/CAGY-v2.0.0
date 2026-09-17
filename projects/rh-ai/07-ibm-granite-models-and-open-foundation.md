@@ -59,9 +59,28 @@ flowchart TD
 
 ---
 
-## 3. Granite 3.0 Architecture: Mixture of Experts (MoE) & Dense
+## 3. Granite 3.0 Architecture: Mixture of Experts (MoE) in Plain English
 
-Granite 3.0 introduces Mixture of Experts (MoE) architectures designed to maximize inference speed and lower token serving costs:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 DENSE VS. MIXTURE OF EXPERTS (MoE) IN PLAIN ENGLISH         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. DENSE MODEL = "The All-Hands Company Meeting"                           │
+│     • In a standard 8B dense model, every single token wakes up all         │
+│       8,000,000,000 parameters to do math.                                  │
+│     • Even if you just ask "What is 2 + 2?", all 8 billion parameters must  │
+│       burn electricity and memory bandwidth. It's like calling a 5,000-person│
+│       company meeting just to ask where the office stapler is!              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  2. MIXTURE OF EXPERTS (MoE) = "The Specialized Consulting Agency"          │
+│     • The model contains multiple specialized teams (math, code, grammar).  │
+│     • A smart receptionist (the Router) reads each incoming token and       │
+│       hands it to ONLY the top 2 best-qualified experts.                    │
+│     • In Granite 3.0 3B-A800M: The model holds 3.3 Billion parameters in    │
+│       knowledge, but activates only 800 Million parameters per calculation!  │
+│     • Result: You get 3B-level intelligence at 800M speed and compute cost! │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ```mermaid
 flowchart LR

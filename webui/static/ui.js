@@ -20152,8 +20152,43 @@ function loadHtmlInline(container){
   });
 }
 
+function _cleanMermaidDOM(id, fbId) {
+  if (!id) return;
+  const ids = [id, 'd' + id, fbId, fbId ? 'd' + fbId : null].filter(Boolean);
+  ids.forEach(x => {
+    const el = document.getElementById(x);
+    if (el) el.remove();
+  });
+  try {
+    const escFn = (window.CSS && CSS.escape) ? CSS.escape : (s => s.replace(/[^a-zA-Z0-9_-]/g, '\\$&'));
+    const safeId = escFn(id);
+    const selectors = [
+      `body > #${safeId}`,
+      `body > #d${safeId}`,
+      `body > [id^="d${safeId}"]`,
+      `body > [id^="${safeId}"]`,
+      'body > svg.error-icon',
+      'body > .error-icon',
+      'body > svg[id^="m-"]'
+    ];
+    if (fbId) {
+      const safeFb = escFn(fbId);
+      selectors.push(`body > #${safeFb}`, `body > #d${safeFb}`, `body > [id^="d${safeFb}"]`, `body > [id^="${safeFb}"]`);
+    }
+    document.querySelectorAll(selectors.join(',')).forEach(el => el.remove());
+  } catch (_) {}
+}
+
+function _isMermaidErrorSvg(svg) {
+  if (!svg || typeof svg !== 'string') return true;
+  return svg.includes('Syntax error in text') || svg.includes('error-icon') || svg.includes('error-text');
+}
+
 function renderMermaidBlocks(container){
   const root=container||document;
+  try {
+    document.querySelectorAll('body > [id^="dm-"], body > svg[id^="m-"], body > .error-icon, body > svg.error-icon, body > [id*="-fb"]').forEach(el => el.remove());
+  } catch (_) {}
   const blocks=root.querySelectorAll('.mermaid-block:not([data-rendered])');
   if(!blocks.length) return;
   if(!_mermaidReady){
@@ -20203,33 +20238,50 @@ function renderMermaidBlocks(container){
       code = code.replace(/^graph\s+/i, 'flowchart ');
     }
 
+    // Auto-quote pipe labels containing unquoted parentheses, brackets, or arrows (which break Mermaid lexer)
+    code = code.replace(/\|([^|\r\n]+)\|/g, (match, label) => {
+      const trimmed = label.trim();
+      if ((trimmed.includes('(') || trimmed.includes(')') || trimmed.includes('[') || trimmed.includes(']') || trimmed.includes('->')) &&
+          !(trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+        return `|"${trimmed.replace(/"/g, "'")}"|`;
+      }
+      return match;
+    });
+
+    let renderedOk = false;
     try{
-      const {svg}=await mermaid.render(id,code);
-      const tmp=document.getElementById('d'+id);
-      if(tmp) tmp.remove();
-      block.innerHTML=svg;
-      const renderedSvg = block.querySelector('svg');
-      if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
-      block.classList.add('mermaid-rendered');
-    }catch(e){
+      const res=await mermaid.render(id,code);
+      if(res && res.svg && !_isMermaidErrorSvg(res.svg)){
+        block.innerHTML=res.svg;
+        const renderedSvg = block.querySelector('svg');
+        if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
+        block.classList.add('mermaid-rendered');
+        renderedOk = true;
+      }
+    }catch(e){}
+    _cleanMermaidDOM(id);
+
+    if(!renderedOk){
       // Fallback: clean connections pointing directly to container subgraphs
+      const fbId = id + '-fb';
       try {
         let fallbackCode = code
           .replace(/-->\|([^|]+)\|\s+([A-Za-z0-9_]+_Account|[A-Za-z0-9_]+_Cluster|[A-Za-z0-9_]+_Plane)\b/g, '-->|$1| $2_Node')
           .replace(/([A-Za-z0-9_]+_Cluster)\s+<-->\|([^|]+)\|\s+([A-Za-z0-9_]+)/g, 'DSF <-->|$2| $3');
-        const fbId = id + '-fb';
-        const {svg}=await mermaid.render(fbId, fallbackCode);
-        const tmp=document.getElementById('d'+fbId);
-        if(tmp) tmp.remove();
-        block.innerHTML=svg;
-        const renderedSvg = block.querySelector('svg');
-        if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
-        block.classList.add('mermaid-rendered');
-        return;
+        const res=await mermaid.render(fbId, fallbackCode);
+        if(res && res.svg && !_isMermaidErrorSvg(res.svg)){
+          block.innerHTML=res.svg;
+          const renderedSvg = block.querySelector('svg');
+          if(renderedSvg) _mountMermaidViewer(renderedSvg, {mode:'inline'});
+          block.classList.add('mermaid-rendered');
+          renderedOk = true;
+        }
       } catch(e2){}
+      _cleanMermaidDOM(id, fbId);
+    }
 
-      const tmp=document.getElementById('d'+id);
-      if(tmp) tmp.remove();
+    if(!renderedOk){
+      _cleanMermaidDOM(id, id + '-fb');
       // Fall back to showing as a clean formatted code block.
       block.classList.remove('mermaid-block');
       block.classList.add('prewrap');

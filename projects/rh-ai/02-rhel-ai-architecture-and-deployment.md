@@ -45,7 +45,27 @@ flowchart TD
 
 ---
 
-## 2. The `bootc` (Bootable Container) Engine
+## 2. The `bootc` (Bootable Container) Engine in Plain English
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    RHEL AI & `bootc` IN PLAIN ENGLISH                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  THE "CUSTOM KITCHEN" DISASTER (Traditional Linux Package Management):      │
+│  • Setting up an AI server usually means installing 50 separate packages:   │
+│    Linux kernel, NVIDIA GPU drivers, CUDA 12.x, PyTorch, vLLM, Python 3.11. │
+│  • Updating ONE package (like `dnf upgrade`) often creates "dependency      │
+│    hell"—the CUDA driver breaks, PyTorch segfaults, and the server goes dark.│
+│                                                                             │
+│  THE "PRE-ASSEMBLED APPLIANCE" SOLUTION (RHEL AI `bootc`):                  │
+│  • The entire operating system, GPU drivers, CUDA runtime, and vLLM engine  │
+│    are baked together into a single frozen container image.                 │
+│  • The root filesystem is 100% read-only. Nobody can accidentally break it. │
+│  • Updates work like a smartphone OS update: the new version downloads in   │
+│    the background to a parallel slot. If the new driver fails during boot,  │
+│    the system instantly rolls back to the previous known-good version!      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 Traditional Linux servers rely on package managers (`dnf`/`rpm`) that mutate state unpredictably over time. RHEL AI adopts the image-based paradigm using `bootc`:
 

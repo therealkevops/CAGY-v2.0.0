@@ -37,10 +37,10 @@ flowchart TD
         HW["[[spaces/rh-ai/notes/10-hardware-acceleration-and-cluster-sizing|Hardware Acceleration & Cluster Sizing]]"]
     end
 
-    HW --> PlatformServing
-    PlatformServing --> Alignment
-    Alignment --> Governance
-    Governance --> GenAI
+    HW --> SERV
+    SERV --> ILAB
+    GRAN --> GOV
+    GOV --> AL
 ```
 
 ---
@@ -82,6 +82,24 @@ flowchart TD
 
 12. **Inference Microservices & Fleets**:
     - [[spaces/rh-ai/notes/12-nvidia-nim-vllm-llmd-and-lora-adapters|NVIDIA NIM, vLLM, LLM-D & Dynamic LoRA Adapters]]: NVIDIA NIM architecture vs native vLLM, LLM-D prefix-aware routing & split prefill/decode, Punica multi-LoRA execution, and OpenShift manifests.
+
+13. **Enterprise AI Security & Governance**:
+    - [[spaces/rh-ai/notes/13-enterprise-ai-security-and-governance|Enterprise AI Security & Governance: Pitch Guide]]: The 5 pillars of enterprise AI security, OWASP Top 10 for LLMs, prompt injection defense, Sigstore/Cosign signing, Granite Guardian, and CISO battlecard.
+
+14. **Enterprise Retrieval-Augmented Generation (RAG)**:
+    - [[spaces/rh-ai/notes/14-enterprise-retrieval-augmented-generation-rag|Enterprise Retrieval-Augmented Generation (RAG)]]: Open-book vs closed-book exam model, RAG vs fine-tuning, step-by-step vector pipeline, 4 enterprise traps, ACL document security, and TrustyAI triad.
+
+15. **Nutanix Enterprise AI (NAI), NKP, vLLM & LLM-D**:
+    - [[spaces/rh-ai/notes/15-nutanix-enterprise-ai-nkp-vllm-and-llmd|Nutanix Enterprise AI (NAI), NKP, vLLM & LLM-D]]: Nutanix NAI architecture, NKP Kubernetes, vLLM core engine, `llm-d` distributed fleet routing, and RHOAI on AHV comparison.
+
+16. **InfiniBand vs. RoCEv2 for AI Infrastructure**:
+    - [[spaces/rh-ai/notes/16-infiniband-vs-rocev2-ai-networking|InfiniBand vs. RoCEv2 for AI Infrastructure]]: Plain-English comparison, hardware credit flow control vs PFC/ECN, NVIDIA Spectrum-X, Cisco Silicon One, and OpenShift Multus SR-IOV.
+
+17. **Common Private Training & Inferencing Architectures**:
+    - [[spaces/rh-ai/notes/17-common-private-training-and-inferencing-architectures|Common Private Training & Inferencing Architectures]]: The 6 standard enterprise patterns: edge appliances, centralized hubs, distributed fleets, LoRA/QLoRA, InstructLab factories, and continual pre-training.
+
+18. **NVIDIA DGX POD & SuperPOD: High-Level Architecture**:
+    - [[spaces/rh-ai/notes/18-nvidia-dgx-pod-high-level-architecture|NVIDIA DGX POD & SuperPOD: High-Level Architecture]]: Scalable Units (32 nodes / 256 GPUs), NVSwitch 900 GB/s mesh, 8-rail compute topology, GPUDirect Storage, and 40 kW+ rack facilities.
 
 ---
 

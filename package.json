@@ -5,7 +5,7 @@
   "description": "Containerized Antigravity (CAGY) Web UI and development environment",
   "scripts": {
     "lint:html": "npx --yes htmlhint --rules \"tag-pair=true,attr-value-double-quotes=true,id-unique=true,spec-char-escape=false,src-not-empty=true\" webui/static/index.html",
-    "lint:js": "node -c webui/static/*.js",
+    "lint:js": "for f in webui/static/*.js; do node -c \"$f\" || exit 1; done",
     "lint:py": "python3 -m ruff check webui/api/",
     "lint": "npm run lint:html && npm run lint:js && npm run lint:py",
     "test": "npm run lint"

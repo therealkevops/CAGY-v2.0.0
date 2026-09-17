@@ -57,15 +57,15 @@ You must become a low-level Linux detective:
 
 ```mermaid
 flowchart TD
-    A[kubectl fails: Connection Refused :6443] --> B[1. SSH into the master node: ssh controlplane]
-    B --> C[2. Check if host kubelet is alive: systemctl status kubelet]
-    C -->|Kubelet Dead| D[Restart kubelet: systemctl restart kubelet]
-    C -->|Kubelet Alive| E[3. Use crictl to inspect static containers]
-    E --> F[crictl ps -a | grep kube-apiserver]
-    F -->|Container Crashlooping/Exited| G[4. Read crash logs: crictl logs container-id]
-    G --> H[5. Fix YAML typo in /etc/kubernetes/manifests/kube-apiserver.yaml]
-    H --> I[6. Kubelet auto-restarts the container]
-    I --> J[7. Verify kubectl get nodes from workstation]
+    A["kubectl fails: Connection Refused :6443"] --> B["1. SSH into the master node: ssh controlplane"]
+    B --> C["2. Check if host kubelet is alive: systemctl status kubelet"]
+    C -->|Kubelet Dead| D["Restart kubelet: systemctl restart kubelet"]
+    C -->|Kubelet Alive| E["3. Use crictl to inspect static containers"]
+    E --> F["crictl ps -a | grep kube-apiserver"]
+    F -->|"Container Crashlooping/Exited"| G["4. Read crash logs: crictl logs container-id"]
+    G --> H["5. Fix YAML typo in /etc/kubernetes/manifests/kube-apiserver.yaml"]
+    H --> I["6. Kubelet auto-restarts the container"]
+    I --> J["7. Verify kubectl get nodes from workstation"]
 ```
 
 ---

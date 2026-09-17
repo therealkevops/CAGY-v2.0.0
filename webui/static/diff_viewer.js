@@ -225,12 +225,28 @@ function renderMermaidLive(containerEl, content) {
   const match = content.match(/```mermaid([\s\S]*?)```/);
   if (match) diagramText = match[1];
 
+  let code = diagramText.trim();
+  if (/^graph\s+(TD|TB|BT|RL|LR)\b/i.test(code)) {
+    code = code.replace(/^graph\s+/i, 'flowchart ');
+  }
+  code = code.replace(/\|([^|\r\n]+)\|/g, (m, label) => {
+    const trimmed = label.trim();
+    if ((trimmed.includes('(') || trimmed.includes(')') || trimmed.includes('[') || trimmed.includes(']') || trimmed.includes('->')) &&
+        !(trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+      return `|"${trimmed.replace(/"/g, "'")}"|`;
+    }
+    return m;
+  });
+
   const chartId = 'mermaid-' + Math.random().toString(36).substring(2, 9);
-  containerEl.innerHTML = `<div class="mermaid" id="${chartId}">${escapeHtml(diagramText.trim())}</div>`;
+  containerEl.innerHTML = `<div class="mermaid" id="${chartId}">${escapeHtml(code)}</div>`;
 
   if (window.mermaid && typeof window.mermaid.run === 'function') {
     try {
-      window.mermaid.run({ nodes: [document.getElementById(chartId)] });
+      window.mermaid.run({ nodes: [document.getElementById(chartId)], suppressErrors: true });
+    } catch (_) {}
+    try {
+      document.querySelectorAll(`body > [id^="d${chartId}"], body > [id^="${chartId}"], body > .error-icon, body > svg.error-icon`).forEach(el => el.remove());
     } catch (_) {}
   }
 }

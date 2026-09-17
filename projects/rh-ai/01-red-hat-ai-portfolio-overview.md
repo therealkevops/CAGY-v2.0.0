@@ -47,10 +47,10 @@ flowchart TD
         CLD["Hybrid Substrates\n(Bare Metal, AWS/ROSA, Azure/ARO, GCP, Nutanix AHV)"]
     end
 
-    Layer1 --> Layer2
-    Layer2 --> Layer3
-    Layer3 --> Layer4
-    Layer4 --> Layer5
+    CLD --> RHOAI
+    RHOAI --> IL
+    GM --> TY
+    TY --> AL
 ```
 
 ---
@@ -70,7 +70,27 @@ Red Hat structures its AI portfolio into distinct offerings tailored to differen
 
 ---
 
-## 3. RHEL AI vs. OpenShift AI: Architectural Boundary
+## 3. RHEL AI vs. OpenShift AI: In Plain English
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 RHEL AI VS. OPENSHIFT AI IN PLAIN ENGLISH                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. RHEL AI = "The Garage Workbench & Test Track"                           │
+│     • When you design a new race car engine, you don't build it on the      │
+│       busy interstate highway! You build it in a private garage.            │
+│     • RHEL AI runs on a single server, workstation, or cloud VM (1–4 GPUs). │
+│     • A single domain expert or engineer can draft knowledge, generate      │
+│       synthetic data, fine-tune with `ilab`, and test if the model works.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  2. OPENSHIFT AI (RHOAI) = "The High-Speed National Railway"                │
+│     • Once the engine is proven, you need to carry 50,000 passengers a day! │
+│     • OpenShift AI takes the model and runs it across hundreds of servers   │
+│       (tens to thousands of GPUs).                                          │
+│     • Adds train tracks (Kueue batch queues), passenger gates (KServe),     │
+│       safety inspectors (TrustyAI bias auditing), and automatic scaling.    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 A critical decision point for enterprise architects is positioning **RHEL AI** vs. **OpenShift AI (RHOAI)**. They are complementary tiers of the same pipeline:
 
