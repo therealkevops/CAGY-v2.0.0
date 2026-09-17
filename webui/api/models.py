@@ -246,6 +246,7 @@ def _cleanup_stale_tmp_files() -> None:
             except OSError:
                 pass  # best-effort
     except Exception:
+        logger.debug("Silent exception in _cleanup_stale_tmp_files", exc_info=True)
         pass  # SESSION_DIR may not exist yet; that's fine
 
 
@@ -266,6 +267,7 @@ def _persisted_session_ids_snapshot() -> frozenset[str]:
     try:
         dir_mtime_ns = SESSION_DIR.stat().st_mtime_ns
     except Exception:
+        logger.debug("Silent exception in _persisted_session_ids_snapshot", exc_info=True)
         dir_mtime_ns = None
     cached_dir, cached_mtime_ns, cached_ids = _PERSISTED_SESSION_IDS_CACHE
     if cached_dir == SESSION_DIR and cached_mtime_ns == dir_mtime_ns:
@@ -277,6 +279,7 @@ def _persisted_session_ids_snapshot() -> frozenset[str]:
             if not p.name.startswith('_')
         )
     except Exception:
+        logger.debug("Silent exception in _persisted_session_ids_snapshot", exc_info=True)
         ids = frozenset()
     _PERSISTED_SESSION_IDS_CACHE = (SESSION_DIR, dir_mtime_ns, ids)
     return ids
@@ -287,6 +290,7 @@ def _session_dir_has_persisted_session_files() -> bool:
     try:
         return any(not p.name.startswith('_') for p in SESSION_DIR.glob('*.json'))
     except Exception:
+        logger.debug("Silent exception in _session_dir_has_persisted_session_files", exc_info=True)
         return False
 
 
@@ -420,9 +424,11 @@ def _write_session_index(updates=None, *, session_dir: Path | None = None, sessi
                 _safe_replace(_tmp, session_index_file)
             except Exception:
                 # Best-effort cleanup of stale tmp on failure
+                logger.warning("Silent exception in _write_session_index", exc_info=True)
                 try:
                     _tmp.unlink(missing_ok=True)
                 except Exception:
+                    logger.warning("Silent exception in _write_session_index", exc_info=True)
                     pass
                 raise
             return
@@ -466,12 +472,15 @@ def _write_session_index(updates=None, *, session_dir: Path | None = None, sessi
                     os.fsync(f.fileno())
                 _safe_replace(_tmp, session_index_file)
             except Exception:
+                logger.warning("Silent exception in _write_session_index", exc_info=True)
                 try:
                     _tmp.unlink(missing_ok=True)
                 except Exception:
+                    logger.warning("Silent exception in _write_session_index", exc_info=True)
                     pass
                 raise
         except Exception:
+            logger.warning("Silent exception in _write_session_index", exc_info=True)
             _fallback = True
 
     if _fallback:
@@ -513,12 +522,15 @@ def prune_session_from_index(session_id: str) -> None:
                     os.fsync(f.fileno())
                 _safe_replace(_tmp, SESSION_INDEX_FILE)
             except Exception:
+                logger.warning("Silent exception in prune_session_from_index", exc_info=True)
                 try:
                     _tmp.unlink(missing_ok=True)
                 except Exception:
+                    logger.warning("Silent exception in prune_session_from_index", exc_info=True)
                     pass
                 raise
         except Exception:
+            logger.warning("Silent exception in prune_session_from_index", exc_info=True)
             _fallback = True
 
     if _fallback:
@@ -654,6 +666,7 @@ def _save_webui_zero_message_orphan_tombstone(ids) -> None:
             try:
                 _tmp.unlink(missing_ok=True)
             except Exception:
+                logger.warning("Silent exception in _save_webui_zero_message_orphan_tombstone", exc_info=True)
                 pass
 
 
@@ -780,6 +793,7 @@ def _save_webui_deleted_session_tombstone(ids) -> None:
             try:
                 _tmp.unlink(missing_ok=True)
             except Exception:
+                logger.warning("Silent exception in _save_webui_deleted_session_tombstone", exc_info=True)
                 pass
 
 
@@ -1123,6 +1137,7 @@ def _load_session_from_path(path: Path) -> "Session | None":
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
     except Exception:
+        logger.warning("Silent exception in _load_session_from_path", exc_info=True)
         return None
     data['messages'], _collapsed_partials = _collapse_adjacent_duplicate_partials(data.get('messages'))
     return Session(**data)
@@ -1146,6 +1161,7 @@ def _index_message_count_map(entries=None) -> dict[str, int]:
         try:
             entries = json.loads(SESSION_INDEX_FILE.read_bytes())
         except Exception:
+            logger.debug("Silent exception in _index_message_count_map", exc_info=True)
             return {}
     if not isinstance(entries, list):
         return {}
@@ -1505,6 +1521,7 @@ class Session:
                         try:
                             bak_tmp.unlink(missing_ok=True)
                         except Exception:
+                            logger.warning("Silent exception in save", exc_info=True)
                             pass
         except OSError:
             pass
@@ -1517,9 +1534,11 @@ class Session:
                 os.fsync(f.fileno())
             _safe_replace(tmp, self.path)
         except Exception:
+            logger.warning("Silent exception in save", exc_info=True)
             try:
                 tmp.unlink(missing_ok=True)
             except Exception:
+                logger.warning("Silent exception in save", exc_info=True)
                 pass
             raise
         if not skip_index:
@@ -1684,6 +1703,7 @@ class Session:
             return session
         except Exception:
             # Corrupt prefix or decode error — fall back to full load
+            logger.warning("Silent exception in load_metadata_only", exc_info=True)
             return cls.load(sid)
 
     @staticmethod
@@ -1830,6 +1850,7 @@ def _process_wakeup_pause_provider_part(value) -> str:
     try:
         return _process_wakeup_pause_part(_cfg._resolve_provider_alias(provider))
     except Exception:
+        logger.debug("Silent exception in _process_wakeup_pause_provider_part", exc_info=True)
         return provider
 
 
@@ -2063,6 +2084,7 @@ def _process_wakeup_auth_store_fingerprint(path: Path) -> dict:
     try:
         raw = json.loads(p.read_text(encoding='utf-8'))
     except Exception:
+        logger.debug("Silent exception in _process_wakeup_auth_store_fingerprint", exc_info=True)
         payload['kind'] = 'file'
         payload['semantic'] = 'unparsed-fallback'
         payload['mtime_ns'] = int(stat.st_mtime_ns)
@@ -2079,6 +2101,7 @@ def _process_wakeup_auth_store_fingerprint(path: Path) -> dict:
         ).encode('utf-8')
         payload['semantic_sha256'] = hashlib.sha256(encoded).hexdigest()
     except Exception:
+        logger.debug("Silent exception in _process_wakeup_auth_store_fingerprint", exc_info=True)
         payload['kind'] = 'file'
         payload['semantic'] = 'encode-fallback'
         payload['mtime_ns'] = int(stat.st_mtime_ns)
@@ -2099,6 +2122,7 @@ def process_wakeup_credential_state_fingerprint(session) -> str:
     try:
         hermes_home = _get_profile_home(getattr(session, 'profile', None))
     except Exception:
+        logger.debug("Silent exception in process_wakeup_credential_state_fingerprint", exc_info=True)
         hermes_home = Path(os.environ.get('HERMES_HOME') or HOME).expanduser()
     files = []
     for name in ('auth.json', 'config.yaml', 'config.yml', '.env'):
@@ -2219,6 +2243,7 @@ def _classify_interruption_cause(
                 if str(stream_id) in _cfg.ACTIVE_RUNS:
                     return 'stream_run_split_brain'
         except Exception:
+            logger.debug("Silent exception in _classify_interruption_cause", exc_info=True)
             pass
         return 'lost_worker_bookkeeping'
 
@@ -2361,6 +2386,7 @@ def _partial_message_signature(message: dict) -> tuple:
                 default=str,
             )
         except Exception:
+            logger.debug("Silent exception in _partial_message_signature", exc_info=True)
             args_sig = str(tool_call.get('args') or '')
         tool_sig.append((
             str(tool_call.get('name') or ''),
@@ -2483,6 +2509,7 @@ def _run_journal_has_visible_output(session, stream_id: str | None) -> bool:
         from api.run_journal import read_run_events
         journal = read_run_events(session.session_id, stream_id)
     except Exception:
+        logger.debug("Silent exception in _run_journal_has_visible_output", exc_info=True)
         return False
     for event in journal.get('events') or []:
         if not isinstance(event, dict):
@@ -2535,6 +2562,7 @@ def _run_journal_terminal_state(session, stream_id: str | None) -> str | None:
         journal = read_run_events(session.session_id, stream_id)
         terminal = select_authoritative_terminal_event(journal.get('events') or [])
     except Exception:
+        logger.debug("Silent exception in _run_journal_terminal_state", exc_info=True)
         return None
     if (
         not _run_journal_event_owns_run(
@@ -3630,6 +3658,7 @@ def _has_compression_continuation(session) -> bool:
                 if getattr(child, 'parent_session_id', None) == sid:
                     return True
     except Exception:
+        logger.debug("Silent exception in _has_compression_continuation", exc_info=True)
         pass
 
     try:
@@ -4364,6 +4393,7 @@ def _cached_session_lags_disk(cached) -> bool:
     try:
         disk_meta = Session.load_metadata_only(sid)
     except Exception:
+        logger.debug("Silent exception in _cached_session_lags_disk", exc_info=True)
         return False
     if disk_meta is None:
         return False
@@ -4395,6 +4425,7 @@ def _cached_session_lags_disk(cached) -> bool:
             try:
                 disk_full = Session.load(sid)
             except Exception:
+                logger.debug("Silent exception in _cached_session_lags_disk", exc_info=True)
                 disk_full = None
             if disk_full is not None:
                 disk_meta = disk_full
@@ -4462,6 +4493,7 @@ def _persisted_message_count(sid) -> int | None:
                     try:
                         _full = Session.load(sid)
                     except Exception:
+                        logger.debug("Silent exception in _persisted_message_count", exc_info=True)
                         _full = None
                     sig_after = _sidecar_stat_signature(p)
                     if _full is None:
@@ -4473,6 +4505,7 @@ def _persisted_message_count(sid) -> int | None:
                 return None
     except Exception:
         # Fall through to the index-based fallback below.
+        logger.debug("Silent exception in _persisted_message_count", exc_info=True)
         pass
     return _parse_nonnegative_int(_lookup_index_message_count(sid))
 
@@ -4497,6 +4530,7 @@ def _persisted_session_meta_prefix(sid) -> dict | None:
             return None
         return json.loads(prefix)
     except Exception:
+        logger.debug("Silent exception in _persisted_session_meta_prefix", exc_info=True)
         return None
 
 
@@ -4643,6 +4677,7 @@ def _evict_sessions_over_cap(cap: int | None = None) -> int:
         try:
             cap = _cfg.get_sessions_cache_max()
         except Exception:
+            logger.debug("Silent exception in _evict_sessions_over_cap", exc_info=True)
             cap = SESSIONS_MAX
     if not isinstance(cap, int) or cap < 1:
         cap = SESSIONS_MAX if isinstance(SESSIONS_MAX, int) and SESSIONS_MAX >= 1 else 1
@@ -4842,6 +4877,7 @@ def _resolve_session_once(
                         if SESSIONS.get(sid) is s:
                             SESSIONS.pop(sid, None)
             except Exception:
+                logger.debug("Silent exception in _resolve_session_once", exc_info=True)
                 pass  # repair is best-effort
         return s
     raise KeyError(sid)
@@ -4975,6 +5011,7 @@ def find_compression_recovery_session(
     try:
         persisted_ids = _persisted_session_ids_snapshot()
     except Exception:
+        logger.warning("Silent exception in find_compression_recovery_session", exc_info=True)
         persisted_ids = frozenset()
     for sid in persisted_ids:
         if sid in seen_ids:
@@ -4989,6 +5026,7 @@ def find_compression_recovery_session(
         try:
             matches.append(get_session(sid))
         except Exception:
+            logger.warning("Silent exception in find_compression_recovery_session", exc_info=True)
             matches.append(meta)
 
     if not matches:
@@ -5017,6 +5055,7 @@ def _profile_default_model_state(profile=None):
         config_path = Path(get_hermes_home_for_profile(profile)) / "config.yaml"
         config_data = _cfg._load_yaml_config_file(config_path)
     except Exception:
+        logger.debug("Silent exception in _profile_default_model_state", exc_info=True)
         config_data = {}
 
     model_cfg = config_data.get("model", {}) if isinstance(config_data, dict) else {}
@@ -5581,6 +5620,7 @@ def state_db_has_session(sid: str) -> bool:
             cur.execute("SELECT 1 FROM sessions WHERE id = ? LIMIT 1", (str(sid),))
             return cur.fetchone() is not None
     except Exception:
+        logger.debug("Silent exception in state_db_has_session", exc_info=True)
         return False
 
 
@@ -5648,6 +5688,7 @@ def persist_recovered_workspace_binding(
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
+            logger.warning("Silent exception in persist_recovered_workspace_binding", exc_info=True)
             raise WorkspaceBindingPersistenceError(
                 "Failed to persist recovered workspace: unreadable session sidecar"
             ) from exc
@@ -5672,9 +5713,11 @@ def persist_recovered_workspace_binding(
                     os.fsync(handle.fileno())
                 _safe_replace(tmp, path)
             except Exception as exc:
+                logger.warning("Silent exception in persist_recovered_workspace_binding", exc_info=True)
                 try:
                     tmp.unlink(missing_ok=True)
                 except Exception:
+                    logger.warning("Silent exception in persist_recovered_workspace_binding", exc_info=True)
                     pass
                 raise WorkspaceBindingPersistenceError(
                     "Failed to persist recovered workspace"
@@ -5753,6 +5796,7 @@ def _active_state_db_path() -> Path:
         from api.profiles import get_active_hermes_home
         hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
     except Exception:
+        logger.debug("Silent exception in _active_state_db_path", exc_info=True)
         hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
     return hermes_home / 'state.db'
 
@@ -6059,6 +6103,7 @@ def _read_state_db_sidebar_overrides(
                             overrides.setdefault(sid, {})['_state_db_display_title'] = display_title
             return overrides
     except Exception:
+        logger.warning("Silent exception in _read_state_db_sidebar_overrides", exc_info=True)
         missing_source_ids = [
             sid for sid in ids
             if not overrides.get(sid, {}).get('_state_db_source')
@@ -6090,6 +6135,7 @@ def _read_state_db_sidebar_overrides(
                         entry['_state_db_source_label'] = source_meta.get('source_label')
                 return overrides
         except Exception:
+            logger.warning("Silent exception in _read_state_db_sidebar_overrides", exc_info=True)
             return overrides
 
 
@@ -6124,6 +6170,7 @@ def _apply_sidebar_state_db_overrides(sessions: list[dict]) -> None:
             count_session_ids=count_ids,
         )
     except Exception:
+        logger.warning("Silent exception in _apply_sidebar_state_db_overrides", exc_info=True)
         return
     _apply_sidebar_state_db_override_metadata(sessions, metadata)
 
@@ -6239,6 +6286,7 @@ def _enrich_sidebar_lineage_metadata(sessions: list[dict]) -> None:
             {str(s.get('session_id')) for s in candidates if s.get('session_id')},
         )
     except Exception:
+        logger.warning("Silent exception in _enrich_sidebar_lineage_metadata", exc_info=True)
         return
     _apply_sidebar_state_db_override_metadata(sessions, metadata)
     for session in sessions:
@@ -6262,6 +6310,7 @@ def _diag_stage(diag, name: str) -> None:
         try:
             diag.stage(name)
         except Exception:
+            logger.debug("Silent exception in _diag_stage", exc_info=True)
             pass
 
 
@@ -6353,6 +6402,7 @@ def all_sessions(diag=None, *, include_lineage_metadata: bool = True):
                     try:
                         sidecar = Session.load_metadata_only(sid)
                     except Exception:
+                        logger.debug("Silent exception in all_sessions", exc_info=True)
                         sidecar = None
                     if not sidecar:
                         continue
@@ -6551,6 +6601,7 @@ def load_projects(*, _migrate: bool = True) -> list:
     try:
         projects = json.loads(PROJECTS_FILE.read_text(encoding='utf-8'))
     except Exception:
+        logger.warning("Silent exception in load_projects", exc_info=True)
         return []
     if _migrate and not _projects_migrated:
         with _PROJECTS_MIGRATION_LOCK:
@@ -6565,6 +6616,7 @@ def load_projects(*, _migrate: bool = True) -> list:
                 try:
                     return json.loads(PROJECTS_FILE.read_text(encoding='utf-8'))
                 except Exception:
+                    logger.warning("Silent exception in load_projects", exc_info=True)
                     return projects
             if _backfill_project_profiles_if_needed(projects):
                 try:
@@ -6815,6 +6867,7 @@ def _parse_claude_code_timestamp(value):
     try:
         return datetime.datetime.fromisoformat(text.replace('Z', '+00:00')).timestamp()
     except Exception:
+        logger.debug("Silent exception in _parse_claude_code_timestamp", exc_info=True)
         return None
 
 
@@ -6862,6 +6915,7 @@ def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_
                 try:
                     raw = json.loads(line)
                 except Exception:
+                    logger.warning("Silent exception in _parse_claude_code_jsonl", exc_info=True)
                     continue
                 if not isinstance(raw, dict):
                     continue
@@ -6900,6 +6954,7 @@ def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_
                         item['timestamp'] = ts
                     messages.append(item)
     except Exception:
+        logger.warning("Silent exception in _parse_claude_code_jsonl", exc_info=True)
         return [], None, None, None
     return messages, summary_title, first_ts, last_ts
 
@@ -7214,6 +7269,7 @@ def _reload_cli_sessions_after_inflight(
                 )
             )
         except Exception:
+            logger.debug("Silent exception in _reload_cli_sessions_after_inflight", exc_info=True)
             pass
         cached_sessions = _copy_fresh_cli_sessions_cache_entry(cache_key)
         if cached_sessions is not None:
@@ -7272,6 +7328,7 @@ def _path_cache_key(path) -> str | None:
     try:
         return str(Path(path).expanduser().resolve(strict=False))
     except Exception:
+        logger.debug("Silent exception in _path_cache_key", exc_info=True)
         return str(path)
 
 
@@ -7331,6 +7388,7 @@ def _sqlite_content_fingerprint(db_path: Path):
                 f"file:{db_path}?mode=ro", uri=True, timeout=0.05
             )
         except Exception:
+            logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
             return None
         try:
             conn.execute("PRAGMA busy_timeout=50")
@@ -7355,14 +7413,17 @@ def _sqlite_content_fingerprint(db_path: Path):
                     ).fetchone()
                     parts.append(row[0] if row else None)
                 except Exception:
+                    logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
                     parts.append(None)
             return tuple(parts)
         finally:
             try:
                 conn.close()
             except Exception:
+                logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
                 pass
     except Exception:
+        logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
         return None
 
 
@@ -7414,12 +7475,14 @@ def _cli_sessions_streaming_freeze_marker():
     try:
         active = _active_stream_ids()
     except Exception:
+        logger.debug("Silent exception in _cli_sessions_streaming_freeze_marker", exc_info=True)
         return None
     if not active:
         return None
     try:
         return ("streaming", tuple(sorted(str(x) for x in active)))
     except Exception:
+        logger.debug("Silent exception in _cli_sessions_streaming_freeze_marker", exc_info=True)
         return ("streaming",)
 
 
@@ -7436,12 +7499,14 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
         from api.profiles import get_active_hermes_home
         hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
     except Exception:
+        logger.debug("Silent exception in _resolve_cli_sessions_context", exc_info=True)
         hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
 
     try:
         from api.profiles import get_active_profile_name
         cli_profile = get_active_profile_name()
     except Exception:
+        logger.debug("Silent exception in _resolve_cli_sessions_context", exc_info=True)
         cli_profile = None
 
     db_path = hermes_home / 'state.db'
@@ -7478,6 +7543,7 @@ def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], t
             list_profiles_api,
         )
     except Exception:
+        logger.debug("Silent exception in _all_profiles_cli_contexts", exc_info=True)
         return [], ()
 
     contexts: list[tuple[Path, Path, str | None]] = []
@@ -7488,6 +7554,7 @@ def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], t
         try:
             hermes_home = Path(get_hermes_home_for_profile(profile_name)).expanduser().resolve()
         except Exception:
+            logger.debug("Silent exception in _add_context", exc_info=True)
             return
         home_key = _path_cache_key(hermes_home)
         if not home_key or home_key in seen_homes:
@@ -7501,6 +7568,7 @@ def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], t
     try:
         _add_context(get_active_profile_name())
     except Exception:
+        logger.debug("Silent exception in _all_profiles_cli_contexts", exc_info=True)
         pass
     try:
         for row in list_profiles_api():
@@ -7564,6 +7632,7 @@ def _state_projection_sidecar_metadata(sid: str) -> dict:
     try:
         webui_meta = Session.load_metadata_only(sid)
     except Exception:
+        logger.debug("Silent exception in _state_projection_sidecar_metadata", exc_info=True)
         webui_meta = None
     if webui_meta:
         title = getattr(webui_meta, 'title', None)
@@ -7642,6 +7711,7 @@ def _load_cli_sessions_uncached(
                         if _jid and _jname:
                             names[str(_jid)] = _jname
             except Exception:
+                logger.debug("Silent exception in _cron_job_names", exc_info=True)
                 pass  # degrade gracefully — fall back to the generic title
             _cron_job_names_cache[0] = names
         return _cron_job_names_cache[0]
@@ -7688,6 +7758,7 @@ def _load_cli_sessions_uncached(
     try:
         _deleted_webui_tombstone = _load_webui_deleted_session_tombstone()
     except Exception:
+        logger.warning("Silent exception in _load_cli_sessions_uncached", exc_info=True)
         _deleted_webui_tombstone = frozenset()
     for row in read_importable_agent_session_rows(
         db_path,
@@ -8125,6 +8196,7 @@ def _json_loads_if_string(value):
     try:
         return json.loads(text)
     except Exception:
+        logger.debug("Silent exception in _json_loads_if_string", exc_info=True)
         return value
 
 
@@ -8433,6 +8505,7 @@ def get_state_db_session_messages(
                     msg['name'] = msg['tool_name']
                 msgs.append(msg)
     except Exception:
+        logger.warning("Silent exception in get_state_db_session_messages", exc_info=True)
         return _state_db_session_messages_result([], None, with_revision=with_revision)
     return _state_db_session_messages_result(msgs, revision, with_revision=with_revision)
 
@@ -8501,6 +8574,7 @@ def get_state_db_session_message_prefix_summary(
                 "null_timestamp_count": int(row["null_timestamp_count"]),
             }
     except Exception:
+        logger.warning("Silent exception in get_state_db_session_message_prefix_summary", exc_info=True)
         return None
 
 
@@ -8569,6 +8643,7 @@ def get_state_db_session_message_keys_before_timestamp(
                 for row in cur.fetchall()
             ]
     except Exception:
+        logger.warning("Silent exception in get_state_db_session_message_keys_before_timestamp", exc_info=True)
         return None
 
 
@@ -8612,6 +8687,7 @@ def get_state_db_session_summary(sid, *, profile=None) -> dict:
                 "last_message_at": 0.0,
             }
     except Exception:
+        logger.warning("Silent exception in get_state_db_session_summary", exc_info=True)
         return {"message_count": 0, "last_message_at": 0.0}
 
 
@@ -9723,6 +9799,7 @@ def _compression_anchor_timestamp_as_float(value) -> float | None:
     try:
         return datetime.datetime.fromisoformat(str(value).strip().replace("Z", "+00:00")).timestamp()
     except Exception:
+        logger.debug("Silent exception in _compression_anchor_timestamp_as_float", exc_info=True)
         return None
 
 
@@ -10647,6 +10724,7 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
         from api.profiles import get_active_hermes_home
         hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
     except Exception:
+        logger.debug("Silent exception in count_conversation_rounds", exc_info=True)
         hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
     db_path = hermes_home / 'state.db'
     if not db_path.exists():
@@ -10662,6 +10740,7 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
             )
             rows = cur.fetchall()
     except Exception:
+        logger.debug("Silent exception in count_conversation_rounds", exc_info=True)
         return 0
 
     rounds = 0
@@ -10685,6 +10764,7 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
                 if ts_val <= since:
                     continue
             except Exception:
+                logger.debug("Silent exception in count_conversation_rounds", exc_info=True)
                 pass
 
         if role == 'user':
@@ -11088,6 +11168,7 @@ def _delete_cli_session_locked(sid, hermes_home) -> bool:
                     )
                     return cursor.fetchone() is not None
                 except Exception:
+                    logger.debug("Silent exception in _is_session_alive", exc_info=True)
                     return True
 
             def _clean_artifacts_for_id(sessions_dir, removed_id):
@@ -11245,6 +11326,7 @@ def _process_stale_cleanup_manifests(hermes_home) -> bool:
             # Liveness query failed (missing DB, lock, timeout, I/O error).
             # Fail closed: preserve the manifest file on disk and skip it this
             # round. A later call can retry when DB state is queryable.
+            logger.debug("Silent exception in _process_stale_cleanup_manifests", exc_info=True)
             cleanup_complete = False
             continue
 
