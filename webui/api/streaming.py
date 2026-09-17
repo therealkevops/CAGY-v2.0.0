@@ -8759,16 +8759,26 @@ class StreamTurnContext:
     # Agent and session state
     s: Optional[Any] = None
     agent: Optional[Any] = None
+    ai_agent_cls: Optional[Any] = None
+    agent_kwargs: Dict[str, Any] = field(default_factory=dict)
+    agent_sig: Optional[str] = None
     rt: Dict[str, Any] = field(default_factory=dict)
     success_writeback_committed: bool = False
     captured_terminal_error: List[Optional[str]] = field(default_factory=lambda: [None])
 
     # Environment snapshots and restoration
+    env_mutated: bool = False
     old_cwd: Optional[str] = None
     old_exec_ask: Optional[Any] = None
+    old_agy_exec_ask: Optional[Any] = None
     old_session_key: Optional[str] = None
+    old_agy_session_key: Optional[str] = None
     old_session_id: Optional[str] = None
+    old_agy_session_id: Optional[str] = None
     old_session_platform: Optional[str] = None
+    old_agy_session_platform: Optional[str] = None
+    old_session_chat_id: Optional[str] = None
+    old_agy_session_chat_id: Optional[str] = None
     old_hermes_home: Optional[str] = None
     old_profile_env: Dict[str, Any] = field(default_factory=dict)
     result: Optional[Any] = None
@@ -8794,6 +8804,34 @@ class StreamTurnContext:
     checkpoint_activity: List[int] = field(default_factory=lambda: [0])
     agent_params: Set[str] = field(default_factory=set)
     token_sent: bool = False
+
+    # Context preparation state (Sprint D3)
+    profile_home: Optional[str] = None
+    resolved_profile_name: Optional[str] = None
+    cfg: Optional[Dict[str, Any]] = None
+    resolved_model: Optional[str] = None
+    resolved_provider: Optional[str] = None
+    resolved_base_url: Optional[str] = None
+    resolved_api_key: Optional[str] = None
+    session_requested_provider: Optional[str] = None
+    active_turn_identity: Optional[Any] = None
+    persistent_state_before: Optional[Any] = None
+    state_db_path: Optional[Any] = None
+    user_message: Optional[Any] = None
+    workspace_system_msg: Optional[str] = None
+    run_conversation_kwargs: Dict[str, Any] = field(default_factory=dict)
+    previous_messages: List[Any] = field(default_factory=list)
+    previous_owner_context_messages: List[Any] = field(default_factory=list)
+    previous_context_messages: List[Any] = field(default_factory=list)
+    conversation_history_revision: Optional[int] = None
+    pre_compression_count: int = 0
+    turn_started_at: float = 0.0
+    approval_registered: bool = False
+    unreg_notify: Optional[Callable] = None
+    cleanup_gateway_pending_mirror: Optional[Callable] = None
+    clarify_registered: bool = False
+    unreg_clarify_notify: Optional[Callable] = None
+    self_healed: bool = False
 
     def is_cancelled(self) -> bool:
         """Check if cancel flag is set for this turn."""
@@ -9492,6 +9530,1051 @@ class StreamingCallbacks:
             agent_kwargs['tool_complete_callback'] = self.on_tool_complete
 
 
+def _parse_fallback_entries(raw: Any) -> List[Dict[str, Any]]:
+    """Parse fallback model entries from configuration data."""
+    if isinstance(raw, dict):
+        items = [raw]
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        return []
+    entries = []
+    for entry in items:
+        if not isinstance(entry, dict):
+            continue
+        provider = str(entry.get('provider') or '').strip()
+        model = str(entry.get('model') or '').strip()
+        if not provider or not model:
+            continue
+        entries.append({
+            'model': model,
+            'provider': provider,
+            'base_url': entry.get('base_url'),
+            'api_key': entry.get('api_key'),
+            'key_env': entry.get('key_env'),
+        })
+    return entries
+
+
+def _extract_max_iterations_cfg(cfg: Any) -> Optional[int]:
+    """Read agent.max_turns or max_turns from config."""
+    try:
+        raw = None
+        agent_cfg = cfg.get('agent', {}) if isinstance(cfg, dict) else {}
+        if isinstance(agent_cfg, dict):
+            raw = agent_cfg.get('max_turns')
+        if raw is None and isinstance(cfg, dict):
+            raw = cfg.get('max_turns')
+        if raw is not None:
+            parsed = int(raw)
+            if parsed > 0:
+                return parsed
+    except Exception:
+        logger.warning("Silent exception in _extract_max_iterations_cfg", exc_info=True)
+    return None
+
+
+def _extract_max_tokens_cfg(cfg: Any) -> Optional[int]:
+    """Read max_tokens from config."""
+    try:
+        raw = cfg.get('max_tokens') if isinstance(cfg, dict) else None
+        if raw is None and isinstance(cfg, dict):
+            agent_cfg = cfg.get('agent', {})
+            if isinstance(agent_cfg, dict):
+                raw = agent_cfg.get('max_tokens')
+        if raw is not None:
+            parsed = int(raw)
+            if parsed > 0:
+                return parsed
+    except Exception:
+        logger.warning("Silent exception in _extract_max_tokens_cfg", exc_info=True)
+    return None
+
+
+def _extract_reasoning_config(
+    cfg: Any,
+    resolved_model: str,
+    resolved_provider: Optional[str],
+    resolved_base_url: Optional[str],
+) -> Optional[Any]:
+    """Read agent.reasoning_effort from config and parse reasoning config."""
+    try:
+        effort_cfg = cfg.get('agent', {}) if isinstance(cfg, dict) else {}
+        effort_raw = effort_cfg.get('reasoning_effort') if isinstance(effort_cfg, dict) else None
+        effort = coerce_reasoning_effort_for_model(
+            effort_raw,
+            resolved_model,
+            provider_id=resolved_provider,
+            base_url=resolved_base_url,
+        )
+        return parse_reasoning_effort(effort)
+    except Exception:
+        logger.warning("Silent exception in _extract_reasoning_config", exc_info=True)
+    return None
+
+
+def _resolve_personality_prompt(cfg: Any, s: Any) -> Optional[str]:
+    """Resolve personality prompt from config.yaml agent.personalities."""
+    pname = getattr(s, 'personality', None)
+    if not pname:
+        return None
+    agent_cfg = cfg.get('agent', {}) if isinstance(cfg, dict) else {}
+    personalities = agent_cfg.get('personalities', {}) if isinstance(agent_cfg, dict) else {}
+    if isinstance(personalities, dict) and pname in personalities:
+        pval = personalities[pname]
+        if isinstance(pval, dict):
+            parts = [pval.get('system_prompt', '') or pval.get('prompt', '')]
+            if pval.get('tone'):
+                parts.append(f'Tone: {pval["tone"]}')
+            if pval.get('style'):
+                parts.append(f'Style: {pval["style"]}')
+            return '\n'.join(p for p in parts if p)
+        return str(pval)
+    return None
+
+
+def _start_periodic_checkpoint(ctx: StreamTurnContext) -> None:
+    """Start periodic background checkpoint thread for a streaming turn."""
+    s = ctx.s
+    agent_lock = ctx.agent_lock
+    checkpoint_stop = ctx.checkpoint_stop or threading.Event()
+    ctx.checkpoint_stop = checkpoint_stop
+    checkpoint_activity = ctx.checkpoint_activity
+
+    def _periodic_checkpoint():
+        last_saved_activity = 0
+        last_fingerprint = None
+        last_write_at = 0.0
+        while not checkpoint_stop.wait(15):
+            try:
+                cur = checkpoint_activity[0]
+                if cur > last_saved_activity:
+                    with agent_lock:
+                        fingerprint = _streaming_checkpoint_fingerprint(s)
+                        now = time.time()
+                        stale = (now - last_write_at) >= _CHECKPOINT_IDLE_REFRESH_SECONDS
+                        if (
+                            fingerprint is None
+                            or fingerprint != last_fingerprint
+                            or stale
+                        ):
+                            _save_streaming_checkpoint(s)
+                            last_fingerprint = fingerprint
+                            last_write_at = now
+                    last_saved_activity = cur
+            except Exception as e:
+                logger.debug("Periodic checkpoint save failed: %s", e)
+
+    with agent_lock:
+        s.save(touch_updated_at=True, skip_index=False)
+
+    ckpt_thread = threading.Thread(
+        target=_periodic_checkpoint,
+        daemon=True,
+        name=f"ckpt-{ctx.session_id[:8]}",
+    )
+    ckpt_thread.start()
+    ctx.ckpt_thread = ckpt_thread
+
+
+def _stop_periodic_checkpoint(ctx: StreamTurnContext, timeout: float = 15.0) -> None:
+    """Stop and join the periodic checkpoint thread if running."""
+    if ctx.checkpoint_stop is not None:
+        ctx.checkpoint_stop.set()
+    if ctx.ckpt_thread is not None:
+        ctx.ckpt_thread.join(timeout=timeout)
+
+
+def _make_agent_status_callback(ctx: StreamTurnContext) -> Callable[[str, str], None]:
+    """Create agent status callback capturing terminal provider errors and forwarding events."""
+    def _agent_status_callback(kind: str, message: str) -> None:
+        _message = str(message or '').strip()
+        _kind = str(kind or '').strip().lower()
+        if not _message:
+            return
+        _lower = _message.lower()
+        if (
+            ctx.captured_terminal_error[0] is None
+            and 'non-retryable error' in _lower
+            and 'http' in _lower
+        ):
+            ctx.captured_terminal_error[0] = _message
+        if _is_agent_compression_start_status(_kind, _message):
+            if ctx.put:
+                ctx.put('compressing', {
+                    'session_id': ctx.session_id,
+                    'message': 'Compressing context',
+                })
+            return
+        _is_fallback_notice = _is_fallback_lifecycle_message(_kind, _message)
+        if _is_fallback_notice and ctx.put:
+            ctx.put('warning', {'type': 'fallback', 'message': _message})
+    return _agent_status_callback
+
+
+def _clarify_callback_impl(
+    question: Any,
+    choices: Any,
+    sid: str,
+    cancel_evt: Optional[threading.Event],
+    put_event: Optional[Callable[[str, Any], None]],
+) -> str:
+    """Bridge Hermes clarify prompts to the WebUI."""
+    timeout = _clarify_timeout_seconds(_clarify_session_config(sid))
+    choices_list = [str(choice) for choice in (choices or [])]
+    data = {
+        'question': str(question or ''),
+        'choices_offered': choices_list,
+        'session_id': sid,
+        'kind': 'clarify',
+        'requested_at': time.time(),
+        'timeout_seconds': timeout,
+    }
+    try:
+        from api.clarify import submit_pending as _submit_clarify_pending, clear_pending as _clear_clarify_pending
+    except ImportError:
+        return (
+            "The user did not provide a response within the time limit. "
+            "Use your best judgement to make the choice and proceed."
+        )
+
+    entry = _submit_clarify_pending(sid, data)
+    response, expired = _await_clarify_response(entry, timeout, cancel_evt)
+    if expired:
+        _clear_clarify_pending(sid)
+    return (
+        response
+        or "The user did not provide a response within the time limit. "
+           "Use your best judgement to make the choice and proceed."
+    )
+
+
+def _context_and_revision_from_state_snapshot_helper(
+    ctx: StreamTurnContext,
+    state_snapshot: Any,
+) -> Tuple[List[Any], Optional[int]]:
+    """Reconcile context messages and history revision from a state.db snapshot."""
+    reconciled_snapshot = reconciled_state_db_messages_for_session(
+        ctx.s,
+        prefer_context=True,
+        state_messages=state_snapshot,
+        with_revision=True,
+    )
+    if not isinstance(reconciled_snapshot, StateDBSessionMessagesSnapshot):
+        raise TypeError(
+            "state.db context reconciliation did not return a revision snapshot"
+        )
+    context_messages = _new_turn_context_from_messages(
+        reconciled_snapshot.messages,
+        ctx.msg_text,
+    )
+    return (
+        _deduplicate_context_messages(context_messages),
+        reconciled_snapshot.revision,
+    )
+
+
+def _refresh_context_and_revision_from_state_db_helper(
+    ctx: StreamTurnContext,
+) -> Tuple[List[Any], Optional[int]]:
+    """Fetch fresh state.db snapshot and return reconciled context and revision."""
+    fresh_state_snapshot = get_state_db_session_messages(
+        ctx.session_id,
+        profile=getattr(ctx.s, 'profile', None),
+        with_revision=True,
+    )
+    return _context_and_revision_from_state_snapshot_helper(ctx, fresh_state_snapshot)
+
+
+def _phase_teardown_env_and_callbacks(ctx: StreamTurnContext) -> None:
+    """Unregister gateway approvals/clarify callbacks and restore process environment under _ENV_LOCK."""
+    if ctx.approval_registered and ctx.unreg_notify is not None:
+        try:
+            ctx.unreg_notify(ctx.session_id)
+        except Exception:
+            logger.debug("Failed to unregister approval callback")
+    if ctx.cleanup_gateway_pending_mirror is not None:
+        try:
+            ctx.cleanup_gateway_pending_mirror()
+        except Exception:
+            logger.debug("Failed to reconcile gateway approval mirror")
+    if ctx.clarify_registered and ctx.unreg_clarify_notify is not None:
+        try:
+            ctx.unreg_clarify_notify(ctx.session_id)
+        except Exception:
+            logger.debug("Failed to unregister clarify callback")
+    if ctx.env_mutated:
+        with _ENV_LOCK:
+            for _key, _old_value in ctx.old_profile_env.items():
+                if _old_value is None:
+                    os.environ.pop(_key, None)
+                else:
+                    os.environ[_key] = _old_value
+            if ctx.old_cwd is None:
+                os.environ.pop('TERMINAL_CWD', None)
+            else:
+                os.environ['TERMINAL_CWD'] = ctx.old_cwd
+            if ctx.old_exec_ask is None:
+                os.environ.pop('HERMES_EXEC_ASK', None)
+            else:
+                os.environ['HERMES_EXEC_ASK'] = ctx.old_exec_ask
+            if ctx.old_agy_exec_ask is None:
+                os.environ.pop('AGY_EXEC_ASK', None)
+            else:
+                os.environ['AGY_EXEC_ASK'] = ctx.old_agy_exec_ask
+            if ctx.old_session_key is None:
+                os.environ.pop('HERMES_SESSION_KEY', None)
+            else:
+                os.environ['HERMES_SESSION_KEY'] = ctx.old_session_key
+            if ctx.old_agy_session_key is None:
+                os.environ.pop('AGY_SESSION_KEY', None)
+            else:
+                os.environ['AGY_SESSION_KEY'] = ctx.old_agy_session_key
+            if ctx.old_session_id is None:
+                os.environ.pop('HERMES_SESSION_ID', None)
+            else:
+                os.environ['HERMES_SESSION_ID'] = ctx.old_session_id
+            if ctx.old_agy_session_id is None:
+                os.environ.pop('AGY_SESSION_ID', None)
+            else:
+                os.environ['AGY_SESSION_ID'] = ctx.old_agy_session_id
+            if ctx.old_session_platform is None:
+                os.environ.pop('HERMES_SESSION_PLATFORM', None)
+            else:
+                os.environ['HERMES_SESSION_PLATFORM'] = ctx.old_session_platform
+            if ctx.old_agy_session_platform is None:
+                os.environ.pop('AGY_SESSION_PLATFORM', None)
+            else:
+                os.environ['AGY_SESSION_PLATFORM'] = ctx.old_agy_session_platform
+            if ctx.old_session_chat_id is None:
+                os.environ.pop('HERMES_SESSION_CHAT_ID', None)
+            else:
+                os.environ['HERMES_SESSION_CHAT_ID'] = ctx.old_session_chat_id
+            if ctx.old_agy_session_chat_id is None:
+                os.environ.pop('AGY_SESSION_CHAT_ID', None)
+            else:
+                os.environ['AGY_SESSION_CHAT_ID'] = ctx.old_agy_session_chat_id
+            ctx.env_mutated = False
+
+
+def _phase_prepare_context(ctx: StreamTurnContext) -> bool:
+    """Prepare session, profile runtime, MCP tools, AIAgent instance, and kwargs before execution.
+
+    Returns True if preparation succeeded and agent is ready to run, or False if turn was cancelled.
+    """
+    session_id = ctx.session_id
+    stream_id = ctx.stream_id
+    model = ctx.model
+    model_provider = ctx.model_provider
+    workspace = ctx.workspace
+    msg_text = ctx.msg_text
+    attachments = ctx.attachments
+    ephemeral = ctx.ephemeral
+    moa_config = ctx.moa_config
+    cancel_event = ctx.cancel_event
+    put = ctx.put
+
+    ctx.turn_session_identity_tokens = _set_turn_session_identity(session_id)
+    s = ctx.s = get_session(session_id)
+    ctx.turn_pending_source = getattr(s, 'pending_user_source', None) or 'webui'
+    ctx.active_turn_identity = _active_turn_authority(s, stream_id, msg_text)
+    update_active_run(stream_id, phase="running", session_id=session_id)
+    s.workspace = str(Path(workspace).expanduser().resolve())
+
+    _last_persisted_model = None
+    _last_persisted_provider = None
+    _turn_owns_persisted_model = False
+    provider_context = (
+        str(model_provider).strip().lower()
+        if model_provider is not None
+        else getattr(s, "model_provider", None)
+    )
+    provider_context = str(provider_context).strip().lower() if provider_context else None
+    _agent_lock = ctx.agent_lock = _get_session_agent_lock(session_id)
+
+    with _agent_lock:
+        _last_persisted_model = getattr(s, "model", None)
+        _last_persisted_provider = getattr(s, "model_provider", None)
+        if _last_persisted_provider is not None:
+            _last_persisted_provider = str(_last_persisted_provider).strip().lower() or None
+        _persisted_model_is_empty = _last_persisted_model in (None, "")
+        _provider_matches = _last_persisted_provider in (None, provider_context)
+        if _persisted_model_is_empty or (
+            _last_persisted_model == model and _provider_matches
+        ):
+            s.model = model
+            s.model_provider = provider_context
+            _last_persisted_model = model
+            _last_persisted_provider = provider_context
+            _turn_owns_persisted_model = True
+
+    if ctx.is_cancelled():
+        with _agent_lock:
+            _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.', stream_id=stream_id)
+        if put:
+            put('cancel', _cancel_event_payload('Cancelled before start'))
+        return False
+
+    try:
+        from api.profiles import (
+            filter_runtime_env_for_gateway_parity,
+            patch_skill_home_modules,
+            restore_skill_home_modules,
+            snapshot_skill_home_modules,
+            get_hermes_home_for_profile,
+            get_profile_runtime_env,
+            _skill_modules_support_profile_home,
+            _SKILL_HOME_MODULE_PATCH_LOCK,
+        )
+        _profile_home_path = get_hermes_home_for_profile(getattr(s, 'profile', None))
+        _profile_home = str(_profile_home_path)
+        ctx.streaming_cron_profile_home_token = _STREAMING_CRON_PROFILE_HOME.set(_profile_home)
+        _profile_runtime_env = get_profile_runtime_env(_profile_home_path)
+        _safe_profile_runtime_env = filter_runtime_env_for_gateway_parity(_profile_runtime_env)
+    except ImportError:
+        _profile_home = os.environ.get('HERMES_HOME', '')
+        _profile_runtime_env = {}
+        _safe_profile_runtime_env = {}
+        patch_skill_home_modules = None
+        snapshot_skill_home_modules = None
+        restore_skill_home_modules = None
+        _skill_modules_support_profile_home = None
+        _SKILL_HOME_MODULE_PATCH_LOCK = None
+    ctx.profile_home = _profile_home
+
+    model, provider_context, _repaired = _apply_profile_home_context_to_streaming_model(
+        model=model,
+        provider_context=provider_context,
+        profile_home=_profile_home,
+        has_profile=bool(getattr(s, "profile", None)),
+    )
+    provider_context = str(provider_context).strip().lower() if provider_context else None
+    with _agent_lock:
+        _current_provider = getattr(s, "model_provider", None)
+        if _current_provider is not None:
+            _current_provider = str(_current_provider).strip().lower() or None
+        if (
+            _turn_owns_persisted_model
+            and getattr(s, "model", None) == _last_persisted_model
+            and _current_provider == _last_persisted_provider
+        ):
+            s.model_provider = provider_context
+            if _repaired and model != (s.model or ""):
+                s.model = model
+
+    _resolved_profile_name = getattr(s, 'profile', None)
+    if not _resolved_profile_name:
+        try:
+            from api.profiles import get_active_profile_name
+            _resolved_profile_name = get_active_profile_name()
+        except Exception:
+            logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+            _resolved_profile_name = None
+    ctx.resolved_profile_name = _resolved_profile_name
+
+    _thread_env = _build_agent_thread_env(
+        _profile_runtime_env,
+        str(s.workspace),
+        session_id,
+        _profile_home,
+    )
+    ctx.streaming_hermes_home_override_ctx = _set_streaming_hermes_home_override(_profile_home)
+    _set_thread_env(**_thread_env)
+
+    try:
+        from api.background_process import register_process_session
+        register_process_session(session_id, session_id)
+    except Exception:
+        logger.debug("register_process_session failed", exc_info=True)
+
+    ensure_agent_runtime_current()
+    _prewarm_skill_tool_modules()
+    _install_streaming_cronjob_profile_wrapper()
+
+    _streaming_override_installed = bool(ctx.streaming_hermes_home_override_ctx[2])
+    _streaming_modules_are_dynamic = False
+    if patch_skill_home_modules is not None and snapshot_skill_home_modules is not None:
+        if _streaming_override_installed and _skill_modules_support_profile_home is not None:
+            try:
+                _streaming_modules_are_dynamic = bool(
+                    _skill_modules_support_profile_home(_profile_home_path)
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to evaluate streaming skill-module home capability for profile %r",
+                    _profile_home,
+                    exc_info=True,
+                )
+                _streaming_modules_are_dynamic = False
+
+        if not (_streaming_override_installed and _streaming_modules_are_dynamic):
+            ctx.restore_streaming_skill_home_modules = True
+            _SKILL_HOME_MODULE_PATCH_LOCK.acquire()
+            ctx.acquired_streaming_skill_home_patch_lock = True
+
+    with _ENV_LOCK:
+        if ctx.restore_streaming_skill_home_modules:
+            ctx.streaming_skill_home_snapshot = snapshot_skill_home_modules()
+            patch_skill_home_modules(Path(_profile_home))
+        ctx.old_profile_env = {key: os.environ.get(key) for key in _safe_profile_runtime_env}
+        ctx.old_cwd = os.environ.get('TERMINAL_CWD')
+        ctx.old_exec_ask = os.environ.get('HERMES_EXEC_ASK')
+        ctx.old_agy_exec_ask = os.environ.get('AGY_EXEC_ASK')
+        ctx.old_session_key = os.environ.get('HERMES_SESSION_KEY')
+        ctx.old_agy_session_key = os.environ.get('AGY_SESSION_KEY')
+        ctx.old_session_id = os.environ.get('HERMES_SESSION_ID')
+        ctx.old_agy_session_id = os.environ.get('AGY_SESSION_ID')
+        ctx.old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')
+        ctx.old_agy_session_platform = os.environ.get('AGY_SESSION_PLATFORM')
+        ctx.old_session_chat_id = os.environ.get('HERMES_SESSION_CHAT_ID')
+        ctx.old_agy_session_chat_id = os.environ.get('AGY_SESSION_CHAT_ID')
+        ctx.old_hermes_home = os.environ.get('HERMES_HOME')
+        os.environ.update(_safe_profile_runtime_env)
+        os.environ['TERMINAL_CWD'] = str(s.workspace)
+        os.environ['AGY_EXEC_ASK'] = os.environ['HERMES_EXEC_ASK'] = '1'
+        os.environ['AGY_SESSION_KEY'] = os.environ['HERMES_SESSION_KEY'] = session_id
+        os.environ['AGY_SESSION_ID'] = os.environ['HERMES_SESSION_ID'] = session_id
+        os.environ['AGY_SESSION_PLATFORM'] = os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
+        os.environ['AGY_SESSION_CHAT_ID'] = os.environ['HERMES_SESSION_CHAT_ID'] = str(session_id)
+        if _profile_home:
+            os.environ['HERMES_HOME'] = _profile_home
+        ctx.env_mutated = True
+
+    try:
+        from tools.mcp_tool import discover_mcp_tools
+        discover_mcp_tools()
+    except Exception:
+        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+
+    ctx.approval_registered = False
+    ctx.unreg_notify = None
+    ctx.cleanup_gateway_pending_mirror = None
+    try:
+        try:
+            from api.route_approvals import (
+                settle_gateway_pending_local_notification as _settle_pending_for_polling,
+                retire_gateway_pending_mirror as _retire_gateway_pending_mirror,
+            )
+            def _cleanup_gateway_pending_mirror():
+                _retire_gateway_pending_mirror(session_id)
+            ctx.cleanup_gateway_pending_mirror = _cleanup_gateway_pending_mirror
+        except ImportError:
+            _settle_pending_for_polling = None
+        from tools.approval import (
+            register_gateway_notify as _reg_notify,
+            unregister_gateway_notify as _unreg_notify,
+        )
+        def _approval_notify_cb(approval_data):
+            if _settle_pending_for_polling is not None:
+                try:
+                    auto_resolved, head, total = _settle_pending_for_polling(
+                        session_id,
+                        approval_data,
+                    )
+                    if auto_resolved and head is None:
+                        return
+                    approval_data = {**(head or approval_data), "pending_count": total}
+                except Exception:
+                    logger.warning("Failed to mirror approval into WebUI polling state", exc_info=True)
+            if put:
+                put('approval', approval_data)
+        _reg_notify(session_id, _approval_notify_cb)
+        ctx.unreg_notify = _unreg_notify
+        ctx.approval_registered = True
+    except ImportError:
+        logger.debug("Approval module not available, falling back to polling")
+
+    ctx.clarify_registered = False
+    ctx.unreg_clarify_notify = None
+    try:
+        from api.clarify import (
+            register_gateway_notify as _reg_clarify_notify,
+            unregister_gateway_notify as _unreg_clarify_notify,
+        )
+        def _clarify_notify_cb(clarify_data):
+            if put:
+                put('clarify', clarify_data)
+        _reg_clarify_notify(session_id, _clarify_notify_cb)
+        ctx.unreg_clarify_notify = _unreg_clarify_notify
+        ctx.clarify_registered = True
+    except ImportError:
+        logger.debug("Clarify module not available, falling back to polling")
+
+    ctx.self_healed = False
+    callbacks = ctx.callbacks or StreamingCallbacks(ctx)
+    ctx.callbacks = callbacks
+
+    _AIAgent = _get_ai_agent()
+    if _AIAgent is None:
+        raise ImportError(_aiagent_import_error_detail())
+    ctx.ai_agent_cls = _AIAgent
+
+    _state_db_path = (Path(_profile_home) / "state.db") if _profile_home else None
+    ctx.state_db_path = _state_db_path
+    _session_db = _build_session_db_for_stream(_state_db_path)
+
+    from api import profiles as profiles_api
+    from api.models import model_explicit_pick_signature as _mk_sig
+    _picked_sig = getattr(s, "model_explicit_pick_signature", None)
+    _sig_model = getattr(s, "model", None) or model
+    _sig_provider = getattr(s, "model_provider", None) or provider_context
+    _current_sig = _mk_sig(_sig_model, _sig_provider)
+    _explicitly_picked = bool(_picked_sig) and _picked_sig == _current_sig
+
+    with profiles_api.profile_scope_for_detached_worker(
+        _resolved_profile_name, "model + credential resolution", logger_override=logger
+    ):
+        warm_models_catalog_provenance_if_cold()
+        resolved_model, resolved_provider, resolved_base_url = resolve_model_provider(
+            model_with_provider_context(model, provider_context),
+            explicitly_picked=_explicitly_picked,
+        )
+        configured_base_url = resolved_base_url
+        resolved_api_key = None
+        try:
+            from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
+            from hermes_cli.runtime_provider import resolve_runtime_provider
+            ctx.rt = resolve_runtime_provider_with_anthropic_env_lock(
+                resolve_runtime_provider,
+                requested=resolved_provider,
+                target_model=resolved_model,
+            )
+            resolved_api_key = ctx.rt.get("api_key")
+            if not resolved_provider:
+                resolved_provider = ctx.rt.get("provider")
+            resolved_base_url = _runtime_preferred_base_url(
+                ctx.rt, resolved_provider, configured_base_url
+            )
+        except (ImportError, ModuleNotFoundError):
+            pass
+        except Exception as _e:
+            logger.debug("resolve_runtime_provider failed: %s", _e)
+
+        _session_requested_provider = resolved_provider
+        resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
+            resolved_provider, resolved_api_key, resolved_base_url,
+            profile_name=_resolved_profile_name,
+        )
+
+    ctx.resolved_model = resolved_model
+    ctx.resolved_provider = resolved_provider
+    ctx.resolved_base_url = resolved_base_url
+    ctx.resolved_api_key = resolved_api_key
+    ctx.session_requested_provider = _session_requested_provider
+
+    from api.config import get_config_for_profile_home as _get_config_for_home
+    try:
+        _cfg = _get_config_for_home(_profile_home)
+    except Exception:
+        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+        from api.config import get_config as _get_config
+        _cfg = _get_config()
+    ctx.cfg = _cfg
+
+    _prefill_context = _load_webui_prefill_context(_cfg)
+    _prefill_messages = _prefill_messages_with_webui_context(_prefill_context, _cfg)
+    _prefill_messages = _normalize_prefill_messages_before_user_turn(_prefill_messages)
+    _main_request_overrides = _main_model_request_overrides(
+        _cfg,
+        effective_model=resolved_model,
+        effective_provider=resolved_provider,
+    )
+    if put:
+        put('context_status', {
+            'session_id': session_id,
+            'prefill': _public_prefill_context_status(_prefill_context),
+        })
+
+    from api.config import _resolve_cli_toolsets
+    _toolsets = _resolve_cli_toolsets(_cfg)
+
+    try:
+        from api.models import Session, SESSION_DIR
+        _session_path = SESSION_DIR / f"{session_id}.json"
+        if _session_path.exists():
+            _session_meta = Session.load_metadata_only(session_id)
+            _override = getattr(_session_meta, 'enabled_toolsets', None) if _session_meta else None
+            if _override:
+                _toolsets = _override
+    except Exception as _ts_err:
+        logging.warning("[webui] failed to read per-session toolsets for %s: %s", session_id, _ts_err)
+
+    _fallback_chain = []
+    _fallback_seen = set()
+    for _fallback_key in ('fallback_providers', 'fallback_model'):
+        for _fb_entry in _parse_fallback_entries(_cfg.get(_fallback_key)):
+            _identity = (
+                str(_fb_entry.get('provider') or '').strip().lower(),
+                str(_fb_entry.get('model') or '').strip().lower(),
+                str(_fb_entry.get('base_url') or '').strip().rstrip('/').lower(),
+            )
+            if _identity in _fallback_seen:
+                continue
+            _fallback_seen.add(_identity)
+            _fallback_chain.append(_fb_entry)
+    _fallback_resolved = _fallback_chain or None
+
+    import inspect as _inspect
+    _agent_params = ctx.agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
+
+    _max_iterations_cfg = _extract_max_iterations_cfg(_cfg)
+    _max_tokens_cfg = _extract_max_tokens_cfg(_cfg)
+    _reasoning_config = _extract_reasoning_config(_cfg, resolved_model, resolved_provider, resolved_base_url)
+
+    _agent_kwargs = dict(
+        model=resolved_model,
+        provider=resolved_provider,
+        base_url=resolved_base_url,
+        api_key=resolved_api_key,
+        platform='webui',
+        quiet_mode=True,
+        enabled_toolsets=_toolsets,
+        fallback_model=_fallback_resolved,
+        session_id=session_id,
+        session_db=_session_db,
+        prefill_messages=_prefill_messages,
+        stream_delta_callback=callbacks.on_token,
+        reasoning_callback=callbacks.on_reasoning,
+        tool_progress_callback=callbacks.on_tool,
+        clarify_callback=(
+            lambda question, choices: _clarify_callback_impl(
+                question, choices, session_id, cancel_event, put
+            )
+        ),
+    )
+    if 'reasoning_config' in _agent_params and _reasoning_config is not None:
+        _agent_kwargs['reasoning_config'] = _reasoning_config
+    if 'prefill_messages' not in _agent_params:
+        _agent_kwargs.pop('prefill_messages', None)
+    if 'interim_assistant_callback' in _agent_params:
+        _agent_kwargs['interim_assistant_callback'] = callbacks.on_interim_assistant
+    if 'tool_start_callback' in _agent_params:
+        _agent_kwargs['tool_start_callback'] = callbacks.on_tool_start
+    if 'tool_complete_callback' in _agent_params:
+        _agent_kwargs['tool_complete_callback'] = callbacks.on_tool_complete
+    if 'status_callback' in _agent_params:
+        _agent_kwargs['status_callback'] = _make_agent_status_callback(ctx)
+    if 'max_iterations' in _agent_params and _max_iterations_cfg is not None:
+        _agent_kwargs['max_iterations'] = _max_iterations_cfg
+    if 'max_tokens' in _agent_params and _max_tokens_cfg is not None:
+        _agent_kwargs['max_tokens'] = _max_tokens_cfg
+    if 'request_overrides' in _agent_params and _main_request_overrides:
+        _agent_kwargs['request_overrides'] = _main_request_overrides
+    if 'api_mode' in _agent_params:
+        _agent_kwargs['api_mode'] = ctx.rt.get('api_mode')
+    if 'acp_command' in _agent_params:
+        _agent_kwargs['acp_command'] = ctx.rt.get('command')
+    if 'acp_args' in _agent_params:
+        _agent_kwargs['acp_args'] = ctx.rt.get('args')
+    if 'credential_pool' in _agent_params:
+        _agent_kwargs['credential_pool'] = ctx.rt.get('credential_pool')
+    if 'gateway_session_key' in _agent_params:
+        _agent_kwargs['gateway_session_key'] = session_id
+
+    ctx.agent_kwargs = _agent_kwargs
+
+    if ephemeral:
+        agent = _AIAgent(**_agent_kwargs)
+        logger.debug('[webui] Created ephemeral agent for session %s', session_id)
+    else:
+        import hashlib as _hashlib
+        import json as _json
+        from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+        _credential_pool = ctx.rt.get('credential_pool')
+        _sig_blob = _json.dumps([
+            resolved_model or '',
+            _agent_cache_api_key_sig(resolved_api_key, _credential_pool),
+            resolved_base_url or '',
+            resolved_provider or '',
+            ctx.rt.get('api_mode') or '',
+            ctx.rt.get('command') or '',
+            ctx.rt.get('args') or [],
+            bool(_credential_pool),
+            _max_iterations_cfg or '',
+            _max_tokens_cfg or '',
+            _fallback_resolved or {},
+            sorted(_toolsets) if _toolsets else [],
+            _reasoning_config or {},
+            _main_request_overrides or {},
+            _public_prefill_context_status(_prefill_context),
+            _profile_home or '',
+            _safe_profile_runtime_env.get('TERMINAL_ENV', '') or '',
+            _safe_profile_runtime_env.get('TERMINAL_SSH_HOST', '') or '',
+            _safe_profile_runtime_env.get('TERMINAL_SSH_USER', '') or '',
+        ], sort_keys=True)
+        _agent_sig = _hashlib.sha256(_sig_blob.encode()).hexdigest()[:16]
+        ctx.agent_sig = _agent_sig
+
+        agent = None
+        _identity_mismatch_entry = None
+        with SESSION_AGENT_CACHE_LOCK:
+            _cached = SESSION_AGENT_CACHE.get(session_id)
+            if _cached and _cached[1] == _agent_sig:
+                _cached_agent = _cached[0]
+                if _cached_agent_matches_session(_cached_agent, session_id):
+                    agent = _cached_agent
+                    SESSION_AGENT_CACHE.move_to_end(session_id)
+                    logger.debug('[webui] Reusing cached agent for session %s', session_id)
+                else:
+                    _identity_mismatch_entry = SESSION_AGENT_CACHE.pop(session_id, None)
+                    logger.warning(
+                        '[webui] Evicted cached agent with mismatched session identity: cache_key=%s agent_session_id=%s',
+                        session_id,
+                        _cached_agent_session_identity(_cached_agent),
+                    )
+            if agent is not None:
+                try:
+                    from api.session_lifecycle import register_agent
+                    register_agent(session_id, agent)
+                except Exception:
+                    logger.debug("Lifecycle register_agent failed for cached session %s", session_id, exc_info=True)
+
+        if _identity_mismatch_entry is not None:
+            try:
+                _close_cached_agent_entry_at_session_boundary(session_id, _identity_mismatch_entry)
+            except Exception:
+                logger.debug("Failed to close identity-mismatched cached agent for session %s", session_id, exc_info=True)
+
+        if agent is not None:
+            if not _refresh_cached_agent_runtime(agent, _agent_kwargs):
+                logger.warning(
+                    '[webui] Cached agent runtime could not be safely refreshed; rebuilding agent for session %s',
+                    session_id,
+                )
+                _stale_runtime_entry = None
+                with SESSION_AGENT_CACHE_LOCK:
+                    _stale_runtime_entry = SESSION_AGENT_CACHE.pop(session_id, None)
+                if _stale_runtime_entry is not None:
+                    try:
+                        _close_cached_agent_entry_at_session_boundary(session_id, _stale_runtime_entry)
+                    except Exception:
+                        logger.debug("Failed to close stale-runtime cached agent for session %s", session_id, exc_info=True)
+                agent = None
+
+        if agent is not None:
+            agent.stream_delta_callback = _agent_kwargs.get('stream_delta_callback')
+            agent.tool_progress_callback = _agent_kwargs.get('tool_progress_callback')
+            if hasattr(agent, 'tool_start_callback'):
+                agent.tool_start_callback = _agent_kwargs.get('tool_start_callback')
+            if hasattr(agent, 'tool_complete_callback'):
+                agent.tool_complete_callback = _agent_kwargs.get('tool_complete_callback')
+            if hasattr(agent, 'status_callback'):
+                agent.status_callback = _agent_kwargs.get('status_callback')
+            if hasattr(agent, 'interim_assistant_callback'):
+                agent.interim_assistant_callback = _agent_kwargs.get('interim_assistant_callback')
+            if hasattr(agent, 'reasoning_callback'):
+                agent.reasoning_callback = _agent_kwargs.get('reasoning_callback')
+            if hasattr(agent, 'clarify_callback'):
+                agent.clarify_callback = _agent_kwargs.get('clarify_callback')
+            if 'prefill_messages' in _agent_kwargs and hasattr(agent, 'prefill_messages'):
+                agent.prefill_messages = list(_agent_kwargs.get('prefill_messages') or [])
+            if _session_db is not None:
+                _session_db = _adopt_session_db_for_cached_agent(agent, _session_db)
+                agent._session_db = _session_db
+            if hasattr(agent, '_api_call_count'):
+                agent._api_call_count = 0
+            if hasattr(agent, '_interrupted'):
+                agent._interrupted = False
+            if hasattr(agent, '_interrupt_message'):
+                agent._interrupt_message = None
+        else:
+            agent = _AIAgent(**_agent_kwargs)
+            try:
+                from api.session_lifecycle import register_agent
+                register_agent(session_id, agent)
+            except Exception:
+                logger.debug("Lifecycle register_agent failed for new session %s", session_id, exc_info=True)
+            _evicted_items = []
+            _active_sids = set()
+            try:
+                from api.config import ACTIVE_RUNS, ACTIVE_RUNS_LOCK
+                with ACTIVE_RUNS_LOCK:
+                    for _entry in (ACTIVE_RUNS or {}).values():
+                        _sid = (_entry or {}).get("session_id")
+                        if _sid:
+                            _active_sids.add(_sid)
+            except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+                _active_sids = set()
+            with SESSION_AGENT_CACHE_LOCK:
+                SESSION_AGENT_CACHE[session_id] = (agent, _agent_sig)
+                SESSION_AGENT_CACHE.move_to_end(session_id)
+                from api.config import SESSION_AGENT_CACHE_MAX
+                while len(SESSION_AGENT_CACHE) > SESSION_AGENT_CACHE_MAX:
+                    _evictable_sid = None
+                    for _sid in list(SESSION_AGENT_CACHE.keys()):
+                        if _sid not in _active_sids:
+                            _evictable_sid = _sid
+                            break
+                    if _evictable_sid is None:
+                        break
+                    evicted_entry = SESSION_AGENT_CACHE.pop(_evictable_sid)
+                    _evicted_items.append((_evictable_sid, evicted_entry))
+            for _evicted_sid, _evicted_entry in _evicted_items:
+                try:
+                    _evicted_agent = _evicted_entry[0] if isinstance(_evicted_entry, tuple) else None
+                    _close_evicted_agent_at_session_boundary(_evicted_sid, _evicted_agent)
+                except Exception:
+                    logger.debug("Failed to close evicted agent for session %s", _evicted_sid, exc_info=True)
+                logger.debug('[webui] Evicted LRU agent from cache: %s', _evicted_sid)
+            logger.debug('[webui] Created new agent for session %s', session_id)
+
+    ctx.agent = agent
+
+    with STREAMS_LOCK:
+        AGENT_INSTANCES[stream_id] = agent
+        if stream_id in CANCEL_FLAGS and CANCEL_FLAGS[stream_id].is_set():
+            try:
+                agent.interrupt("Cancelled before start")
+            except Exception:
+                logger.debug("Failed to interrupt agent before start")
+            with _agent_lock:
+                _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.', stream_id=stream_id)
+            if put:
+                put('cancel', _cancel_event_payload('Cancelled by user'))
+            return False
+
+    workspace_ctx = _workspace_context_prefix(str(s.workspace))
+    _session_workspace_frozen = getattr(s, 'created_workspace', None) or str(s.workspace)
+    workspace_system_msg = (
+        f"Active workspace at session start: {_session_workspace_frozen}\n"
+        "Every user message is prefixed with [Workspace::v1: /absolute/path] indicating the "
+        "workspace the user has selected in the web UI at the time they sent that message. "
+        "This tag is the single authoritative source of the active workspace and updates "
+        "with every message. It overrides any prior workspace mentioned in this system "
+        "prompt, memory, or conversation history. Always use the value from the most recent "
+        "[Workspace::v1: ...] tag as your default working directory for ALL file operations: "
+        "write_file, read_file, search_files, terminal workdir, and patch. "
+        "Never fall back to a hardcoded path when this tag is present."
+    )
+    ctx.workspace_system_msg = workspace_system_msg
+
+    _personality_prompt = _resolve_personality_prompt(_cfg, s)
+    agent.ephemeral_system_prompt = _webui_ephemeral_system_prompt(
+        _personality_prompt,
+        surface_context={
+            'source': 'webui',
+            'session_id': session_id,
+            'profile': getattr(s, 'profile', None),
+            'workspace': _session_workspace_frozen,
+        },
+        config_data=_cfg,
+    )
+
+    _pending_started_at = getattr(s, 'pending_started_at', None)
+    meter().set_pending_started_at(stream_id, _pending_started_at)
+    ctx.turn_started_at = _pending_started_at if _pending_started_at else time.time()
+
+    _external_state_snapshot = get_state_db_session_messages(
+        session_id,
+        profile=getattr(s, 'profile', None),
+        with_revision=True,
+    )
+    ctx.previous_messages = list(
+        reconciled_state_db_messages_for_session(
+            s,
+            state_messages=_external_state_snapshot,
+        ) or []
+    )
+    _previous_owner_context_messages = list(
+        reconciled_state_db_messages_for_session(
+            s,
+            prefer_context=True,
+            state_messages=_external_state_snapshot,
+        ) or []
+    )
+    ctx.previous_owner_context_messages = _deduplicate_context_messages(
+        _previous_owner_context_messages
+    )
+    (
+        ctx.previous_context_messages,
+        ctx.conversation_history_revision,
+    ) = _context_and_revision_from_state_snapshot_helper(
+        ctx,
+        _external_state_snapshot,
+    )
+    ctx.pre_compression_count = getattr(
+        getattr(agent, 'context_compressor', None),
+        'compression_count', 0,
+    )
+
+    _start_periodic_checkpoint(ctx)
+
+    _pending_async_acceptances = []
+    _process_notifications = _drain_webui_process_notifications(
+        session_id,
+        pending_async_acceptances=_pending_async_acceptances,
+    )
+    _agent_msg_text = msg_text
+    if _process_notifications:
+        _agent_msg_text = "\n\n".join([*_process_notifications, msg_text]).strip()
+
+    user_message = _build_native_multimodal_message(
+        workspace_ctx,
+        _agent_msg_text,
+        attachments,
+        workspace,
+        cfg=_cfg,
+        active_provider=(resolved_provider or ""),
+        active_model=(resolved_model or ""),
+        requested_provider=(_session_requested_provider or ""),
+    )
+    ctx.user_message = user_message
+    ctx.persistent_state_before = _persistent_state_snapshot(_profile_home)
+
+    _run_conversation_kwargs = _build_run_conversation_kwargs(
+        agent.run_conversation,
+        user_message=user_message,
+        system_message=workspace_system_msg,
+        conversation_history=_sanitize_messages_for_agent(
+            ctx.previous_context_messages,
+            cfg=_cfg,
+            effective_model=resolved_model,
+            effective_provider=resolved_provider,
+            effective_base_url=resolved_base_url,
+            requested_provider=(_session_requested_provider or ""),
+        ),
+        conversation_history_revision=ctx.conversation_history_revision,
+        task_id=session_id,
+        persist_user_message=msg_text,
+        persist_user_timestamp=getattr(s, 'pending_started_at', None),
+    )
+    if moa_config is not None:
+        _run_conversation_kwargs["moa_config"] = moa_config
+
+    _rejected_async_notifications = _accept_pending_async_delegations(
+        _pending_async_acceptances,
+        session_id=session_id,
+    )
+    if _rejected_async_notifications:
+        for _notification in _rejected_async_notifications:
+            try:
+                _process_notifications.remove(_notification)
+            except ValueError:
+                pass
+        _agent_msg_text = msg_text
+        if _process_notifications:
+            _agent_msg_text = "\n\n".join(
+                [*_process_notifications, msg_text]
+            ).strip()
+        user_message = _build_native_multimodal_message(
+            workspace_ctx,
+            _agent_msg_text,
+            attachments,
+            workspace,
+            cfg=_cfg,
+            active_provider=(resolved_provider or ""),
+            active_model=(resolved_model or ""),
+            requested_provider=(_session_requested_provider or ""),
+        )
+        _run_conversation_kwargs["user_message"] = user_message
+        ctx.user_message = user_message
+
+    ctx.run_conversation_kwargs = _run_conversation_kwargs
+    ctx.result_partial_pre_call_context = list(ctx.previous_context_messages)
+    return True
+
+
 def _run_agent_streaming(
     session_id,
     msg_text,
@@ -9650,47 +10733,9 @@ def _run_agent_streaming(
     # message. Stash the emitted terminal error here (single-element list = closure
     # write without nonlocal) so it can seed `_last_err` and let the classifier
     # surface the real, actionable cause (model_not_found / auth_mismatch).
-    _captured_terminal_error = [None]
+    _captured_terminal_error = ctx.captured_terminal_error
+    _agent_status_callback = _make_agent_status_callback(ctx)
 
-    def _agent_status_callback(kind, message):
-        """Bridge Agent lifecycle status into WebUI SSE.
-
-        Passes compression events as 'compressing' events and rate-limit/fallback
-        events as 'warning' events so the frontend can surface them to the user.
-        Also captures a terminal non-retryable provider error (#5940) so the
-        turn-completion classifier can report the real cause instead of the
-        generic no_response fallback. All other lifecycle messages are dropped.
-        """
-        _message = str(message or '').strip()
-        _kind = str(kind or '').strip().lower()
-        if not _message:
-            return
-        _lower = _message.lower()
-        # #5940: a non-retryable terminal provider error the Agent aborted on. Keep
-        # the FIRST one seen this turn (the original cause; later fallback notices
-        # are handled separately below). Matched on the Agent's emitted shape.
-        if (
-            _captured_terminal_error[0] is None
-            and 'non-retryable error' in _lower
-            and 'http' in _lower
-        ):
-            _captured_terminal_error[0] = _message
-        if _is_agent_compression_start_status(_kind, _message):
-            put('compressing', {
-                'session_id': session_id,
-                'message': 'Compressing context',
-            })
-            return
-        # Pass through rate-limit and fallback messages so the frontend can
-        # show them as warnings via the existing messages.js 'warning' listener.
-        _is_fallback_notice = _is_fallback_lifecycle_message(_kind, _message)
-        if _is_fallback_notice:
-            put('warning', {'type': 'fallback', 'message': _message})
-
-    # xsession wakeup misroute root fix (Option 1): pre-init so the outer
-    # finally can always reset even if an exception fires before the bind.
-    # Placed ABOVE the _checkpoint_stop cluster so that cluster stays adjacent
-    # to the `try:` (preserves the Issue #765 static-locator invariant).
     _turn_session_identity_tokens = None
     _streaming_cron_profile_home_token = None
     _turn_pending_source = 'webui'
@@ -9698,346 +10743,53 @@ def _run_agent_streaming(
     _streaming_skill_home_snapshot = None
     _restore_streaming_skill_home_modules = False
     _acquired_streaming_skill_home_patch_lock = False
-    # Initialised here (before any code that may raise) so the outer `finally`
-    # block can safely check `if _checkpoint_stop is not None` even when an
-    # exception fires before the checkpoint thread is created (Issue #765).
     _checkpoint_stop = None
     _ckpt_thread = None
     _agent_lock = None
     try:
-        # Register this stream with the global streaming meter and start the 1 Hz
-        # metering ticker. Kept INSIDE the outer try so the outer `finally`'s
-        # end_session()/_metering_stop.set() teardown is always paired (#4633/#2476).
         meter().begin_session(stream_id)
         _metering_thread.start()
-        # Bind THIS turn's session identity to the worker thread/context BEFORE
-        # any agent work (so every mid-turn notify_on_complete background spawn
-        # captures THIS session, not a concurrent turn's process-global env).
-        # Co-located with the existing env-restore lifecycle: set here, reset
-        # in the outer finally next to _clear_thread_env().
-        _turn_session_identity_tokens = _set_turn_session_identity(session_id)
-        s = ctx.s = get_session(session_id)
-        _turn_pending_source = getattr(s, 'pending_user_source', None) or 'webui'
-        _active_turn_identity = _active_turn_authority(s, stream_id, msg_text)
-        update_active_run(stream_id, phase="running", session_id=session_id)
-        s.workspace = str(Path(workspace).expanduser().resolve())
-        _last_persisted_model = None
-        _last_persisted_provider = None
-        _turn_owns_persisted_model = False
-        provider_context = (
-            str(model_provider).strip().lower()
-            if model_provider is not None
-            else getattr(s, "model_provider", None)
-        )
-        provider_context = str(provider_context).strip().lower() if provider_context else None
-        _agent_lock = _get_session_agent_lock(session_id)
-        # #4251: the route layer already persisted this turn's model under the
-        # session lock before dispatch, so a mismatch here means a newer picker
-        # write won the race and must not be clobbered by the worker thread.
-        with _agent_lock:
-            _last_persisted_model = getattr(s, "model", None)
-            _last_persisted_provider = getattr(s, "model_provider", None)
-            if _last_persisted_provider is not None:
-                _last_persisted_provider = str(_last_persisted_provider).strip().lower() or None
-            _persisted_model_is_empty = _last_persisted_model in (None, "")
-            _provider_matches = _last_persisted_provider in (None, provider_context)
-            if _persisted_model_is_empty or (
-                _last_persisted_model == model and _provider_matches
-            ):
-                s.model = model
-                s.model_provider = provider_context
-                _last_persisted_model = model
-                _last_persisted_provider = provider_context
-                _turn_owns_persisted_model = True
-
-        # TD1: set thread-local env context so concurrent sessions don't clobber globals
-        # Check for pre-flight cancel (user cancelled before agent even started)
-        if cancel_event.is_set():
-            with _agent_lock:
-                _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.', stream_id=stream_id)
-            put('cancel', _cancel_event_payload('Cancelled before start'))
-            return
-
-        # Resolve profile home for this agent run — use the session's own profile
-        # (stamped at new_session() time from the client's S.activeProfile) so that
-        # two concurrent tabs on different profiles don't clobber each other via the
-        # process-level active-profile global.  Falls back gracefully.
         try:
-            from api.profiles import (
-                filter_runtime_env_for_gateway_parity,
-                patch_skill_home_modules,
-                restore_skill_home_modules,
-                snapshot_skill_home_modules,
-                get_hermes_home_for_profile,
-                get_profile_runtime_env,
-                _skill_modules_support_profile_home,
-                _SKILL_HOME_MODULE_PATCH_LOCK,
-            )
-            _profile_home_path = get_hermes_home_for_profile(getattr(s, 'profile', None))
-            _profile_home = str(_profile_home_path)
-            _streaming_cron_profile_home_token = _STREAMING_CRON_PROFILE_HOME.set(_profile_home)
-            _profile_runtime_env = get_profile_runtime_env(_profile_home_path)
-            _safe_profile_runtime_env = filter_runtime_env_for_gateway_parity(_profile_runtime_env)
-        except ImportError:
-            _profile_home = os.environ.get('HERMES_HOME', '')
-            _profile_runtime_env = {}
-            _safe_profile_runtime_env = {}
-            patch_skill_home_modules = None
-            snapshot_skill_home_modules = None
-            restore_skill_home_modules = None
-            _skill_modules_support_profile_home = None
-            _SKILL_HOME_MODULE_PATCH_LOCK = None
+            if not _phase_prepare_context(ctx):
+                return
 
-        # Profile-aware provider/model enrichment: when the session belongs
-        # to a profile that specifies model.provider and model.default, use
-        # those to set provider_context and repair stale models.
-        model, provider_context, _repaired = _apply_profile_home_context_to_streaming_model(
-            model=model,
-            provider_context=provider_context,
-            profile_home=_profile_home,
-            has_profile=bool(getattr(s, "profile", None)),
-        )
-        # #4251: only apply the profile-repair persistence if this turn still
-        # owns the session model/provider pair it last wrote.
-        provider_context = str(provider_context).strip().lower() if provider_context else None
-        with _agent_lock:
-            _current_provider = getattr(s, "model_provider", None)
-            if _current_provider is not None:
-                _current_provider = str(_current_provider).strip().lower() or None
-            if (
-                _turn_owns_persisted_model
-                and getattr(s, "model", None) == _last_persisted_model
-                and _current_provider == _last_persisted_provider
-            ):
-                s.model_provider = provider_context
-                if _repaired and model != (s.model or ""):
-                    s.model = model
-
-        # Capture the resolved profile name now, while profile context is
-        # reliable. Used in the compression migration block to stamp s.profile
-        # on the continuation session. We resolve it here rather than calling
-        # get_active_profile_name() at compression time because that function
-        # reads thread-local storage (_tls.profile) set by set_request_profile()
-        # on the HTTP handler thread. The streaming thread is a separate
-        # threading.Thread and does not inherit TLS. At compression time,
-        # get_active_profile_name() would fall back to the process-global
-        # _active_profile, which may belong to a different concurrent tab.
-        _resolved_profile_name = getattr(s, 'profile', None)
-        if not _resolved_profile_name:
-            try:
-                from api.profiles import get_active_profile_name
-                _resolved_profile_name = get_active_profile_name()
-            except Exception:
-                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                _resolved_profile_name = None
-
-        _thread_env = _build_agent_thread_env(
-            _profile_runtime_env,
-            str(s.workspace),
-            session_id,
-            _profile_home,
-        )
-        _streaming_hermes_home_override_ctx = _set_streaming_hermes_home_override(_profile_home)
-        _set_thread_env(**_thread_env)
-        # process_complete agent-wakeup wiring (ours-original, Option B): bind
-        # this session's HERMES_SESSION_KEY to its WebUI session_id so the
-        # drain thread can route notify_on_complete events back to the right
-        # SSE channel / server-side wakeup.
-        try:
-            from api.background_process import register_process_session
-            register_process_session(session_id, session_id)
-        except Exception:
-            logger.debug("register_process_session failed", exc_info=True)
-        # first-time module initialisation (which can be slow) does not
-        # block other concurrent sessions waiting on _ENV_LOCK (#2024).
-        ensure_agent_runtime_current()
-        _prewarm_skill_tool_modules()
-        _install_streaming_cronjob_profile_wrapper()
-
-        # Full-turn serialization is only needed for static/legacy skill-module
-        # resolution, where process-global skill-module globals are still used.
-        # Dynamic-capable modules continue concurrent execution.
-        _streaming_override_installed = bool(_streaming_hermes_home_override_ctx[2])
-        _streaming_modules_are_dynamic = False
-        if patch_skill_home_modules is not None and snapshot_skill_home_modules is not None:
-            if _streaming_override_installed and _skill_modules_support_profile_home is not None:
-                try:
-                    _streaming_modules_are_dynamic = bool(
-                        _skill_modules_support_profile_home(_profile_home_path)
-                    )
-                except Exception:
-                    logger.debug(
-                        "Failed to evaluate streaming skill-module home capability for profile %r",
-                        _profile_home,
-                        exc_info=True,
-                    )
-                    _streaming_modules_are_dynamic = False
-
-            if not (_streaming_override_installed and _streaming_modules_are_dynamic):
-                _restore_streaming_skill_home_modules = True
-                _SKILL_HOME_MODULE_PATCH_LOCK.acquire()
-                _acquired_streaming_skill_home_patch_lock = True
-
-        # Still set process-level env as fallback for tools that bypass thread-local
-        # Acquire lock only for the env mutation, then release before the agent runs.
-        # The finally block re-acquires to restore — keeping critical sections short
-        # and preventing a deadlock where the restore would re-enter the same lock.
-        with _ENV_LOCK:
-            if _restore_streaming_skill_home_modules:
-                # Snapshot and patch before mutating process env so setup
-                # failures can unwind without leaking either state.
-                _streaming_skill_home_snapshot = snapshot_skill_home_modules()
-                patch_skill_home_modules(Path(_profile_home))
-            old_profile_env = {key: os.environ.get(key) for key in _safe_profile_runtime_env}
-            old_cwd = os.environ.get('TERMINAL_CWD')
-            old_exec_ask = os.environ.get('HERMES_EXEC_ASK')
-            old_agy_exec_ask = os.environ.get('AGY_EXEC_ASK')
-            old_session_key = os.environ.get('HERMES_SESSION_KEY')
-            old_agy_session_key = os.environ.get('AGY_SESSION_KEY')
-            old_session_id = os.environ.get('HERMES_SESSION_ID')
-            old_agy_session_id = os.environ.get('AGY_SESSION_ID')
-            old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')
-            old_agy_session_platform = os.environ.get('AGY_SESSION_PLATFORM')
-            old_session_chat_id = os.environ.get('HERMES_SESSION_CHAT_ID')
-            old_agy_session_chat_id = os.environ.get('AGY_SESSION_CHAT_ID')
-            old_hermes_home = os.environ.get('HERMES_HOME')
-            os.environ.update(_safe_profile_runtime_env)
-            os.environ['TERMINAL_CWD'] = str(s.workspace)
-            os.environ['AGY_EXEC_ASK'] = os.environ['HERMES_EXEC_ASK'] = '1'
-            os.environ['AGY_SESSION_KEY'] = os.environ['HERMES_SESSION_KEY'] = session_id
-            os.environ['AGY_SESSION_ID'] = os.environ['HERMES_SESSION_ID'] = session_id
-            os.environ['AGY_SESSION_PLATFORM'] = os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
-            # process_complete wiring (ours-original, Option B): see
-            # _build_agent_thread_env above.
-            os.environ['AGY_SESSION_CHAT_ID'] = os.environ['HERMES_SESSION_CHAT_ID'] = str(session_id)
-            if _profile_home:
-                os.environ['HERMES_HOME'] = _profile_home
-                # Prefer context-local Hermes-home overrides when available.
-                # In that mode, tools.skills_tool._skills_dir() and
-                # tools.skill_manager_tool._skills_dir() can resolve the active
-                # profile from get_hermes_home() and keep per-thread isolation
-                # without mutating module globals. If override installation
-                # succeeds for both modules, skip process-cache patching.
-                # If either module is static/missing/raises, the legacy path
-                # above has already snapshotted and patched under this lock.
-        # Lock released — agent runs without holding it
-        # ── MCP Server Discovery (lazy import, idempotent) ──
-        # MUST run AFTER the HERMES_HOME mutation above — `discover_mcp_tools()`
-        # reads `~/.hermes/config.yaml` via `get_hermes_home()`, which uses
-        # `os.environ['HERMES_HOME']`.  Calling it before the mutation always
-        # loaded the default profile's `mcp_servers`, even when the session
-        # was stamped with a non-default profile.  See issue #1968.
-        #
-        # NOTE: `_servers` in `tools/mcp_tool.py` is a process-global registry
-        # keyed by server name.  This means once profile A registers a server
-        # named e.g. `postgres`, profile B's discovery sees it as already
-        # connected and skips it — even if B's config points at a different
-        # binary.  Fully fixing multi-profile concurrent use requires keying
-        # `_servers` by `(profile_home, name)` upstream in hermes-agent; that
-        # lives outside this WebUI repo.  This change fixes the headline bug
-        # for users who run a single non-default profile per WebUI process.
-        try:
-            from tools.mcp_tool import discover_mcp_tools
-            discover_mcp_tools()
-        except Exception:
-            logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-            pass  # MCP not available or not configured — non-fatal
-
-        # Register a gateway-style notify callback so the approval system can
-        # push the `approval` SSE event the moment a dangerous command is
-        # detected, without waiting for the next on_tool() poll cycle.
-        # Without this, the agent thread blocks inside the terminal tool
-        # waiting for approval that the UI never knew to ask for, leaving
-        # the chat stuck in "Thinking…" forever.
-        _approval_registered = False
-        _unreg_notify = None
-        _cleanup_gateway_pending_mirror = None
-        try:
-            try:
-                from api.route_approvals import (
-                    settle_gateway_pending_local_notification as _settle_pending_for_polling,
-                    retire_gateway_pending_mirror as _retire_gateway_pending_mirror,
-                )
-                def _cleanup_gateway_pending_mirror():
-                    _retire_gateway_pending_mirror(session_id)
-            except ImportError:
-                _settle_pending_for_polling = None
-                _cleanup_gateway_pending_mirror = None
-            from tools.approval import (
-                register_gateway_notify as _reg_notify,
-                unregister_gateway_notify as _unreg_notify,
-            )
-            def _approval_notify_cb(approval_data):
-                if _settle_pending_for_polling is not None:
-                    try:
-                        auto_resolved, head, total = _settle_pending_for_polling(
-                            session_id,
-                            approval_data,
-                        )
-                        if auto_resolved and head is None:
-                            return
-                        approval_data = {**(head or approval_data), "pending_count": total}
-                    except Exception:
-                        logger.warning("Failed to mirror approval into WebUI polling state", exc_info=True)
-                put('approval', approval_data)
-            _reg_notify(session_id, _approval_notify_cb)
-            _approval_registered = True
-        except ImportError:
-            logger.debug("Approval module not available, falling back to polling")
-
-        _clarify_registered = False
-        _unreg_clarify_notify = None
-        try:
-            from api.clarify import (
-                register_gateway_notify as _reg_clarify_notify,
-                unregister_gateway_notify as _unreg_clarify_notify,
-            )
-
-            def _clarify_notify_cb(clarify_data):
-                put('clarify', clarify_data)
-
-            _reg_clarify_notify(session_id, _clarify_notify_cb)
-            _clarify_registered = True
-        except ImportError:
-            logger.debug("Clarify module not available, falling back to polling")
-
-        def _clarify_callback_impl(question, choices, sid, cancel_evt, put_event):
-            """Bridge Hermes clarify prompts to the WebUI."""
-            timeout = _clarify_timeout_seconds(_clarify_session_config(sid))
-            choices_list = [str(choice) for choice in (choices or [])]
-            data = {
-                'question': str(question or ''),
-                'choices_offered': choices_list,
-                'session_id': sid,
-                'kind': 'clarify',
-                'requested_at': time.time(),
-                'timeout_seconds': timeout,
-            }
-            try:
-                from api.clarify import submit_pending as _submit_clarify_pending, clear_pending as _clear_clarify_pending
-            except ImportError:
-                return (
-                    "The user did not provide a response within the time limit. "
-                    "Use your best judgement to make the choice and proceed."
-                )
-
-            entry = _submit_clarify_pending(sid, data)
-            response, expired = _await_clarify_response(entry, timeout, cancel_evt)
-            if expired:
-                _clear_clarify_pending(sid)
-            return (
-                response
-                or "The user did not provide a response within the time limit. "
-                   "Use your best judgement to make the choice and proceed."
-            )
-
-        try:
-            _self_healed = False  # (#1401) prevents infinite self-heal retries
-
-            callbacks = StreamingCallbacks(ctx)
-            ctx.callbacks = callbacks
-
-            # Bind closures to callbacks for backward-compatibility with downstream code
+            # Expose to current scope for downstream phases
+            s = ctx.s
+            agent = ctx.agent
+            _agent_lock = ctx.agent_lock
+            _checkpoint_stop = ctx.checkpoint_stop
+            _ckpt_thread = ctx.ckpt_thread
+            _run_conversation_kwargs = ctx.run_conversation_kwargs
+            _active_turn_identity = ctx.active_turn_identity
+            _persistent_state_before = ctx.persistent_state_before
+            _previous_messages = ctx.previous_messages
+            _previous_owner_context_messages = ctx.previous_owner_context_messages
+            _previous_context_messages = ctx.previous_context_messages
+            _conversation_history_revision = ctx.conversation_history_revision
+            _pre_compression_count = ctx.pre_compression_count
+            _turn_started_at = ctx.turn_started_at
+            _resolved_profile_name = ctx.resolved_profile_name
+            _profile_home = ctx.profile_home
+            _cfg = ctx.cfg
+            resolved_model = ctx.resolved_model
+            resolved_provider = ctx.resolved_provider
+            resolved_base_url = ctx.resolved_base_url
+            configured_base_url = resolved_base_url
+            resolved_api_key = ctx.resolved_api_key
+            _session_requested_provider = ctx.session_requested_provider
+            _approval_registered = ctx.approval_registered
+            _unreg_notify = ctx.unreg_notify
+            _cleanup_gateway_pending_mirror = ctx.cleanup_gateway_pending_mirror
+            _clarify_registered = ctx.clarify_registered
+            _unreg_clarify_notify = ctx.unreg_clarify_notify
+            _state_db_path = ctx.state_db_path
+            user_message = ctx.user_message
+            workspace_system_msg = ctx.workspace_system_msg
+            _agent_params = ctx.agent_params
+            _agent_kwargs = ctx.agent_kwargs
+            _agent_sig = ctx.agent_sig
+            _AIAgent = ctx.ai_agent_cls
+            callbacks = ctx.callbacks
             on_token = callbacks.on_token
             on_reasoning = callbacks.on_reasoning
             on_interim_assistant = callbacks.on_interim_assistant
@@ -10049,787 +10801,31 @@ def _run_agent_streaming(
             _live_tool_calls = callbacks.live_tool_calls
             _checkpoint_activity = ctx.checkpoint_activity
             _token_sent = callbacks.token_sent
-
-            _AIAgent = _get_ai_agent()
-            if _AIAgent is None:
-                raise ImportError(_aiagent_import_error_detail())
-
-            # Initialize SessionDB so session_search works in WebUI sessions
-            _state_db_path = (Path(_profile_home) / "state.db") if _profile_home else None
-            _session_db = _build_session_db_for_stream(_state_db_path)
-            # #5979: publish catalog provenance from the durable disk cache when
-            # memory is cold, so the custom-proxy resolver below sees the
-            # endpoint-advertised model ids (non-blocking, disk-only, never
-            # live-rebuilds). Both the warm and the resolve read profile-keyed
-            # config (cache path + source fingerprint via get_active_profile_name),
-            # but this streaming worker is a separate thread that does NOT inherit
-            # the HTTP handler's request-profile TLS — without binding it, a cold
-            # send from a NAMED profile would resolve against the DEFAULT profile's
-            # config and route to the wrong provider/base_url. Bind the captured
-            # owning-session profile across warm + resolve so both see the right
-            # profile (no-op for the default/root profile).
-            from api import profiles as profiles_api
-            # #5979: treat this send as a deliberate pick ONLY when the persisted
-            # explicit-pick signature matches the CURRENT model+provider routing
-            # context. Storing/comparing a signature (not a bare bool) means a
-            # later model/provider change via /api/chat/start, /api/session/update,
-            # normalization, or provider repair automatically invalidates a stale
-            # pick — so a #433 first-party leftover is never wrongly preserved on
-            # a cold catalog. Only affects the cold custom-proxy branch; warm
-            # endpoint-advertised provenance always wins over this flag.
-            from api.models import model_explicit_pick_signature as _mk_sig
-            _picked_sig = getattr(s, "model_explicit_pick_signature", None)
-            # Compare against the session's persisted model+provider — the exact
-            # fields /api/chat/start stamped the signature from (it persists the
-            # resolved model+provider onto the session before dispatch). Falls
-            # back to the worker's model/provider_context if the session fields
-            # are unset. A mismatch (any later model/provider change) yields a
-            # different signature → treated as NOT a deliberate pick.
-            _sig_model = getattr(s, "model", None) or model
-            _sig_provider = getattr(s, "model_provider", None) or provider_context
-            _current_sig = _mk_sig(_sig_model, _sig_provider)
-            _explicitly_picked = bool(_picked_sig) and _picked_sig == _current_sig
-            # Resolve the endpoint AND the credential inside ONE profile scope so
-            # they always come from the same profile-owned snapshot. Previously
-            # only resolve_model_provider() ran under the scope; the runtime-key
-            # and custom-provider resolution below ran after it closed, so a
-            # detached worker for a NAMED profile paired that profile's endpoint
-            # with the DEFAULT profile's API key (finding #3). No-op for the
-            # default/root profile.
-            with profiles_api.profile_scope_for_detached_worker(
-                _resolved_profile_name, "model + credential resolution", logger_override=logger
-            ):
-                warm_models_catalog_provenance_if_cold()
-                resolved_model, resolved_provider, resolved_base_url = resolve_model_provider(
-                    model_with_provider_context(model, provider_context),
-                    explicitly_picked=_explicitly_picked,
-                )
-                configured_base_url = resolved_base_url
-
-                # Resolve API key via Hermes runtime provider (matches gateway behaviour).
-                # Pass the resolved provider so non-default providers get their own credentials.
-                resolved_api_key = None
-                try:
-                    from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-                    from hermes_cli.runtime_provider import resolve_runtime_provider
-                    _rt = resolve_runtime_provider_with_anthropic_env_lock(
-                        resolve_runtime_provider,
-                        requested=resolved_provider,
-                        target_model=resolved_model,
-                    )
-                    resolved_api_key = _rt.get("api_key")
-                    if not resolved_provider:
-                        resolved_provider = _rt.get("provider")
-                    resolved_base_url = _runtime_preferred_base_url(
-                        _rt, resolved_provider, configured_base_url
-                    )
-                except (ImportError, ModuleNotFoundError):
-                    pass
-                except Exception as _e:
-                    logger.debug("resolve_runtime_provider failed: %s", _e)
-
-                # Named custom providers (custom:slug) may not be resolvable by
-                # hermes_cli.runtime_provider directly. Fall back to config.yaml
-                # custom_providers[] so WebUI can pass explicit creds/base_url.
-                # Preserve the pre-canonicalization identity so image routing can
-                # still select the exact custom_providers entry after the rewrite
-                # to "custom" below.
-                _session_requested_provider = resolved_provider
-                resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
-                    resolved_provider, resolved_api_key, resolved_base_url,
-                    profile_name=_resolved_profile_name,
-                )
-
-            # Read per-profile config at call time (not module-level snapshot).
-            # The streaming worker is a detached thread that does NOT inherit the
-            # per-request thread-local profile context, so the ambient
-            # get_config() would resolve the process-global (default) profile and
-            # leak the wrong profile's toolsets / prefill / fallback config into
-            # this run (issue #3294). Read the SESSION's own profile home
-            # explicitly so toolsets and context match the profile the session
-            # actually runs under.
-            from api.config import get_config_for_profile_home as _get_config_for_home
-            try:
-                _cfg = _get_config_for_home(_profile_home)
-            except Exception:
-                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                from api.config import get_config as _get_config
-                _cfg = _get_config()
-            _prefill_context = _load_webui_prefill_context(_cfg)
-            _prefill_messages = _prefill_messages_with_webui_context(_prefill_context, _cfg)
-            _prefill_messages = _normalize_prefill_messages_before_user_turn(_prefill_messages)
-            _main_request_overrides = _main_model_request_overrides(
-                _cfg,
-                effective_model=resolved_model,
-                effective_provider=resolved_provider,
-            )
-            put('context_status', {
-                'session_id': session_id,
-                'prefill': _public_prefill_context_status(_prefill_context),
-            })
-
-            # Per-profile toolsets — use _resolve_cli_toolsets() so MCP
-            # server toolsets are included, matching native CLI behaviour.
-            from api.config import _resolve_cli_toolsets
-            _toolsets = _resolve_cli_toolsets(_cfg)
-
-            # Per-session toolset override (#493): if the session has
-            # enabled_toolsets set, use that instead of the global config.
-            try:
-                from api.models import Session, SESSION_DIR
-                _session_path = SESSION_DIR / f"{session_id}.json"
-                if _session_path.exists():
-                    _session_meta = Session.load_metadata_only(session_id)
-                    # load_metadata_only returns a Session INSTANCE, not a dict.
-                    # The previous .get('enabled_toolsets') raised AttributeError
-                    # which was swallowed by the bare except below — the entire
-                    # per-session toolset override silently no-op'd. Use
-                    # getattr() to read the attribute correctly.
-                    # (Opus pre-release advisor finding for v0.50.257.)
-                    _override = getattr(_session_meta, 'enabled_toolsets', None) if _session_meta else None
-                    if _override:
-                        _toolsets = _override
-            except Exception as _ts_err:
-                logging.warning("[webui] failed to read per-session toolsets for %s: %s", session_id, _ts_err)
-
-            # Fallback model chain from profile config (e.g. for rate-limit or
-            # provider recovery). Match Hermes CLI/gateway semantics:
-            # fallback_providers entries are tried first, then legacy
-            # fallback_model entries are appended unless they duplicate an
-            # earlier provider/model/base_url route.
-            def _fallback_entries(_raw):
-                if isinstance(_raw, dict):
-                    _items = [_raw]
-                elif isinstance(_raw, list):
-                    _items = _raw
-                else:
-                    return []
-                _entries = []
-                for _entry in _items:
-                    if not isinstance(_entry, dict):
-                        continue
-                    _provider = str(_entry.get('provider') or '').strip()
-                    _model = str(_entry.get('model') or '').strip()
-                    if not _provider or not _model:
-                        continue
-                    _entries.append({
-                        'model': _model,
-                        'provider': _provider,
-                        'base_url': _entry.get('base_url'),
-                        'api_key': _entry.get('api_key'),
-                        'key_env': _entry.get('key_env'),
-                    })
-                return _entries
-
-            _fallback_chain = []
-            _fallback_seen = set()
-            _fallback_resolved = None
-            for _fallback_key in ('fallback_providers', 'fallback_model'):
-                for _fb_entry in _fallback_entries(_cfg.get(_fallback_key)):
-                    _identity = (
-                        str(_fb_entry.get('provider') or '').strip().lower(),
-                        str(_fb_entry.get('model') or '').strip().lower(),
-                        str(_fb_entry.get('base_url') or '').strip().rstrip('/').lower(),
-                    )
-                    if _identity in _fallback_seen:
-                        continue
-                    _fallback_seen.add(_identity)
-                    _fallback_chain.append(_fb_entry)
-            _fallback_resolved = _fallback_chain or None
-
-            # Build kwargs defensively — guard newer params so the WebUI
-            # degrades gracefully when run against an older hermes-agent build.
-            # (fixes: TypeError: AIAgent.__init__() got an unexpected keyword
-            # argument 'credential_pool' — issue #772)
-            import inspect as _inspect
-            _agent_params = ctx.agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
-
-            # CLI-parity max-iteration budget: read config.yaml's
-            # agent.max_turns and pass it to AIAgent when supported. Without
-            # this WebUI-created agents silently use AIAgent's constructor
-            # default (90), so long browser-originated tasks hit the
-            # "maximum number of tool-calling iterations" summary path even
-            # after the operator raises Hermes' global turn budget.
-            _max_iterations_cfg = None
-            try:
-                _raw_max_iterations = None
-                _agent_cfg_for_iterations = _cfg.get('agent', {}) if isinstance(_cfg, dict) else {}
-                if isinstance(_agent_cfg_for_iterations, dict):
-                    _raw_max_iterations = _agent_cfg_for_iterations.get('max_turns')
-                if _raw_max_iterations is None and isinstance(_cfg, dict):
-                    # Back-compat for older Hermes config files that used a
-                    # root-level max_turns key.
-                    _raw_max_iterations = _cfg.get('max_turns')
-                if _raw_max_iterations is not None:
-                    _parsed_max_iterations = int(_raw_max_iterations)
-                    if _parsed_max_iterations > 0:
-                        _max_iterations_cfg = _parsed_max_iterations
-            except Exception:
-                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                _max_iterations_cfg = None
-
-            # CLI-parity max output cap: read config.yaml's max_tokens and pass
-            # it to AIAgent when supported. Without this WebUI-created agents use
-            # provider-native output ceilings (e.g. Claude via OpenRouter can
-            # request 64k), which may turn an otherwise usable fallback into a
-            # 402 "more credits / fewer max_tokens" failure.
-            _max_tokens_cfg = None
-            try:
-                _raw_max_tokens = _cfg.get('max_tokens')
-                if _raw_max_tokens is None:
-                    _agent_cfg_for_tokens = _cfg.get('agent', {})
-                    if isinstance(_agent_cfg_for_tokens, dict):
-                        _raw_max_tokens = _agent_cfg_for_tokens.get('max_tokens')
-                if _raw_max_tokens is not None:
-                    _parsed_max_tokens = int(_raw_max_tokens)
-                    if _parsed_max_tokens > 0:
-                        _max_tokens_cfg = _parsed_max_tokens
-            except Exception:
-                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                _max_tokens_cfg = None
-
-            # CLI-parity reasoning effort: read agent.reasoning_effort from the
-            # active profile's config.yaml (the same key the CLI writes via
-            # `/reasoning <level>`) and hand the parsed dict to AIAgent.  When
-            # the key is absent or invalid, pass None → agent uses its default.
-            try:
-                _effort_cfg = _cfg.get('agent', {}) if isinstance(_cfg, dict) else {}
-                _effort_raw = _effort_cfg.get('reasoning_effort') if isinstance(_effort_cfg, dict) else None
-                _effort = coerce_reasoning_effort_for_model(
-                    _effort_raw,
-                    resolved_model,
-                    provider_id=resolved_provider,
-                    base_url=resolved_base_url,
-                )
-                _reasoning_config = parse_reasoning_effort(_effort)
-            except Exception:
-                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                _reasoning_config = None
-
-            _agent_kwargs = dict(
-                model=resolved_model,
-                provider=resolved_provider,
-                base_url=resolved_base_url,
-                api_key=resolved_api_key,
-                # Identify browser-originated sessions as WebUI so Hermes Agent
-                # does not inject CLI-specific terminal/output guidance.
-                platform='webui',
-                quiet_mode=True,
-                enabled_toolsets=_toolsets,
-                fallback_model=_fallback_resolved,
-                session_id=session_id,
-                session_db=_session_db,
-                prefill_messages=_prefill_messages,
-                stream_delta_callback=on_token,
-                reasoning_callback=on_reasoning,
-                tool_progress_callback=on_tool,
-                clarify_callback=(
-                    lambda question, choices: _clarify_callback_impl(
-                        question, choices, session_id, cancel_event, put
-                    )
-                ),
-            )
-            # reasoning_config has been an AIAgent param for several releases,
-            # but guard defensively to avoid TypeError on an older agent build.
-            if 'reasoning_config' in _agent_params and _reasoning_config is not None:
-                _agent_kwargs['reasoning_config'] = _reasoning_config
-            if 'prefill_messages' not in _agent_params:
-                _agent_kwargs.pop('prefill_messages', None)
-            if 'interim_assistant_callback' in _agent_params:
-                _agent_kwargs['interim_assistant_callback'] = on_interim_assistant
-            if 'tool_start_callback' in _agent_params:
-                _agent_kwargs['tool_start_callback'] = on_tool_start
-            if 'tool_complete_callback' in _agent_params:
-                _agent_kwargs['tool_complete_callback'] = on_tool_complete
-            if 'status_callback' in _agent_params:
-                _agent_kwargs['status_callback'] = _agent_status_callback
-            if 'max_iterations' in _agent_params and _max_iterations_cfg is not None:
-                _agent_kwargs['max_iterations'] = _max_iterations_cfg
-            if 'max_tokens' in _agent_params and _max_tokens_cfg is not None:
-                _agent_kwargs['max_tokens'] = _max_tokens_cfg
-            if 'request_overrides' in _agent_params and _main_request_overrides:
-                _agent_kwargs['request_overrides'] = _main_request_overrides
-            # Params added in newer hermes-agent — skip if not supported
-            if 'api_mode' in _agent_params:
-                _agent_kwargs['api_mode'] = _rt.get('api_mode')
-            if 'acp_command' in _agent_params:
-                _agent_kwargs['acp_command'] = _rt.get('command')
-            if 'acp_args' in _agent_params:
-                _agent_kwargs['acp_args'] = _rt.get('args')
-            if 'credential_pool' in _agent_params:
-                _agent_kwargs['credential_pool'] = _rt.get('credential_pool')
-            # Pin Honcho memory sessions to the stable WebUI session ID.
-            # Without this, 'per-session' Honcho strategy creates a new Honcho
-            # session on every streaming request because HonchoSessionManager is
-            # re-instantiated fresh each turn (#855).
-            if 'gateway_session_key' in _agent_params:
-                _agent_kwargs['gateway_session_key'] = session_id
-
-            # ── Agent cache: reuse across messages in the same session ──
-            # Mirrors gateway _agent_cache.  Keeps _user_turn_count alive so
-            # injectionFrequency: "first-turn" actually suppresses after turn 1.
-            if ephemeral:
-                agent = _AIAgent(**_agent_kwargs)
-                logger.debug('[webui] Created ephemeral agent for session %s', session_id)
-            else:
-                import hashlib as _hashlib
-                import json as _json
-                from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
-                _credential_pool = _rt.get('credential_pool')
-                _sig_blob = _json.dumps([
-                    resolved_model or '',
-                    _agent_cache_api_key_sig(resolved_api_key, _credential_pool),
-                    resolved_base_url or '',
-                    resolved_provider or '',
-                    _rt.get('api_mode') or '',
-                    _rt.get('command') or '',
-                    _rt.get('args') or [],
-                    bool(_credential_pool),
-                    _max_iterations_cfg or '',
-                    _max_tokens_cfg or '',
-                    _fallback_resolved or {},
-                    sorted(_toolsets) if _toolsets else [],
-                    _reasoning_config or {},
-                    _main_request_overrides or {},
-                    _public_prefill_context_status(_prefill_context),
-                    # #1897: profile_home is part of the agent's identity because
-                    # AIAgent caches `_cached_system_prompt` from `load_soul_md()`
-                    # at construction time, sourced from HERMES_HOME. Same-session
-                    # profile switches keep `session_id` stable, so without this
-                    # field the cached agent silently retains the previous
-                    # profile's SOUL.md (and any other profile-scoped context).
-                    _profile_home or '',
-                    # Terminal backend identity: sessions switching between
-                    # remote (SSH) and local backends must not reuse a cached
-                    # agent that carries stale terminal env vars (#5937).
-                    _safe_profile_runtime_env.get('TERMINAL_ENV', '') or '',
-                    _safe_profile_runtime_env.get('TERMINAL_SSH_HOST', '') or '',
-                    _safe_profile_runtime_env.get('TERMINAL_SSH_USER', '') or '',
-                ], sort_keys=True)
-                _agent_sig = _hashlib.sha256(_sig_blob.encode()).hexdigest()[:16]
-
-                agent = None
-                _identity_mismatch_entry = None
-                with SESSION_AGENT_CACHE_LOCK:
-                    _cached = SESSION_AGENT_CACHE.get(session_id)
-                    if _cached and _cached[1] == _agent_sig:
-                        _cached_agent = _cached[0]
-                        if _cached_agent_matches_session(_cached_agent, session_id):
-                            agent = _cached_agent
-                            SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
-                            logger.debug('[webui] Reusing cached agent for session %s', session_id)
-                        else:
-                            _identity_mismatch_entry = SESSION_AGENT_CACHE.pop(session_id, None)
-                            logger.warning(
-                                '[webui] Evicted cached agent with mismatched session identity: cache_key=%s agent_session_id=%s',
-                                session_id,
-                                _cached_agent_session_identity(_cached_agent),
-                            )
-                    if agent is not None:
-                        # Reopened/cache-hit sessions must register the agent
-                        # so later lifecycle commits can find it.
-                        try:
-                            from api.session_lifecycle import register_agent
-                            register_agent(session_id, agent)
-                        except Exception:
-                            logger.debug("Lifecycle register_agent failed for cached session %s", session_id, exc_info=True)
-
-                if _identity_mismatch_entry is not None:
-                    try:
-                        _close_cached_agent_entry_at_session_boundary(session_id, _identity_mismatch_entry)
-                    except Exception:
-                        logger.debug("Failed to close identity-mismatched cached agent for session %s", session_id, exc_info=True)
-
-                if agent is not None:
-                    # Refresh volatile runtime credentials selected from provider
-                    # pools without discarding cross-turn agent/provider state.
-                    if not _refresh_cached_agent_runtime(agent, _agent_kwargs):
-                        logger.warning(
-                            '[webui] Cached agent runtime could not be safely refreshed; rebuilding agent for session %s',
-                            session_id,
-                        )
-                        _stale_runtime_entry = None
-                        with SESSION_AGENT_CACHE_LOCK:
-                            _stale_runtime_entry = SESSION_AGENT_CACHE.pop(session_id, None)
-                        if _stale_runtime_entry is not None:
-                            try:
-                                _close_cached_agent_entry_at_session_boundary(session_id, _stale_runtime_entry)
-                            except Exception:
-                                logger.debug("Failed to close stale-runtime cached agent for session %s", session_id, exc_info=True)
-                        agent = None
-
-                if agent is not None:
-                    # Refresh per-turn callbacks — these close over request-scoped
-                    # objects (put queue, cancel_event) that are new each request.
-                    agent.stream_delta_callback = _agent_kwargs.get('stream_delta_callback')
-                    agent.tool_progress_callback = _agent_kwargs.get('tool_progress_callback')
-                    if hasattr(agent, 'tool_start_callback'):
-                        agent.tool_start_callback = _agent_kwargs.get('tool_start_callback')
-                    if hasattr(agent, 'tool_complete_callback'):
-                        agent.tool_complete_callback = _agent_kwargs.get('tool_complete_callback')
-                    if hasattr(agent, 'status_callback'):
-                        agent.status_callback = _agent_kwargs.get('status_callback')
-                    if hasattr(agent, 'interim_assistant_callback'):
-                        agent.interim_assistant_callback = _agent_kwargs.get('interim_assistant_callback')
-                    if hasattr(agent, 'reasoning_callback'):
-                        agent.reasoning_callback = _agent_kwargs.get('reasoning_callback')
-                    if hasattr(agent, 'clarify_callback'):
-                        agent.clarify_callback = _agent_kwargs.get('clarify_callback')
-                    if 'prefill_messages' in _agent_kwargs and hasattr(agent, 'prefill_messages'):
-                        agent.prefill_messages = list(_agent_kwargs.get('prefill_messages') or [])
-                    if _session_db is not None:
-                        # Prefer reusing a still-open SessionDB on the cached
-                        # agent. Closing it mid-turn breaks background
-                        # subagents that hold a reference to the same object
-                        # (delegate_tool copies parent._session_db by ref) —
-                        # they then fail with
-                        # 'NoneType' object has no attribute 'execute'.
-                        # When the existing handle is already closed/missing,
-                        # adopt the fresh per-request SessionDB (and close the
-                        # dead one) so we still avoid the EMFILE FD-leak from
-                        # PR #1421.
-                        _session_db = _adopt_session_db_for_cached_agent(
-                            agent, _session_db
-                        )
-                        agent._session_db = _session_db
-                    if hasattr(agent, '_api_call_count'):
-                        agent._api_call_count = 0
-                    # Reset interrupt state from a prior cancel so the reused
-                    # agent does not think it is still interrupted.
-                    if hasattr(agent, '_interrupted'):
-                        agent._interrupted = False
-                    if hasattr(agent, '_interrupt_message'):
-                        agent._interrupt_message = None
-                else:
-                    agent = _AIAgent(**_agent_kwargs)
-                    # Register the new agent with the memory lifecycle so
-                    # its commit_memory_session() can be found later.
-                    try:
-                        from api.session_lifecycle import register_agent
-                        register_agent(session_id, agent)
-                    except Exception:
-                        logger.debug("Lifecycle register_agent failed for new session %s", session_id, exc_info=True)
-                    _evicted_items = []
-                    # Snapshot the set of session_ids with a LIVE agent worker
-                    # BEFORE taking SESSION_AGENT_CACHE_LOCK, so LRU eviction never
-                    # closes an agent mid-run AND we never nest ACTIVE_RUNS_LOCK
-                    # inside SESSION_AGENT_CACHE_LOCK (avoids any lock-ordering
-                    # deadlock). A cancel/reconnect can drop STREAMS while the
-                    # worker is still unwinding or blocked in a provider call, so
-                    # ACTIVE_RUNS (worker lifecycle) is the authoritative liveness
-                    # signal, not STREAMS. (#3536 review round 2)
-                    _active_sids = set()
-                    try:
-                        from api.config import ACTIVE_RUNS, ACTIVE_RUNS_LOCK
-                        with ACTIVE_RUNS_LOCK:
-                            for _entry in (ACTIVE_RUNS or {}).values():
-                                _sid = (_entry or {}).get("session_id")
-                                if _sid:
-                                    _active_sids.add(_sid)
-                    except Exception:
-                        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                        _active_sids = set()
-                    with SESSION_AGENT_CACHE_LOCK:
-                        SESSION_AGENT_CACHE[session_id] = (agent, _agent_sig)
-                        SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
-                        from api.config import SESSION_AGENT_CACHE_MAX
-                        # Evict the oldest INACTIVE entries first. Walk LRU order
-                        # (front = oldest); skip any session with a live run. If
-                        # every over-cap entry is active, leave the cache
-                        # temporarily above cap rather than close a live worker's
-                        # agent — a later insertion/finalization trims it once the
-                        # run ends.
-                        while len(SESSION_AGENT_CACHE) > SESSION_AGENT_CACHE_MAX:
-                            _evictable_sid = None
-                            for _sid in list(SESSION_AGENT_CACHE.keys()):
-                                if _sid not in _active_sids:
-                                    _evictable_sid = _sid
-                                    break
-                            if _evictable_sid is None:
-                                break  # all over-cap entries are active; defer
-                            evicted_entry = SESSION_AGENT_CACHE.pop(_evictable_sid)
-                            _evicted_items.append((_evictable_sid, evicted_entry))
-                    # Commit and close evicted agents outside the cache lock so
-                    # concurrent cache users are not blocked by provider I/O.
-                    for _evicted_sid, _evicted_entry in _evicted_items:
-                        try:
-                            _evicted_agent = _evicted_entry[0] if isinstance(_evicted_entry, tuple) else None
-                            _close_evicted_agent_at_session_boundary(_evicted_sid, _evicted_agent)
-                        except Exception:
-                            logger.debug("Failed to close evicted agent for session %s", _evicted_sid, exc_info=True)
-                        logger.debug('[webui] Evicted LRU agent from cache: %s', _evicted_sid)
-                    logger.debug('[webui] Created new agent for session %s', session_id)
-
-            # Store agent instance for cancel/interrupt propagation
-            with STREAMS_LOCK:
-                AGENT_INSTANCES[stream_id] = agent
-                # Check if cancel was requested during agent initialization
-                if stream_id in CANCEL_FLAGS and CANCEL_FLAGS[stream_id].is_set():
-                    # Cancel arrived during agent creation - interrupt immediately
-                    try:
-                        agent.interrupt("Cancelled before start")
-                    except Exception:
-                        logger.debug("Failed to interrupt agent before start")
-                    with _agent_lock:
-                        _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.', stream_id=stream_id)
-                    put('cancel', _cancel_event_payload('Cancelled by user'))
-                    return
-
-            # Prepend workspace context so the agent always knows which directory
-            # to use for file operations, regardless of session age or AGENTS.md defaults.
-            workspace_ctx = _workspace_context_prefix(str(s.workspace))
-            # #6672: interpolate the session-CREATION workspace (immutable), never
-            # the live s.workspace, into the system prompt. s.workspace changes on
-            # every mid-session workspace switch in the WebUI header; mutating the
-            # system prompt would rewrite msg[0] and invalidate the LLM prefix
-            # cache (APC/Radix Tree) for the whole 50k+ token transcript. Active
-            # switches still reach the model via the [Workspace::v1: ...] tag on
-            # the current user turn (workspace_ctx above), which lives in msg[-1].
-            _session_workspace_frozen = getattr(s, 'created_workspace', None) or str(s.workspace)
-            workspace_system_msg = (
-                f"Active workspace at session start: {_session_workspace_frozen}\n"
-                "Every user message is prefixed with [Workspace::v1: /absolute/path] indicating the "
-                "workspace the user has selected in the web UI at the time they sent that message. "
-                "This tag is the single authoritative source of the active workspace and updates "
-                "with every message. It overrides any prior workspace mentioned in this system "
-                "prompt, memory, or conversation history. Always use the value from the most recent "
-                "[Workspace::v1: ...] tag as your default working directory for ALL file operations: "
-                "write_file, read_file, search_files, terminal workdir, and patch. "
-                "Never fall back to a hardcoded path when this tag is present."
-            )
-            # Resolve personality prompt from config.yaml agent.personalities
-            # (matches hermes-agent CLI behavior — passes via ephemeral_system_prompt)
-            _personality_prompt = None
-            _pname = getattr(s, 'personality', None)
-            if _pname:
-                _agent_cfg = _cfg.get('agent', {})
-                _personalities = _agent_cfg.get('personalities', {})
-                if isinstance(_personalities, dict) and _pname in _personalities:
-                    _pval = _personalities[_pname]
-                    if isinstance(_pval, dict):
-                        _parts = [_pval.get('system_prompt', '') or _pval.get('prompt', '')]
-                        if _pval.get('tone'):
-                            _parts.append(f'Tone: {_pval["tone"]}')
-                        if _pval.get('style'):
-                            _parts.append(f'Style: {_pval["style"]}')
-                        _personality_prompt = '\n'.join(p for p in _parts if p)
-                    else:
-                        _personality_prompt = str(_pval)
-            # Pass WebUI-only runtime guidance via ephemeral_system_prompt
-            # (agent's own mechanism). This preserves any selected personality
-            # while making long tool runs emit real user-visible interim text
-            # through interim_assistant_callback instead of frontend guesses.
-            agent.ephemeral_system_prompt = _webui_ephemeral_system_prompt(
-                _personality_prompt,
-                surface_context={
-                    'source': 'webui',
-                    'session_id': session_id,
-                    'profile': getattr(s, 'profile', None),
-                    # #6672: frozen session-creation workspace — see
-                    # workspace_system_msg above. Live workspace switches stay out
-                    # of msg[0] so LLM prefix caches are not invalidated.
-                    'workspace': _session_workspace_frozen,
-                },
-                config_data=_cfg,
-            )
-            _pending_started_at = getattr(s, 'pending_started_at', None)
-            meter().set_pending_started_at(stream_id, _pending_started_at)
-            # Normal chat-start sets pending_started_at before spawning this thread;
-            # fallback to now only for recovered/legacy flows where that marker is absent
-            # or has been zeroed out (e.g. via a buggy migration / manual file edit).
-            # Truthy-check covers None, missing-attr, and 0 uniformly.
-            _turn_started_at = _pending_started_at if _pending_started_at else time.time()
-            _external_state_snapshot = get_state_db_session_messages(
-                session_id,
-                profile=getattr(s, 'profile', None),
-                with_revision=True,
-            )
-
-            def _context_and_revision_from_state_snapshot(state_snapshot):
-                reconciled_snapshot = reconciled_state_db_messages_for_session(
-                    s,
-                    prefer_context=True,
-                    state_messages=state_snapshot,
-                    with_revision=True,
-                )
-                if not isinstance(reconciled_snapshot, StateDBSessionMessagesSnapshot):
-                    raise TypeError(
-                        "state.db context reconciliation did not return a revision snapshot"
-                    )
-                context_messages = _new_turn_context_from_messages(
-                    reconciled_snapshot.messages,
-                    msg_text,
-                )
-                return (
-                    _deduplicate_context_messages(context_messages),
-                    reconciled_snapshot.revision,
-                )
+            old_cwd = ctx.old_cwd
+            old_exec_ask = ctx.old_exec_ask
+            old_agy_exec_ask = ctx.old_agy_exec_ask
+            old_session_key = ctx.old_session_key
+            old_agy_session_key = ctx.old_agy_session_key
+            old_session_id = ctx.old_session_id
+            old_agy_session_id = ctx.old_agy_session_id
+            old_session_platform = ctx.old_session_platform
+            old_agy_session_platform = ctx.old_agy_session_platform
+            old_session_chat_id = ctx.old_session_chat_id
+            old_agy_session_chat_id = ctx.old_agy_session_chat_id
+            old_hermes_home = ctx.old_hermes_home
+            old_profile_env = ctx.old_profile_env
+            _turn_session_identity_tokens = ctx.turn_session_identity_tokens
+            _streaming_cron_profile_home_token = ctx.streaming_cron_profile_home_token
+            _turn_pending_source = ctx.turn_pending_source
+            _streaming_hermes_home_override_ctx = ctx.streaming_hermes_home_override_ctx
+            _streaming_skill_home_snapshot = ctx.streaming_skill_home_snapshot
+            _restore_streaming_skill_home_modules = ctx.restore_streaming_skill_home_modules
+            _acquired_streaming_skill_home_patch_lock = ctx.acquired_streaming_skill_home_patch_lock
+            _result_partial_pre_call_context = ctx.result_partial_pre_call_context
+            _self_healed = ctx.self_healed
 
             def _refresh_context_and_revision_from_state_db():
-                fresh_state_snapshot = get_state_db_session_messages(
-                    session_id,
-                    profile=getattr(s, 'profile', None),
-                    with_revision=True,
-                )
-                return _context_and_revision_from_state_snapshot(fresh_state_snapshot)
-
-            _previous_messages = list(
-                reconciled_state_db_messages_for_session(
-                    s,
-                    state_messages=_external_state_snapshot,
-                ) or []
-            )
-            # Keep the owner/context projection distinct from the display projection.
-            # Settlement and stale-result attribution require the exact pre-run owner
-            # context even when state.db reconciliation changes the visible transcript.
-            _previous_owner_context_messages = list(
-                reconciled_state_db_messages_for_session(
-                    s,
-                    prefer_context=True,
-                    state_messages=_external_state_snapshot,
-                ) or []
-            )
-            _previous_owner_context_messages = _deduplicate_context_messages(
-                _previous_owner_context_messages
-            )
-            (
-                _previous_context_messages,
-                _conversation_history_revision,
-            ) = _context_and_revision_from_state_snapshot(
-                _external_state_snapshot,
-            )
-            # Dedup before feeding to agent — merge_session_messages_append_only
-            # can produce duplicates when context_messages and state.db share
-            # messages with different timestamps.
-            _pre_compression_count = getattr(
-                getattr(agent, 'context_compressor', None),
-                'compression_count', 0,
-            )
-
-            # ── Periodic checkpoint during streaming (Issue #765) ──
-            # The agent works on an internal copy of s.messages during run_conversation()
-            # so we cannot watch s.messages for growth. Instead, on_tool() increments
-            # _checkpoint_activity[0] each time a tool call completes — that is the real
-            # signal that progress has been made worth persisting.
-            #
-            # What gets saved on each checkpoint:
-            #   - s.pending_user_message (already written before run starts)
-            #   - s.pending_started_at / s.active_stream_id (turn bookkeeping)
-            # On a server restart the UI will see a session with a pending message and no
-            # response — better than a silent loss of the entire conversation turn.
-            # The final s.save() at task completion handles the full session update + index.
-            # (_checkpoint_stop is pre-initialised at the top of the outer try.)
-            # (_checkpoint_activity is already initialised before on_tool().)
-
-            def _periodic_checkpoint():
-                last_saved_activity = 0
-                last_fingerprint = None
-                last_write_at = 0.0
-                while not _checkpoint_stop.wait(15):
-                    try:
-                        cur = _checkpoint_activity[0]
-                        if cur > last_saved_activity:
-                            with _agent_lock:
-                                fingerprint = _streaming_checkpoint_fingerprint(s)
-                                # A completed tool call is the trigger, but not
-                                # proof that anything the checkpoint persists
-                                # actually changed. Rewriting a multi-megabyte
-                                # sidecar to re-persist identical bytes stalls
-                                # every concurrent HTTP request behind the GIL,
-                                # so only write when the persisted state moved.
-                                # Fail closed: an unreadable fingerprint (None)
-                                # always writes, and a periodic refresh keeps
-                                # updated_at from going stale on a long turn.
-                                now = time.time()
-                                stale = (now - last_write_at) >= _CHECKPOINT_IDLE_REFRESH_SECONDS
-                                if (
-                                    fingerprint is None
-                                    or fingerprint != last_fingerprint
-                                    or stale
-                                ):
-                                    _save_streaming_checkpoint(s)
-                                    last_fingerprint = fingerprint
-                                    last_write_at = now
-                            last_saved_activity = cur
-                    except Exception as e:
-                        logger.debug("Periodic checkpoint save failed: %s", e)
-
-            _checkpoint_stop = threading.Event()
-            # Persist the user message BEFORE streaming starts so it's durable even if
-            # the server crashes before the first checkpoint fires (every 15s).
-            with _agent_lock:
-                s.save(touch_updated_at=True, skip_index=False)
-
-            _ckpt_thread = threading.Thread(
-                target=_periodic_checkpoint, daemon=True,
-                name=f"ckpt-{session_id[:8]}",
-            )
-            _ckpt_thread.start()
-
-            _pending_async_acceptances = []
-            _process_notifications = _drain_webui_process_notifications(
-                session_id,
-                pending_async_acceptances=_pending_async_acceptances,
-            )
-            _agent_msg_text = msg_text
-            if _process_notifications:
-                _agent_msg_text = "\n\n".join([*_process_notifications, msg_text]).strip()
-            user_message = _build_native_multimodal_message(workspace_ctx, _agent_msg_text, attachments, workspace, cfg=_cfg, active_provider=(resolved_provider or ""), active_model=(resolved_model or ""), requested_provider=(_session_requested_provider or ""))
-            _persistent_state_before = _persistent_state_snapshot(_profile_home)
-            _run_conversation_kwargs = _build_run_conversation_kwargs(
-                agent.run_conversation,
-                user_message=user_message,
-                system_message=workspace_system_msg,
-                conversation_history=_sanitize_messages_for_agent(
-                    _previous_context_messages,
-                    cfg=_cfg,
-                    effective_model=resolved_model,
-                    effective_provider=resolved_provider,
-                    effective_base_url=resolved_base_url,
-                    requested_provider=(_session_requested_provider or ""),
-                ),
-                conversation_history_revision=_conversation_history_revision,
-                task_id=session_id,
-                persist_user_message=msg_text,
-                persist_user_timestamp=getattr(s, 'pending_started_at', None),
-            )
-            # Only pass moa_config when a /moa override is actually active, so a
-            # normal send never trips a TypeError on an older hermes-agent whose
-            # run_conversation() predates the moa_config kwarg.
-            if moa_config is not None:
-                _run_conversation_kwargs["moa_config"] = moa_config
-
-            # Finalize durable delegation claims at the current-turn acceptance
-            # boundary: immediately before invoking the agent with the message
-            # that contains their notifications. A failed ACK is removed from
-            # this turn and requeued so retry cannot create a duplicate prompt.
-            _rejected_async_notifications = _accept_pending_async_delegations(
-                _pending_async_acceptances,
-                session_id=session_id,
-            )
-            if _rejected_async_notifications:
-                for _notification in _rejected_async_notifications:
-                    try:
-                        _process_notifications.remove(_notification)
-                    except ValueError:
-                        pass
-                _agent_msg_text = msg_text
-                if _process_notifications:
-                    _agent_msg_text = "\n\n".join(
-                        [*_process_notifications, msg_text]
-                    ).strip()
-                user_message = _build_native_multimodal_message(
-                    workspace_ctx,
-                    _agent_msg_text,
-                    attachments,
-                    workspace,
-                    cfg=_cfg,
-                    active_provider=(resolved_provider or ""),
-                    active_model=(resolved_model or ""),
-                    requested_provider=(_session_requested_provider or ""),
-                )
-                _run_conversation_kwargs["user_message"] = user_message
-            _result_partial_pre_call_context = list(_previous_context_messages)
+                return _refresh_context_and_revision_from_state_db_helper(ctx)
             result = agent.run_conversation(**_run_conversation_kwargs)
             _active_turn_identity = _resolve_active_turn_authority(
                 _active_turn_identity,
@@ -12427,51 +12423,7 @@ def _run_agent_streaming(
                 pass
             # Stop the live metering ticker
             _metering_stop.set()
-            # Unregister the gateway approval callback and unblock any threads
-            # still waiting on approval (e.g. stream cancelled mid-approval).
-            if _approval_registered and _unreg_notify is not None:
-                try:
-                    _unreg_notify(session_id)
-                except Exception:
-                    logger.debug("Failed to unregister approval callback")
-            if _cleanup_gateway_pending_mirror is not None:
-                try:
-                    _cleanup_gateway_pending_mirror()
-                except Exception:
-                    logger.debug("Failed to reconcile gateway approval mirror")
-            if _clarify_registered and _unreg_clarify_notify is not None:
-                try:
-                    _unreg_clarify_notify(session_id)
-                except Exception:
-                    logger.debug("Failed to unregister clarify callback")
-            with _ENV_LOCK:
-                for _key, _old_value in old_profile_env.items():
-                    if _old_value is None: os.environ.pop(_key, None)
-                    else: os.environ[_key] = _old_value
-                if old_cwd is None: os.environ.pop('TERMINAL_CWD', None)
-                else: os.environ['TERMINAL_CWD'] = old_cwd
-                if old_exec_ask is None: os.environ.pop('HERMES_EXEC_ASK', None)
-                else: os.environ['HERMES_EXEC_ASK'] = old_exec_ask
-                if old_agy_exec_ask is None: os.environ.pop('AGY_EXEC_ASK', None)
-                else: os.environ['AGY_EXEC_ASK'] = old_agy_exec_ask
-                if old_session_key is None: os.environ.pop('HERMES_SESSION_KEY', None)
-                else: os.environ['HERMES_SESSION_KEY'] = old_session_key
-                if old_agy_session_key is None: os.environ.pop('AGY_SESSION_KEY', None)
-                else: os.environ['AGY_SESSION_KEY'] = old_agy_session_key
-                if old_session_id is None: os.environ.pop('HERMES_SESSION_ID', None)
-                else: os.environ['HERMES_SESSION_ID'] = old_session_id
-                if old_agy_session_id is None: os.environ.pop('AGY_SESSION_ID', None)
-                else: os.environ['AGY_SESSION_ID'] = old_agy_session_id
-                if old_session_platform is None: os.environ.pop('HERMES_SESSION_PLATFORM', None)
-                else: os.environ['HERMES_SESSION_PLATFORM'] = old_session_platform
-                if old_agy_session_platform is None: os.environ.pop('AGY_SESSION_PLATFORM', None)
-                else: os.environ['AGY_SESSION_PLATFORM'] = old_agy_session_platform
-                if old_session_chat_id is None: os.environ.pop('HERMES_SESSION_CHAT_ID', None)
-                else: os.environ['HERMES_SESSION_CHAT_ID'] = old_session_chat_id
-                if old_agy_session_chat_id is None: os.environ.pop('AGY_SESSION_CHAT_ID', None)
-                else: os.environ['AGY_SESSION_CHAT_ID'] = old_agy_session_chat_id
-                if old_hermes_home is None: os.environ.pop('HERMES_HOME', None)
-                else: os.environ['HERMES_HOME'] = old_hermes_home
+            _phase_teardown_env_and_callbacks(ctx)
 
     except Exception as e:
         logging.exception("[webui] stream error")
@@ -12900,36 +12852,56 @@ def _run_agent_streaming(
         # Stop the periodic checkpoint thread before the final recovery path.
         # The checkpoint thread also uses the per-session lock; joining it first
         # avoids contending with checkpoint writes during stale-pending repair.
+        _checkpoint_stop = ctx.checkpoint_stop or _checkpoint_stop
+        _ckpt_thread = ctx.ckpt_thread or _ckpt_thread
         if _checkpoint_stop is not None:
             _checkpoint_stop.set()
         if _ckpt_thread is not None:
             _ckpt_thread.join(timeout=15)
+        s = ctx.s or s
+        _agent_lock = ctx.agent_lock or _agent_lock
         if (s is not None
                 and getattr(s, 'active_stream_id', None) == stream_id
                 and getattr(s, 'pending_user_message', None)):
             update_active_run(stream_id, phase="finalizing")
             _last_resort_sync_from_core(s, stream_id, _agent_lock)
         _clear_thread_env()  # TD1: always clear thread-local context
+        _streaming_cron_profile_home_token = ctx.streaming_cron_profile_home_token or _streaming_cron_profile_home_token
         if _streaming_cron_profile_home_token is not None:
             _STREAMING_CRON_PROFILE_HOME.reset(_streaming_cron_profile_home_token)
+        _restore_streaming_skill_home_modules = ctx.restore_streaming_skill_home_modules or _restore_streaming_skill_home_modules
+        _streaming_skill_home_snapshot = ctx.streaming_skill_home_snapshot or _streaming_skill_home_snapshot
         if _restore_streaming_skill_home_modules and _streaming_skill_home_snapshot is not None:
             with _ENV_LOCK:
-                if restore_skill_home_modules is not None:
-                    try:
+                try:
+                    from api.profiles import restore_skill_home_modules
+                    if restore_skill_home_modules is not None:
                         restore_skill_home_modules(_streaming_skill_home_snapshot)
-                    except Exception:
-                        logger.debug("Failed to restore skill module state for streaming profile", exc_info=True)
+                except Exception:
+                    logger.debug("Failed to restore skill module state for streaming profile", exc_info=True)
                 _streaming_skill_home_snapshot = None
                 _restore_streaming_skill_home_modules = False
+        _acquired_streaming_skill_home_patch_lock = ctx.acquired_streaming_skill_home_patch_lock or _acquired_streaming_skill_home_patch_lock
         if _acquired_streaming_skill_home_patch_lock:
-            _SKILL_HOME_MODULE_PATCH_LOCK.release()
+            try:
+                from api.profiles import _SKILL_HOME_MODULE_PATCH_LOCK
+                if _SKILL_HOME_MODULE_PATCH_LOCK is not None:
+                    _SKILL_HOME_MODULE_PATCH_LOCK.release()
+            except Exception:
+                pass
             _acquired_streaming_skill_home_patch_lock = False
+        _streaming_hermes_home_override_ctx = (
+            ctx.streaming_hermes_home_override_ctx
+            if (ctx.streaming_hermes_home_override_ctx[0] is not None or ctx.streaming_hermes_home_override_ctx[2])
+            else _streaming_hermes_home_override_ctx
+        )
         _reset_streaming_hermes_home_override(*_streaming_hermes_home_override_ctx)
         # xsession wakeup misroute root fix (Option 1): restore the per-turn
         # session-identity context-locals (reset-token semantics). MUST run on
         # every exit path so a reused thread-pool worker leaks no identity and
         # CLI/cron env fallback resumes — same lifecycle slot as the env
         # restore above.
+        _turn_session_identity_tokens = ctx.turn_session_identity_tokens or _turn_session_identity_tokens
         _reset_turn_session_identity(_turn_session_identity_tokens)
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)

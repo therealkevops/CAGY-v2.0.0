@@ -30,9 +30,17 @@ from api.streaming import (
     StreamingCallbacks,
     StreamingUsageCollector,
     _compact_for_echo_compare,
+    _extract_max_iterations_cfg,
+    _extract_max_tokens_cfg,
+    _extract_reasoning_config,
+    _make_agent_status_callback,
+    _parse_fallback_entries,
+    _phase_prepare_context,
     _run_agent_streaming,
     _sse,
     _sse_set_write_deadline,
+    _start_periodic_checkpoint,
+    _stop_periodic_checkpoint,
     _strip_compact_echo_suffix,
     cancel_stream,
     get_stream_runtime_snapshot,
@@ -418,6 +426,107 @@ class TestStreamingCallbacks(unittest.TestCase):
         self.assertEqual(agent_kwargs["interim_assistant_callback"], callbacks.on_interim_assistant)
         self.assertEqual(agent_kwargs["tool_start_callback"], callbacks.on_tool_start)
         self.assertEqual(agent_kwargs["tool_complete_callback"], callbacks.on_tool_complete)
+
+
+class TestPhasePrepareContextAndCheckpoints(unittest.TestCase):
+    """Hermetic unit tests for Sprint D3 extracted context preparation and checkpoint routines."""
+
+    def test_extract_config_helpers(self):
+        """Verify max_turns, max_tokens, and fallback parsing helpers."""
+        # max_iterations
+        self.assertEqual(_extract_max_iterations_cfg({"agent": {"max_turns": 42}}), 42)
+        self.assertEqual(_extract_max_iterations_cfg({"max_turns": 15}), 15)
+        self.assertIsNone(_extract_max_iterations_cfg({"agent": {"max_turns": -5}}))
+        self.assertIsNone(_extract_max_iterations_cfg({}))
+
+        # max_tokens
+        self.assertEqual(_extract_max_tokens_cfg({"agent": {"max_tokens": 4096}}), 4096)
+        self.assertEqual(_extract_max_tokens_cfg({"max_tokens": "2048"}), 2048)
+        self.assertIsNone(_extract_max_tokens_cfg({"max_tokens": 0}))
+
+        # fallback entries
+        raw_list = [
+            {"provider": "anthropic", "model": "claude-3-5-sonnet", "base_url": "https://api.anthropic.com"},
+            {"provider": "", "model": "no-provider"},
+            "invalid-entry",
+        ]
+        parsed = _parse_fallback_entries(raw_list)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["provider"], "anthropic")
+        self.assertEqual(parsed[0]["model"], "claude-3-5-sonnet")
+
+    def test_agent_status_callback_events(self):
+        """Verify _make_agent_status_callback captures terminal errors and emits compressing/warning."""
+        events = []
+        ctx = StreamTurnContext(
+            session_id="sess-status-1",
+            msg_text="test",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-status-1",
+            put=lambda ev, data: events.append((ev, data)),
+        )
+        cb = _make_agent_status_callback(ctx)
+
+        # Non-retryable HTTP error capture
+        cb("error", "❌ Non-retryable error (HTTP 401): Invalid API key provided")
+        self.assertIn("Non-retryable error (HTTP 401)", ctx.captured_terminal_error[0])
+
+        # Compression event
+        cb("lifecycle", "Compacting context (5000 tokens)")
+        self.assertTrue(any(ev[0] == "compressing" for ev in events))
+
+        # Fallback notice event
+        cb("lifecycle", "Falling back to secondary model gemini-3.8-pro")
+        self.assertTrue(any(ev[0] == "warning" and ev[1].get("type") == "fallback" for ev in events))
+
+    def test_periodic_checkpoint_lifecycle(self):
+        """Verify _start_periodic_checkpoint starts a thread and _stop_periodic_checkpoint joins it."""
+        mock_session = MagicMock()
+        ctx = StreamTurnContext(
+            session_id="sess-ckpt-1",
+            msg_text="test",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-ckpt-1",
+            s=mock_session,
+            agent_lock=threading.Lock(),
+        )
+        _start_periodic_checkpoint(ctx)
+        self.assertIsNotNone(ctx.ckpt_thread)
+        self.assertTrue(ctx.ckpt_thread.is_alive())
+        self.assertTrue(ctx.ckpt_thread.name.startswith("ckpt-sess-ckp"))
+
+        # Stop and join
+        _stop_periodic_checkpoint(ctx, timeout=2.0)
+        self.assertTrue(ctx.checkpoint_stop.is_set())
+        self.assertFalse(ctx.ckpt_thread.is_alive())
+
+    def test_phase_prepare_context_preflight_cancel(self):
+        """Verify _phase_prepare_context catches pre-flight cancel and exits cleanly."""
+        cancel_evt = threading.Event()
+        cancel_evt.set()  # Pre-cancelled
+        events = []
+        mock_session = MagicMock()
+        mock_session.workspace = "/tmp/ws"
+
+        ctx = StreamTurnContext(
+            session_id="sess-cancel-1",
+            msg_text="cancelled",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-cancel-1",
+            cancel_event=cancel_evt,
+            put=lambda ev, data: events.append((ev, data)),
+        )
+
+        with unittest.mock.patch("api.streaming.get_session", return_value=mock_session), \
+             unittest.mock.patch("api.streaming._get_session_agent_lock", return_value=threading.Lock()), \
+             unittest.mock.patch("api.streaming._finalize_cancelled_turn") as mock_finalize:
+            res = _phase_prepare_context(ctx)
+            self.assertFalse(res)
+            mock_finalize.assert_called_once()
+            self.assertTrue(any(ev[0] == "cancel" for ev in events))
 
 
 if __name__ == "__main__":
