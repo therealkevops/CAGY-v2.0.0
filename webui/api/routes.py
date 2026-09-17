@@ -775,6 +775,7 @@ def _active_profile_config_path() -> Path:
 
         return Path(get_active_agy_home()) / "config.yaml"
     except Exception:
+        logger.debug("Silent exception in _active_profile_config_path", exc_info=True)
         return _get_config_path()
 
 
@@ -793,6 +794,7 @@ def _get_disabled_skill_names_for_profile() -> set:
     try:
         cfg = _load_yaml_config_file(config_path)
     except Exception:
+        logger.debug("Silent exception in _get_disabled_skill_names_for_profile", exc_info=True)
         return set()
     if not isinstance(cfg, dict):
         return set()
@@ -872,6 +874,7 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
         import yaml
         data = yaml.safe_load(frontmatter_raw) or {}
     except Exception:
+        logger.debug("Silent exception in _parse_frontmatter", exc_info=True)
         for line in frontmatter_raw.strip().split("\n"):
             if ":" in line:
                 k, v = line.split(":", 1)
@@ -912,6 +915,7 @@ def iter_skill_index_files(scan_dir: Path, filename: str = "SKILL.md"):
             if not any(part in _EXCLUDED_SKILL_DIRS for part in path.parts):
                 yield path
     except Exception:
+        logger.debug("Silent exception in iter_skill_index_files", exc_info=True)
         pass
 
 
@@ -1015,6 +1019,7 @@ def _find_skill_in_dirs(name: str, skills_dirs: list[Path]) -> tuple[Path | None
                 if frontmatter.get("name") == raw_name:
                     return skill_dir, skill_md
             except Exception:
+                logger.debug("Silent exception in _find_skill_in_dirs", exc_info=True)
                 continue
 
         for legacy_md in skills_dir.rglob("*.md"):
@@ -1153,6 +1158,7 @@ def _gateway_session_metadata_path():
         from api.profiles import get_active_agy_home
         hermes_home = Path(get_active_agy_home()).expanduser().resolve()
     except Exception:
+        logger.debug("Silent exception in _gateway_session_metadata_path", exc_info=True)
         hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
     return hermes_home / "sessions" / "sessions.json"
 
@@ -1169,6 +1175,7 @@ def _load_gateway_session_identity_map() -> dict[str, dict]:
             if cache["path"] == str(path) and cache["mtime"] == st.st_mtime:
                 return cache["identity"].copy()
     except Exception:
+        logger.debug("Silent exception in _load_gateway_session_identity_map", exc_info=True)
         return {}
 
     try:
@@ -1257,6 +1264,7 @@ def _gateway_status_payload() -> dict:
             mtime = sessions_path.stat().st_mtime
             last_active = datetime.datetime.fromtimestamp(mtime).isoformat()
         except Exception:
+            logger.debug("Silent exception in _gateway_status_payload", exc_info=True)
             pass
     return {
         "running": running,
@@ -1489,6 +1497,7 @@ def _ensure_agent_cron_import_path() -> None:
     try:
         from api import config as api_config
     except Exception:
+        logger.debug("Silent exception in _ensure_agent_cron_import_path", exc_info=True)
         return
 
     agent_dir = getattr(api_config, "_AGENT_DIR", None)
@@ -1546,6 +1555,7 @@ def _cron_jobs_cross_profile(active_profile: str) -> tuple[list[dict], list[dict
         try:
             return str(Path(path).expanduser().resolve(strict=False))
         except Exception:
+            logger.debug("Silent exception in _home_key", exc_info=True)
             return str(Path(path).expanduser())
 
     names: list[str] = []
@@ -1586,6 +1596,7 @@ def _cron_jobs_cross_profile(active_profile: str) -> tuple[list[dict], list[dict
             with cron_profile_context_for_home(home):
                 jobs = _cron_jobs_for_api(list_jobs(include_disabled=True))
         except Exception:
+            logger.debug("Silent exception in _cron_jobs_cross_profile", exc_info=True)
             if not is_active:
                 continue
             raise
@@ -2631,6 +2642,7 @@ def _session_list_payload_to_response(payload: dict) -> dict:
     try:
         _redact_enabled = bool(load_settings().get("api_redact_enabled", True))
     except Exception:
+        logger.debug("Silent exception in _session_list_payload_to_response", exc_info=True)
         _redact_enabled = True  # fail safe: redact when settings are unreadable
     for s in runtime_rows:
         item = _sidebar_session_response_item(s, redact_enabled=_redact_enabled) if isinstance(s, dict) else {}
@@ -2722,6 +2734,7 @@ def _get_cached_session_list_payload(
         try:
             diag.stage("session_list_cache_lookup")
         except Exception:
+            logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
             pass
 
     cached, is_fresh = _session_list_cache_get(key, allow_stale=True)
@@ -2730,6 +2743,7 @@ def _get_cached_session_list_payload(
             try:
                 diag.stage("session_list_cache_hit")
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 pass
         return cached
 
@@ -2742,6 +2756,7 @@ def _get_cached_session_list_payload(
                 try:
                     diag.stage("session_list_cache_stale_background_rebuild")
                 except Exception:
+                    logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                     pass
 
             def _rebuild_stale_session_list_cache():
@@ -2773,11 +2788,13 @@ def _get_cached_session_list_payload(
                 )
                 thread.start()
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 _session_list_cache_done(key, event)
         elif diag is not None:
             try:
                 diag.stage("session_list_cache_stale_return")
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 pass
         return stale
 
@@ -2787,6 +2804,7 @@ def _get_cached_session_list_payload(
             try:
                 diag.stage("session_list_cache_rebuild_owner")
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 pass
         try:
             rebuild_attempts = 0
@@ -2799,6 +2817,7 @@ def _get_cached_session_list_payload(
                         try:
                             diag.stage("session_list_cache_stored")
                         except Exception:
+                            logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                             pass
                     return payload
                 rebuild_attempts += 1
@@ -2806,6 +2825,7 @@ def _get_cached_session_list_payload(
                     try:
                         diag.stage("session_list_cache_invalidated_during_rebuild")
                     except Exception:
+                        logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                         pass
                 if rebuild_attempts >= 3:
                     return payload
@@ -2819,6 +2839,7 @@ def _get_cached_session_list_payload(
             else:
                 diag.stage("session_list_cache_wait")
         except Exception:
+            logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
             pass
 
     if stale is not None:
@@ -2833,6 +2854,7 @@ def _get_cached_session_list_payload(
             try:
                 diag.stage("session_list_cache_wait_hit")
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 pass
         return latest
 
@@ -2841,6 +2863,7 @@ def _get_cached_session_list_payload(
             try:
                 diag.stage("session_list_cache_wait_stale_fallback")
             except Exception:
+                logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
                 pass
         return stale
 
@@ -2849,6 +2872,7 @@ def _get_cached_session_list_payload(
         try:
             diag.stage("session_list_cache_fallback_rebuild")
         except Exception:
+            logger.debug("Silent exception in _get_cached_session_list_payload", exc_info=True)
             pass
     invalidation_stamp = _session_list_cache_invalidation_stamp(key)
     payload = builder()
@@ -2963,6 +2987,7 @@ def _cancelled_run_is_stale(run_entry) -> bool:
             grace_seconds=_STALE_CANCELLED_RUN_GRACE_SECONDS,
         )
     except Exception:
+        logger.debug("Silent exception in _cancelled_run_is_stale", exc_info=True)
         return False
 
 
@@ -2991,6 +3016,7 @@ def _clear_stale_stream_state(session) -> bool:
         with _live_config.ACTIVE_RUNS_LOCK:
             worker_alive = stream_id in (_live_config.ACTIVE_RUNS or {})
     except Exception:
+        logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
         worker_alive = False
     if worker_alive:
         # #6623: a worker stuck in C-level I/O may never reach its finally to
@@ -3004,6 +3030,7 @@ def _clear_stale_stream_state(session) -> bool:
             with _live_config.ACTIVE_RUNS_LOCK:
                 run_entry = dict((_live_config.ACTIVE_RUNS or {}).get(stream_id) or {})
         except Exception:
+            logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
             run_entry = {}
         if not _cancelled_run_is_stale(run_entry):
             logger.debug(
@@ -3027,6 +3054,7 @@ def _clear_stale_stream_state(session) -> bool:
         pending_started_at = getattr(session, "pending_started_at", None)
         pending_age = time.time() - float(pending_started_at) if pending_started_at else None
     except Exception:
+        logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
         pending_age = None
     if (
         getattr(session, "pending_user_message", None)
@@ -3086,6 +3114,7 @@ def _clear_stale_stream_state(session) -> bool:
                 if hasattr(original_stub, "pending_user_source"):
                     original_stub.pending_user_source = None
             except Exception:
+                logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
                 pass
             return False
 
@@ -3127,6 +3156,7 @@ def _clear_stale_stream_state(session) -> bool:
                         if hasattr(original_stub, "pending_user_source"):
                             original_stub.pending_user_source = None
                     except Exception:
+                        logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
                         pass
                 return True
             if getattr(session, "active_stream_id", None) != stream_id:
@@ -3165,6 +3195,7 @@ def _clear_stale_stream_state(session) -> bool:
             if hasattr(original_stub, "pending_user_source"):
                 original_stub.pending_user_source = None
         except Exception:
+            logger.debug("Silent exception in _clear_stale_stream_state", exc_info=True)
             pass
     return True
 
@@ -4220,6 +4251,7 @@ def _anchor_scene_string_payload(value) -> str:
     try:
         return json.dumps(value)
     except Exception:
+        logger.debug("Silent exception in _anchor_scene_string_payload", exc_info=True)
         return str(value)
 
 
@@ -4336,6 +4368,7 @@ def _anchor_scene_tool_args(tool):
             parsed = json.loads(raw)
             return parsed if isinstance(parsed, dict) else {}
         except Exception:
+            logger.debug("Silent exception in _anchor_scene_tool_args", exc_info=True)
             return {}
     return {}
 
@@ -5641,6 +5674,7 @@ def _set_csrf_failure_reason(handler, reason: str) -> bool:
     try:
         setattr(handler, _CSRF_FAILURE_ATTR, reason)
     except Exception:
+        logger.debug("Silent exception in _set_csrf_failure_reason", exc_info=True)
         pass
     return False
 
@@ -5650,6 +5684,7 @@ def _clear_csrf_failure_reason(handler) -> None:
         if hasattr(handler, _CSRF_FAILURE_ATTR):
             delattr(handler, _CSRF_FAILURE_ATTR)
     except Exception:
+        logger.debug("Silent exception in _clear_csrf_failure_reason", exc_info=True)
         pass
 
 
@@ -5736,18 +5771,21 @@ def _read_body_bytes(handler) -> bytes:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _read_body_bytes", exc_info=True)
             pass
         raise ValueError(f"Invalid Content-Length: {raw_length!r}") from None
     if length < 0:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _read_body_bytes", exc_info=True)
             pass
         raise ValueError(f"Invalid Content-Length: {length}")
     if length > MAX_BODY_BYTES:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _read_body_bytes", exc_info=True)
             pass
         raise ValueError(f"Request body too large ({length} bytes, max {MAX_BODY_BYTES})")
     return handler.rfile.read(length) if length else b""
@@ -5935,6 +5973,7 @@ def _client_ip_for_rate_limit(handler) -> str:
         if address:
             return str(address[0])
     except Exception:
+        logger.debug("Silent exception in _client_ip_for_rate_limit", exc_info=True)
         pass
     return "unknown"
 
@@ -5952,6 +5991,7 @@ def _request_client_ip(handler) -> str:
         if address:
             return str(address[0] or "")
     except Exception:
+        logger.debug("Silent exception in _request_client_ip", exc_info=True)
         pass
     return ""
 
@@ -6267,18 +6307,21 @@ def _safe_content_length(handler, max_bytes: int) -> int:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _safe_content_length", exc_info=True)
             pass
         raise ValueError(f"Invalid Content-Length: {raw_length!r}") from None
     if length < 0:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _safe_content_length", exc_info=True)
             pass
         raise ValueError(f"Invalid Content-Length: {length}")
     if length > max_bytes:
         try:
             handler.close_connection = True
         except Exception:
+            logger.debug("Silent exception in _safe_content_length", exc_info=True)
             pass
         raise OverflowError(f"Request body too large ({length} bytes, max {max_bytes})")
     return length
@@ -6291,6 +6334,7 @@ def _read_csp_report_payload(handler):
         try:
             handler.rfile.read(_CSP_REPORT_MAX_BODY_BYTES)
         except Exception:
+            logger.debug("Silent exception in _read_csp_report_payload", exc_info=True)
             pass
         return {"discarded": "body_too_large", "error": str(exc)}
     except ValueError as exc:
@@ -6299,6 +6343,7 @@ def _read_csp_report_payload(handler):
     try:
         return json.loads(raw.decode("utf-8"))
     except Exception:
+        logger.debug("Silent exception in _read_csp_report_payload", exc_info=True)
         return {"invalid": True, "bytes": len(raw)}
 
 
@@ -6333,6 +6378,7 @@ def _sanitize_client_event_url_path(value) -> str | None:
         parsed = urlsplit(text)
         path = parsed.path or "/"
     except Exception:
+        logger.debug("Silent exception in _sanitize_client_event_url_path", exc_info=True)
         path = text.split("?", 1)[0] or "/"
     if not path.startswith("/"):
         path = "/" + path.lstrip("/")
@@ -6382,6 +6428,7 @@ def _read_client_event_payload(handler) -> dict:
         try:
             handler.rfile.read(_CLIENT_EVENT_MAX_BODY_BYTES)
         except Exception:
+            logger.debug("Silent exception in _read_client_event_payload", exc_info=True)
             pass
         return {"event": "discarded", "reason": "body_too_large"}
     except ValueError:
@@ -6391,6 +6438,7 @@ def _read_client_event_payload(handler) -> dict:
         decoded = raw.decode("utf-8")
         payload = json.loads(decoded)
     except Exception:
+        logger.debug("Silent exception in _read_client_event_payload", exc_info=True)
         return {"event": "invalid", "reason": "invalid_json"}
     return payload if isinstance(payload, dict) else {"event": "invalid", "reason": "not_object"}
 
@@ -6540,6 +6588,7 @@ def _repair_foreign_session_model_provider(
     try:
         catalog = get_available_models(prefer_cache=True)
     except Exception:
+        logger.debug("Silent exception in _repair_foreign_session_model_provider", exc_info=True)
         return resolved_provider
     groups = [group for group in catalog.get("groups") or [] if isinstance(group, dict)]
     stored_groups = [
@@ -6739,6 +6788,7 @@ def _canonical_context_provider(value: str | None) -> str:
 
         provider = _resolve_provider_alias(provider)
     except Exception:
+        logger.debug("Silent exception in _canonical_context_provider", exc_info=True)
         pass
     return str(provider or "").strip().lower()
 
@@ -6749,6 +6799,7 @@ def _custom_provider_slug_for_context(name: object) -> str:
 
         return _custom_provider_slug_from_name(name)
     except Exception:
+        logger.debug("Silent exception in _custom_provider_slug_for_context", exc_info=True)
         raw = str(name or "").strip().lower()
         if not raw:
             return ""
@@ -6810,6 +6861,7 @@ def _custom_provider_api_key_for_context(entry: dict, provider: str) -> str:
 
         return _lookup_custom_api_key_env(provider) or ""
     except Exception:
+        logger.debug("Silent exception in _custom_provider_api_key_for_context", exc_info=True)
         return ""
 
 
@@ -6886,6 +6938,7 @@ def _context_length_lookup_inputs_for_model(
 
             cfg = _get_config_for_cl()
         except Exception:
+            logger.debug("Silent exception in _context_length_lookup_inputs_for_model", exc_info=True)
             cfg = {}
     cfg = cfg if isinstance(cfg, dict) else {}
 
@@ -7127,6 +7180,7 @@ def _read_profile_config_cached(profile_name: str, cfg_path: str) -> dict | None
                     with open(cfg_path, "r", encoding="utf-8") as _f:
                         _current_content = _f.read()
                 except Exception:
+                    logger.debug("Silent exception in _read_profile_config_cached", exc_info=True)
                     pass
                 if _current_content == cached_content:
                     return cached_dict
@@ -7137,6 +7191,7 @@ def _read_profile_config_cached(profile_name: str, cfg_path: str) -> dict | None
             content = _f.read()
             parsed = yaml.safe_load(content) or {}
     except Exception:
+        logger.debug("Silent exception in _read_profile_config_cached", exc_info=True)
         return None
     if not isinstance(parsed, dict):
         return None
@@ -7265,6 +7320,7 @@ def _repair_bare_custom_provider_model(
                 return _id
         return None
     except Exception:
+        logger.debug("Silent exception in _repair_bare_custom_provider_model", exc_info=True)
         return None
 
 
@@ -7336,6 +7392,7 @@ def _resolve_compatible_session_model_state(
 
             providers_cfg = _active_cfg.get("providers") if isinstance(_active_cfg, dict) else {}
         except Exception:
+            logger.debug("Silent exception in _resolve_compatible_session_model_state", exc_info=True)
             providers_cfg = {}
         if isinstance(providers_cfg, dict) and requested_provider in providers_cfg:
             return model, requested_provider, False
@@ -7820,6 +7877,7 @@ def _resolve_context_length_for_session_model(
             # Older hermes-agent builds: legacy 2-arg form.
             return _get_cl(model_for_lookup, _ctx_lookup.base_url) or 0
     except Exception:
+        logger.debug("Silent exception in _resolve_context_length_for_session_model", exc_info=True)
         return 0
 
 
@@ -8008,6 +8066,7 @@ def _lookup_cli_session_metadata(session_id: str, *, all_profiles: bool = False)
             if row.get("session_id") == session_id:
                 return row
     except Exception:
+        logger.debug("Silent exception in _lookup_cli_session_metadata", exc_info=True)
         return {}
     return {}
 
@@ -8034,6 +8093,7 @@ def _session_index_marks_was_webui(sid: str) -> bool:
     try:
         entries = json.loads(SESSION_INDEX_FILE.read_bytes())
     except Exception:
+        logger.debug("Silent exception in _session_index_marks_was_webui", exc_info=True)
         return False
     for entry in entries if isinstance(entries, list) else []:
         if entry.get("session_id") != sid:
@@ -8069,6 +8129,7 @@ def _session_deleted_tombstone_marks_was_webui(sid: str) -> bool:
     try:
         return sid in _load_webui_deleted_session_tombstone()
     except Exception:
+        logger.warning("Silent exception in _session_deleted_tombstone_marks_was_webui", exc_info=True)
         return False
 
 
@@ -8093,6 +8154,7 @@ def _state_db_session_source(sid: str) -> str:
                 "SELECT source FROM sessions WHERE id = ?", (sid,)
             ).fetchone()
     except Exception:
+        logger.debug("Silent exception in _state_db_session_source", exc_info=True)
         return ""
     if not row:
         return ""
@@ -8127,6 +8189,7 @@ def _session_is_subagent_view_only(sid: str) -> bool:
     try:
         s = get_session(sid)
     except Exception:
+        logger.debug("Silent exception in _session_is_subagent_view_only", exc_info=True)
         return False
     src = (
         str(getattr(s, "source_tag", "") or getattr(s, "raw_source", "")
@@ -8264,12 +8327,14 @@ def _claim_or_synthesize_cli_session(sid: str, cli_meta: dict = None):
                 from api.workspace import get_last_workspace
                 workspace = get_last_workspace()
             except Exception:
+                logger.warning("Silent exception in build_workspace", exc_info=True)
                 workspace = None
         if not workspace:
             try:
                 from api.models import DEFAULT_WORKSPACE
                 workspace = DEFAULT_WORKSPACE
             except Exception:
+                logger.warning("Silent exception in build_workspace", exc_info=True)
                 workspace = "/"
         return workspace
 
@@ -8357,6 +8422,7 @@ def _claim_or_synthesize_cli_session(sid: str, cli_meta: dict = None):
                     state_db_row = dict(_row)
                     state_db_source = str(_row["source"] or "").strip().lower()
     except Exception:
+        logger.debug("Silent exception in _claim_or_synthesize_cli_session", exc_info=True)
         state_db_source = ""
     # Populate source metadata from state.db when cli_meta is empty so the
     # synthesized Session carries the right source_tag/source_label.  Only
@@ -8442,6 +8508,7 @@ def _normalize_import_profile_value(value):
         if profile != "default" and not _PROFILE_ID_RE.fullmatch(profile):
             return ""
     except Exception:
+        logger.debug("Silent exception in _normalize_import_profile_value", exc_info=True)
         pass
     return profile
 
@@ -8541,6 +8608,7 @@ def _is_pre_compression_snapshot_id(session_id: str) -> bool:
         data = json.loads(path.read_text(encoding="utf-8"))
         return bool(data.get("pre_compression_snapshot"))
     except Exception:
+        logger.debug("Silent exception in _is_pre_compression_snapshot_id", exc_info=True)
         return False
 
 
@@ -8890,6 +8958,7 @@ def _tool_message_for_limited_payload(message):
         try:
             text = json.dumps(content, ensure_ascii=False, default=str)
         except Exception:
+            logger.debug("Silent exception in _tool_message_for_limited_payload", exc_info=True)
             text = str(content)
     if len(text) <= _LIMITED_TOOL_CONTENT_MAX_CHARS:
         return message
@@ -9148,6 +9217,7 @@ def _display_merge_requires_lineage_provenance(session) -> bool:
     try:
         parent = Session.load(parent_id)
     except Exception:
+        logger.debug("Silent exception in _display_merge_requires_lineage_provenance", exc_info=True)
         return True
     if parent is None:
         return True
@@ -9444,6 +9514,7 @@ def _state_db_session_signature(session_id, profile=None):
         if not db_path or not Path(db_path).exists():
             return None
     except Exception:
+        logger.debug("Silent exception in _state_db_session_signature", exc_info=True)
         return None
     target_revision = _state_db_target_session_revision(db_path, sid)
     if target_revision is not None:
@@ -9451,6 +9522,7 @@ def _state_db_session_signature(session_id, profile=None):
     try:
         signature = _sqlite_file_stat_cache_key(Path(db_path))
     except Exception:
+        logger.debug("Silent exception in _state_db_session_signature", exc_info=True)
         return None
     if signature is None:
         return None
@@ -9485,6 +9557,7 @@ def _state_db_rows_fingerprint(rows) -> str | None:
                 h.update(repr(row).encode("utf-8", "replace"))
         return h.hexdigest()
     except Exception:
+        logger.debug("Silent exception in _state_db_rows_fingerprint", exc_info=True)
         return None
 
 
@@ -9495,6 +9568,7 @@ def _sidecar_file_exceeds_threshold(session_id, threshold_bytes) -> bool:
         p = SESSION_DIR / f"{session_id}.json"
         return os.path.isfile(p) and os.path.getsize(p) > threshold_bytes
     except Exception:
+        logger.debug("Silent exception in _sidecar_file_exceeds_threshold", exc_info=True)
         return False
 
 
@@ -9580,6 +9654,7 @@ def _messages_start_with_visible_prefix(messages, prefix) -> bool:
             for idx, prefix_msg in enumerate(prefix)
         )
     except Exception:
+        logger.debug("Silent exception in _messages_start_with_visible_prefix", exc_info=True)
         return False
 
 
@@ -9793,6 +9868,7 @@ def _merged_webui_lineage_messages_for_display(session, messages=None) -> list:
     try:
         parent = get_session(parent_id, metadata_only=False)
     except Exception:
+        logger.debug("Silent exception in _merged_webui_lineage_messages_for_display", exc_info=True)
         return primary_messages
     parent_messages = list(getattr(parent, "messages", []) or [])
     if not parent_messages:
@@ -9926,6 +10002,7 @@ def _is_messaging_session_id(sid: str) -> bool:
         if _is_messaging_session_record(session):
             return True
     except Exception:
+        logger.debug("Silent exception in _is_messaging_session_id", exc_info=True)
         pass
     return _is_messaging_session_record(_lookup_cli_session_metadata(sid))
 
@@ -10354,6 +10431,7 @@ def _pre_compression_continuation_session_id(session) -> str | None:
                 seen_ids.add(child_sid)
                 rows.append(child)
         except Exception:
+            logger.debug("Silent exception in _child_rows_from_memory", exc_info=True)
             pass
         return rows
 
@@ -10363,6 +10441,7 @@ def _pre_compression_continuation_session_id(session) -> str | None:
         try:
             entries = json.loads(SESSION_INDEX_FILE.read_bytes())
         except Exception:
+            logger.debug("Silent exception in _child_rows_from_index", exc_info=True)
             return None
         if not isinstance(entries, list):
             return None
@@ -10373,6 +10452,7 @@ def _pre_compression_continuation_session_id(session) -> str | None:
                 if not path.name.startswith("_") and is_safe_session_id(path.stem)
             }
         except Exception:
+            logger.debug("Silent exception in _child_rows_from_index", exc_info=True)
             return None
         indexed_ids: set[str] = set()
         row_seen_ids = set(seen_ids)
@@ -10412,6 +10492,7 @@ def _pre_compression_continuation_session_id(session) -> str | None:
                     seen_ids.add(child_sid)
                     rows.append(child)
         except Exception:
+            logger.debug("Silent exception in _child_rows_from_sidecars", exc_info=True)
             pass
         return rows
 
@@ -11047,6 +11128,7 @@ def _oidc_login_html(parsed) -> str:
     try:
         from api.auth_oidc import is_oidc_enabled
     except Exception:
+        logger.debug("Silent exception in _oidc_login_html", exc_info=True)
         return ""
     if not is_oidc_enabled():
         return ""
@@ -11095,6 +11177,7 @@ def _handle_logs(handler, parsed) -> bool:
 
         hermes_home = Path(get_active_agy_home()).expanduser()
     except Exception:
+        logger.warning("Silent exception in _handle_logs", exc_info=True)
         hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes")).expanduser()
 
     log_dir = hermes_home / "logs"
@@ -11191,6 +11274,7 @@ def _handle_insights(handler, parsed) -> bool:
         try:
             idx = json.loads(idx_path.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Silent exception in _handle_insights", exc_info=True)
             idx = []
     else:
         idx = []
@@ -11263,6 +11347,7 @@ def _handle_insights(handler, parsed) -> bool:
                 dow_activity[dt.tm_wday] += 1
                 hod_activity[dt.tm_hour] += 1
             except Exception:
+                logger.warning("Silent exception in _handle_insights", exc_info=True)
                 pass
 
     # ── Also include CLI sessions from Hermes state.db ─────────────────────
@@ -11479,6 +11564,7 @@ def _stream_runtime_diagnostics() -> dict:
                 if isinstance(raw_snapshot, dict):
                     snapshot = raw_snapshot
             except Exception:
+                logger.debug("Silent exception in _stream_runtime_diagnostics", exc_info=True)
                 snapshot = {}
         subscriber_count = int(snapshot.get("subscriber_count") or 0)
         offline_buffered_events = int(snapshot.get("offline_buffered_events") or 0)
@@ -11516,6 +11602,7 @@ def _run_lifecycle_health() -> dict:
             try:
                 age = max(0.0, now - float(started_at))
             except Exception:
+                logger.debug("Silent exception in _run_lifecycle_health", exc_info=True)
                 age = 0.0
             item["age_seconds"] = round(age, 1)
             runs.append(item)
@@ -11564,6 +11651,7 @@ def _deep_health_checks(stream_check: dict | None = None) -> tuple[dict, bool]:
             "ms": round((time.time() - t0) * 1000, 1),
         }
     except Exception as exc:
+        logger.debug("Silent exception in _deep_health_checks", exc_info=True)
         checks["sessions"] = {
             "status": "error",
             "error": type(exc).__name__,
@@ -11579,6 +11667,7 @@ def _deep_health_checks(stream_check: dict | None = None) -> tuple[dict, bool]:
             "ms": round((time.time() - t0) * 1000, 1),
         }
     except Exception as exc:
+        logger.debug("Silent exception in _deep_health_checks", exc_info=True)
         checks["projects"] = {
             "status": "error",
             "error": type(exc).__name__,
@@ -11601,6 +11690,7 @@ def _deep_health_checks(stream_check: dict | None = None) -> tuple[dict, bool]:
                 "ms": round((time.time() - t0) * 1000, 1),
             }
     except Exception as exc:
+        logger.debug("Silent exception in _deep_health_checks", exc_info=True)
         checks["state_db"] = {
             "status": "error",
             "error": type(exc).__name__,
@@ -11663,6 +11753,7 @@ def _get_plugin_manager_for_visibility():
         from hermes_cli.plugins import get_plugin_manager
         return get_plugin_manager()
     except Exception:
+        logger.debug("Silent exception in _get_plugin_manager_for_visibility", exc_info=True)
         return None
 
 
@@ -11697,6 +11788,7 @@ def _plugin_visibility_selected_provider(category: str) -> str:
 
         cfg = _get_cfg() or {}
     except Exception:
+        logger.debug("Silent exception in _plugin_visibility_selected_provider", exc_info=True)
         return ""
     category_cfg = cfg.get(category, {}) if isinstance(cfg, dict) else {}
     if not isinstance(category_cfg, dict):
@@ -11793,6 +11885,7 @@ def _dashboard_plugin_enabled(plugin_name: str) -> bool:
         prefs = (load_settings() or {}).get("dashboard_plugins", {}) or {}
         return bool(prefs.get(plugin_name, False))
     except Exception:
+        logger.debug("Silent exception in _dashboard_plugin_enabled", exc_info=True)
         return False
 
 
@@ -11804,6 +11897,7 @@ def _webui_plugin_payload() -> list[dict]:
             return list(meta.values())
         return list(meta or [])
     except Exception:
+        logger.debug("Silent exception in _webui_plugin_payload", exc_info=True)
         return []
 
 
@@ -11870,6 +11964,7 @@ def _shutdown_log_value(value, *, default: str = "unknown", max_len: int = 160) 
     try:
         text = str(value)
     except Exception:
+        logger.debug("Silent exception in _shutdown_log_value", exc_info=True)
         return default
     text = _SHUTDOWN_LOG_VALUE_RE.sub("?", text).strip()
     if not text:
@@ -11957,6 +12052,7 @@ def _saved_prompts_path() -> "Path":
         from api.profiles import get_active_agy_home
         return Path(get_active_agy_home()).expanduser() / "webui" / "saved_prompts.json"
     except Exception:
+        logger.warning("Silent exception in _saved_prompts_path", exc_info=True)
         return Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser() / "webui" / "saved_prompts.json"
 
 
@@ -11967,6 +12063,7 @@ def _load_saved_prompts() -> list:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
+        logger.warning("Silent exception in _load_saved_prompts", exc_info=True)
         return []
 
 
@@ -12041,6 +12138,7 @@ def _get_agy_models_payload(force: bool = False):
                 mid, label = line.split("\t", 1)
                 models_raw.append((mid.strip(), label.strip()))
     except Exception:
+        logger.debug("Silent exception in _get_agy_models_payload", exc_info=True)
         pass
 
     gemini_models = []
@@ -12173,6 +12271,7 @@ def handle_get(handler, parsed) -> bool:
                     if cookie_val and verify_session(cookie_val):
                         csrf_token = csrf_token_for_session(cookie_val) or ""
             except Exception:
+                logger.warning("Silent exception in handle_get", exc_info=True)
                 csrf_token = ""
 
             # The disk read + process-constant token substitutions are cached;
@@ -12187,6 +12286,7 @@ def handle_get(handler, parsed) -> bool:
                 content_type="text/html; charset=utf-8",
             )
         except Exception as exc:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             return _serve_shell_unavailable(handler, exc)
 
     if parsed.path == "/share" or parsed.path.startswith("/share/"):
@@ -12524,6 +12624,7 @@ def handle_get(handler, parsed) -> bool:
             from api.vault import is_deepmode_enabled
             dm_status = is_deepmode_enabled()
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             dm_status = False
         return j(handler, {
             "ok": True,
@@ -12544,6 +12645,7 @@ def handle_get(handler, parsed) -> bool:
             from api.config import get_max_tokens_status
             settings.update(get_max_tokens_status())
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             settings["max_tokens"] = None
             settings["max_tokens_effective"] = None
             settings["max_tokens_fallback"] = None
@@ -12569,6 +12671,7 @@ def handle_get(handler, parsed) -> bool:
                 settings["passkeys_enabled"] = False
                 settings["passwordless_enabled"] = False
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             pass
         # Inject the running version so the UI badge stays in sync with git tags
         # without any manual release step.
@@ -12577,6 +12680,7 @@ def handle_get(handler, parsed) -> bool:
             settings["webui_version"] = WEBUI_VERSION
             settings["agent_version"] = AGENT_VERSION
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             pass
         # Channel-scoped display badge — SEPARATE from webui_version (which is
         # load-bearing for asset cache-busting / SW cache / skew detection and
@@ -12587,6 +12691,7 @@ def handle_get(handler, parsed) -> bool:
             settings["update_channel"] = channel
             settings["update_channel_version"] = channel_version_badge(channel)
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             pass
         return j(handler, settings)
 
@@ -13021,6 +13126,7 @@ def handle_get(handler, parsed) -> bool:
                 try:
                     journal = find_run_summary(original_stream_id)
                 except Exception:
+                    logger.warning("Silent exception in handle_get", exc_info=True)
                     journal = None
                 if journal:
                     journal_active = bool(original_stream_id in active_stream_ids)
@@ -13568,6 +13674,7 @@ def handle_get(handler, parsed) -> bool:
         try:
             journal = find_run_summary(stream_id) if stream_id else None
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             journal = None
         if journal:
             payload["replay_available"] = True
@@ -13778,6 +13885,7 @@ def handle_get(handler, parsed) -> bool:
             rules = list_workspace_rules()
             skills.extend(rules)
         except Exception:
+            logger.warning("Silent exception in handle_get", exc_info=True)
             pass
         return j(handler, {"skills": skills})
 
@@ -14258,6 +14366,7 @@ def _read_json_body(handler) -> dict:
         raw = handler.rfile.read(length).decode("utf-8")
         return json.loads(raw) if raw else {}
     except Exception:
+        logger.debug("Silent exception in _read_json_body", exc_info=True)
         return {}
 
 
@@ -14544,6 +14653,7 @@ def handle_post(handler, parsed) -> bool:
         status = 413 if "too large" in str(exc).lower() else 400
         return bad(handler, str(exc), status=status)
     except Exception:
+        logger.warning("Silent exception in handle_post", exc_info=True)
         if diag:
             diag.finish()
         raise
@@ -14798,6 +14908,7 @@ def handle_post(handler, parsed) -> bool:
                             from api.session_lifecycle import _unregister_background_commit_thread
                             _unregister_background_commit_thread(threading.current_thread())
                         except Exception:
+                            logger.debug("Silent exception in _commit_prev_session_memory", exc_info=True)
                             pass
 
                 t = threading.Thread(
@@ -14935,6 +15046,7 @@ def handle_post(handler, parsed) -> bool:
                 },
             )
         except Exception as e:
+            logger.warning("Silent exception in handle_post", exc_info=True)
             return bad(handler, str(e))
 
     if parsed.path == "/api/default-model":
@@ -14961,6 +15073,7 @@ def handle_post(handler, parsed) -> bool:
             try:
                 return j(handler, set_auxiliary_model(task, provider, model, advanced=advanced))
             except Exception as exc:
+                logger.warning("Silent exception in handle_post", exc_info=True)
                 return bad(handler, str(exc), status=400)
         if scope == "main":
             try:
@@ -15394,6 +15507,7 @@ def handle_post(handler, parsed) -> bool:
                 p = (SESSION_DIR / f"{sid}.json").resolve()
                 p.relative_to(SESSION_DIR.resolve())
             except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
                 return bad(handler, "Invalid session_id", 400)
             sidecar_deleted = False
             try:
@@ -15525,6 +15639,7 @@ def handle_post(handler, parsed) -> bool:
                         getattr(_parent, "pre_compression_snapshot", False)
                     )
                 except Exception:
+                    logger.warning("Silent exception in handle_post", exc_info=True)
                     _parent_is_compression_snapshot = False
                 if _parent_is_compression_snapshot:
                     s.parent_session_id = None
@@ -15662,6 +15777,7 @@ def handle_post(handler, parsed) -> bool:
         try:
             if not getattr(source, "_branch_source_readonly", False): source.save()
         except Exception:
+            logger.warning("Silent exception in handle_post", exc_info=True)
             pass
         cli_meta = _lookup_cli_session_metadata(source.session_id) if _session_requires_cli_metadata_lookup(source) else {}
         is_messaging_session = _is_messaging_session_record(source) or _is_messaging_session_record(cli_meta)
@@ -16194,6 +16310,7 @@ def handle_post(handler, parsed) -> bool:
                 "deepmode": is_deepmode_enabled()
             })
         except Exception as exc:
+            logger.warning("Silent exception in handle_post", exc_info=True)
             return bad(handler, str(exc), status=400)
 
     # ── Settings (POST) ──
@@ -16327,11 +16444,13 @@ def handle_post(handler, parsed) -> bool:
             try:
                 _clear_session_list_cache()
             except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
                 pass
             try:
                 from api.models import clear_cli_sessions_cache
                 clear_cli_sessions_cache()
             except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
                 pass
 
         auth_enabled_after = is_auth_enabled()
@@ -16359,6 +16478,7 @@ def handle_post(handler, parsed) -> bool:
                 saved["passkeys_enabled"] = False
                 saved["passwordless_enabled"] = False
         except Exception:
+            logger.warning("Silent exception in handle_post", exc_info=True)
             pass
 
         if not new_cookie:
@@ -16432,6 +16552,7 @@ def handle_post(handler, parsed) -> bool:
         try:
             return j(handler, probe_provider_endpoint(provider, base_url, api_key))
         except Exception as e:
+            logger.warning("Silent exception in handle_post", exc_info=True)
             return bad(handler, f"probe failed: {e}", 500)
 
     # ── Session pin (POST) ──
@@ -16649,6 +16770,7 @@ def handle_post(handler, parsed) -> bool:
                     try:
                         s.workspace = str(resolve_trusted_workspace(target_p["default_workspace"]))
                     except Exception:
+                        logger.warning("Silent exception in handle_post", exc_info=True)
                         s.workspace = target_p["default_workspace"]
             s.save()
         finally:
@@ -16689,6 +16811,7 @@ def handle_post(handler, parsed) -> bool:
             try:
                 default_ws = str(resolve_trusted_workspace(raw_ws.strip()))
             except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
                 default_ws = raw_ws.strip()
         else:
             default_ws = None
@@ -16734,6 +16857,7 @@ def handle_post(handler, parsed) -> bool:
                 try:
                     proj["default_workspace"] = str(resolve_trusted_workspace(raw_ws.strip()))
                 except Exception:
+                    logger.warning("Silent exception in handle_post", exc_info=True)
                     proj["default_workspace"] = raw_ws.strip()
             else:
                 proj["default_workspace"] = None
@@ -17358,6 +17482,7 @@ def _handle_session_export(handler, parsed):
                     if len(parsed_palette) <= 64:
                         palette = parsed_palette
             except Exception:
+                logger.warning("Silent exception in _handle_session_export", exc_info=True)
                 palette = None
         payload = render_session_html(safe, theme=theme, palette=palette)
         content_type = "text/html; charset=utf-8"
@@ -17498,6 +17623,7 @@ def _handle_sessions_search(handler, parsed):
     try:
         _search_redact_enabled = bool(load_settings().get("api_redact_enabled", True))
     except Exception:
+        logger.warning("Silent exception in _handle_sessions_search", exc_info=True)
         _search_redact_enabled = True  # fail safe: redact when settings unreadable
     if not q:
         safe_sessions = []
@@ -17576,6 +17702,7 @@ def _handle_list_dir(handler, parsed):
                 return bad(handler, "Session not found", 404)
             workspace = cli_meta.get("workspace", "")
         except Exception:
+            logger.warning("Silent exception in _handle_list_dir", exc_info=True)
             return bad(handler, "Session not found", 404)
     try:
         if webui_session is None:
@@ -17621,6 +17748,7 @@ def _read_json_request_body(handler, *, max_bytes: int = 4096) -> dict:
     try:
         payload = json.loads(raw.decode("utf-8"))
     except Exception as exc:
+        logger.debug("Silent exception in _read_json_request_body", exc_info=True)
         raise ValueError("invalid JSON body") from exc
     return payload if isinstance(payload, dict) else {}
 
@@ -17772,6 +17900,7 @@ def _session_events_resume_event_id(handler, parsed) -> str | None:
         try:
             raw = headers.get("Last-Event-ID")
         except Exception:
+            logger.debug("Silent exception in _session_events_resume_event_id", exc_info=True)
             raw = None
     raw = str(raw or "").strip()
     if raw:
@@ -17788,6 +17917,7 @@ def _session_snapshot_payload(session, *, active_stream_id: str | None = None) -
             active_stream_ids={active_stream_id} if active_stream_id else None,
         )
     except Exception:
+        logger.debug("Silent exception in _session_snapshot_payload", exc_info=True)
         payload = {"session_id": str(getattr(session, "session_id", "") or "")}
     return {"session": payload}
 
@@ -17874,6 +18004,7 @@ def _chat_stream_resume_cursor(handler, qs: dict, stream_id: str | None = None) 
     try:
         raw = headers.get("Last-Event-ID")
     except Exception:
+        logger.debug("Silent exception in _chat_stream_resume_cursor", exc_info=True)
         return None, False, None, None
     raw = str(raw or "").strip()
     if not raw:
@@ -18181,6 +18312,7 @@ def _sse_offline_gap_recovery(handler, stream_id: str, offline_dropped: int) -> 
         if not session_id:
             session_id = str((find_run_summary(stream_id) or {}).get("session_id") or "")
     except Exception:
+        logger.debug("Silent exception in _sse_offline_gap_recovery", exc_info=True)
         session_id = ""
     _sse(
         handler,
@@ -18281,6 +18413,7 @@ def _stream_runner_run_events(handler, run_id: str, cursor: str | None = None) -
             try:
                 event_stream = adapter.observe_run(run_id, cursor=cursor_value)
             except Exception as exc:
+                logger.debug("Silent exception in _stream_runner_run_events", exc_info=True)
                 _sse(handler, "error", {"error": _sanitize_error(exc)})
                 break
             emitted = False
@@ -18303,6 +18436,7 @@ def _stream_runner_run_events(handler, run_id: str, cursor: str | None = None) -
                 try:
                     status = adapter.get_run(run_id)
                 except Exception:
+                    logger.debug("Silent exception in _stream_runner_run_events", exc_info=True)
                     status = None
                 state = str(getattr(status, "terminal_state", None) or getattr(status, "status", "") or "").lower()
                 if state in ("completed", "complete", "failed", "error", "cancelled", "canceled"):
@@ -18347,6 +18481,7 @@ def _handle_sse_stream(handler, parsed):
         try:
             journal_summary = find_run_summary(stream_id) if stream_id else None
         except Exception:
+            logger.warning("Silent exception in _handle_sse_stream", exc_info=True)
             journal_summary = None
         if not journal_summary:
             return j(handler, {"error": "stream not found"}, status=404)
@@ -18426,6 +18561,7 @@ def _handle_sse_stream(handler, parsed):
             try:
                 stream.unsubscribe(subscriber)
             except Exception:
+                logger.warning("Silent exception in _handle_sse_stream", exc_info=True)
                 pass
     return True
 
@@ -18585,6 +18721,7 @@ def _handle_session_run_journal_stream_for_session(handler, parsed, session_id):
             try:
                 subscriber_stream.unsubscribe(subscriber)
             except Exception:
+                logger.warning("Silent exception in _handle_session_run_journal_stream_for_session", exc_info=True)
                 pass
     return True
 
@@ -18651,6 +18788,7 @@ def _handle_terminal_start(handler, body):
     except ValueError as e:
         return bad(handler, str(e), 400)
     except Exception as e:
+        logger.warning("Silent exception in _handle_terminal_start", exc_info=True)
         return bad(handler, _sanitize_error(e), 500)
 
 
@@ -18670,6 +18808,7 @@ def _handle_terminal_input(handler, body):
     except ValueError as e:
         return bad(handler, str(e), 400)
     except Exception as e:
+        logger.warning("Silent exception in _handle_terminal_input", exc_info=True)
         return bad(handler, _sanitize_error(e), 500)
 
 
@@ -18690,6 +18829,7 @@ def _handle_terminal_resize(handler, body):
     except ValueError as e:
         return bad(handler, str(e), 400)
     except Exception as e:
+        logger.warning("Silent exception in _handle_terminal_resize", exc_info=True)
         return bad(handler, _sanitize_error(e), 500)
 
 
@@ -19058,6 +19198,7 @@ def _serve_file_bytes(handler, target: Path, mime: str, disposition: str, cache_
         _close_fd_quietly(fd)
         return bad(handler, _sanitize_error(e), 403)
     except Exception:
+        logger.debug("Silent exception in _serve_file_bytes", exc_info=True)
         _close_fd_quietly(fd)
         return bad(handler, "Could not stat file", 500)
 
@@ -19226,6 +19367,7 @@ def _serve_inline_html_preview(handler, target: Path, cache_control: str, *, csp
     except ValueError as e:
         return bad(handler, _sanitize_error(e), 403)
     except Exception:
+        logger.debug("Silent exception in _serve_inline_html_preview", exc_info=True)
         return bad(handler, "Could not read file", 500)
     finally:
         if fd is not None:
@@ -19278,10 +19420,12 @@ def _session_media_token_allows_path(sid: str, target: Path, allowed_mimes: set[
     try:
         target_resolved = target.resolve()
     except Exception:
+        logger.debug("Silent exception in _session_media_token_allows_path", exc_info=True)
         return False
     try:
         session = get_session(sid)
     except Exception:
+        logger.debug("Silent exception in _session_media_token_allows_path", exc_info=True)
         return False
 
     for message in getattr(session, "messages", []) or []:
@@ -19304,6 +19448,7 @@ def _session_media_token_allows_path(sid: str, target: Path, allowed_mimes: set[
                 if Path(ref).expanduser().resolve() == target_resolved:
                     return True
             except Exception:
+                logger.debug("Silent exception in _session_media_token_allows_path", exc_info=True)
                 continue
     return False
 
@@ -19370,12 +19515,14 @@ def _media_deny_reason(target: Path) -> str | None:
         from api.config import STATE_DIR as _STATE_DIR
         _state_dir = Path(_STATE_DIR).resolve()
     except Exception:
+        logger.debug("Silent exception in _media_deny_reason", exc_info=True)
         _state_dir = None
     _base_hermes_home = None
     try:
         from api.profiles import _DEFAULT_HERMES_HOME as _BASE_HH
         _base_hermes_home = Path(_BASE_HH).resolve()
     except Exception:
+        logger.debug("Silent exception in _media_deny_reason", exc_info=True)
         _base_hermes_home = None
     _hermes_roots = []
     for _r in (
@@ -19450,6 +19597,7 @@ def _media_deny_reason(target: Path) -> str | None:
         from api.media_snapshots import get_snapshot_dir
         _snap_store = get_snapshot_dir().resolve()
     except Exception:
+        logger.debug("Silent exception in _media_deny_reason", exc_info=True)
         _snap_store = None
     if _snap_store is not None and _within_ci(target, _snap_store):
         return "media snapshot store is internal"
@@ -19470,6 +19618,7 @@ def _media_deny_reason(target: Path) -> str | None:
         if _aw.is_dir():
             _active_workspace = _aw
     except Exception:
+        logger.debug("Silent exception in _media_deny_reason", exc_info=True)
         _active_workspace = None
 
     def _workspace_is_safe_carveout(ws):
@@ -19554,6 +19703,7 @@ def _handle_media(handler, parsed):
     try:
         target = Path(raw_path).resolve()
     except Exception:
+        logger.warning("Silent exception in _handle_media", exc_info=True)
         return bad(handler, "Invalid path", 400)
 
     # Allowed roots: hermes home, /tmp, and active workspace.
@@ -19571,6 +19721,7 @@ def _handle_media(handler, parsed):
         if ws.is_dir():
             allowed_roots.append(ws)
     except Exception:
+        logger.warning("Silent exception in _handle_media", exc_info=True)
         pass
 
     # Also allow additional roots from MEDIA_ALLOWED_ROOTS env var
@@ -19585,6 +19736,7 @@ def _handle_media(handler, parsed):
                     if rp.is_dir():
                         allowed_roots.append(rp)
                 except Exception:
+                    logger.warning("Silent exception in _handle_media", exc_info=True)
                     pass
 
     _INLINE_IMAGE_TYPES = {
@@ -19737,6 +19889,7 @@ def _file_raw_target(session, sid: str, rel: str) -> tuple[Path, Path] | None:
         attachment_root = _session_attachment_dir(sid)
         attachment_target = safe_resolve(attachment_root, rel)
     except Exception:
+        logger.debug("Silent exception in _file_raw_target", exc_info=True)
         return None
     if attachment_target.exists() and attachment_target.is_file():
         return attachment_root, attachment_target
@@ -20454,6 +20607,7 @@ def _handle_live_models(handler, parsed):
                             _matches.append(_cp)
                     return _matches
                 except Exception:
+                    logger.debug("Silent exception in _custom_provider_entries_for_request", exc_info=True)
                     return []
 
             def _custom_provider_model_ids(_cp):
@@ -20783,6 +20937,7 @@ def _handle_cron_run_detail(handler, parsed):
                            "content": content, "snippet": snippet,
                            "usage": usage})
     except Exception as e:
+        logger.warning("Silent exception in _handle_cron_run_detail", exc_info=True)
         return j(handler, {"error": str(e)}, status=500)
 
 
@@ -21070,6 +21225,7 @@ def _memory_project_context_workspace(parsed) -> Path | None:
                 return None
             return Path(ws).expanduser().resolve()
         except Exception:
+            logger.debug("Silent exception in _memory_project_context_workspace", exc_info=True)
             return None
 
     raw_workspace = qs.get("workspace", [""])[0] or os.environ.get("TERMINAL_CWD", "") or get_last_workspace()
@@ -21318,9 +21474,11 @@ def _handle_sessions_cleanup(handler, body, zero_only=False):
                             _safe_replace(_tmp, SESSION_INDEX_FILE)
                             phase2_rewrote_index = True
                         except Exception:
+                            logger.warning("Silent exception in _handle_sessions_cleanup", exc_info=True)
                             try:
                                 _tmp.unlink(missing_ok=True)
                             except Exception:
+                                logger.warning("Silent exception in _handle_sessions_cleanup", exc_info=True)
                                 pass
                             raise
         except Exception:
@@ -21479,6 +21637,7 @@ def _handle_background(handler, body):
                         break
                 complete_background(parent_sid, task_id, _answer or "(no answer produced)")
             except Exception:
+                logger.warning("Silent exception in _run_bg_and_notify", exc_info=True)
                 complete_background(parent_sid, task_id, "(background task failed)")
             # Best-effort cleanup of the hidden bg session file so it doesn't
             # clutter the sidebar or SESSION_DIR. The index is pruned on the
@@ -21486,11 +21645,14 @@ def _handle_background(handler, body):
             try:
                 (SESSION_DIR / f"{bg_sid}.json").unlink(missing_ok=True)
             except Exception:
+                logger.warning("Silent exception in _run_bg_and_notify", exc_info=True)
                 pass
         except Exception:
+            logger.warning("Silent exception in _run_bg_and_notify", exc_info=True)
             try:
                 complete_background(parent_sid, task_id, "(background task failed)")
             except Exception:
+                logger.warning("Silent exception in _run_bg_and_notify", exc_info=True)
                 pass
 
     thr = threading.Thread(target=_run_bg_and_notify, daemon=True)
@@ -21682,16 +21844,19 @@ def _active_stream_blocks_chat_start(session, stream_id: str | None) -> bool:
             if stream_id in (_live_config.ACTIVE_RUNS or {}):
                 return True
     except Exception:
+        logger.debug("Silent exception in _active_stream_blocks_chat_start", exc_info=True)
         pass
     if getattr(session, "pending_user_message", None):
         try:
             from api.models import _REPAIR_STALE_PENDING_GRACE_SECONDS
             grace_seconds = float(_REPAIR_STALE_PENDING_GRACE_SECONDS)
         except Exception:
+            logger.debug("Silent exception in _active_stream_blocks_chat_start", exc_info=True)
             grace_seconds = 30.0
         try:
             pending_started_at = float(getattr(session, "pending_started_at", None) or 0)
         except Exception:
+            logger.debug("Silent exception in _active_stream_blocks_chat_start", exc_info=True)
             pending_started_at = 0.0
         if pending_started_at and time.time() - pending_started_at < grace_seconds:
             return True
@@ -22029,6 +22194,7 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
                 # or STREAM_SESSION_OWNERS leaks for every reconciled zombie. (#5198 gate)
                 unregister_stream_owner(stale_stream_id)
     except Exception:
+        logger.debug("Silent exception in _active_run_stream_for_session", exc_info=True)
         return None
     return None
 
@@ -22903,6 +23069,7 @@ def _handle_goal_command(handler, body):
 
         profile_home = get_agy_home_for_profile(getattr(s, "profile", None))
     except Exception:
+        logger.warning("Silent exception in _handle_goal_command", exc_info=True)
         profile_home = None
 
     from api.goals import goal_command_payload, goal_state_snapshot, restore_goal_state
@@ -22953,6 +23120,7 @@ def _handle_goal_command(handler, body):
                 from api.models import model_explicit_pick_signature as _mk_sig
                 s.model_explicit_pick_signature = _mk_sig(model, model_provider)
         except Exception:
+            logger.warning("Silent exception in _handle_goal_command", exc_info=True)
             pass
         previous_goal_state = goal_state_snapshot(s.session_id, profile_home=profile_home)
 
@@ -23014,6 +23182,7 @@ def _handle_goal_command(handler, body):
                     from api.models import model_explicit_pick_signature as _mk_sig
                     s.model_explicit_pick_signature = _mk_sig(model, model_provider)
             except Exception:
+                logger.warning("Silent exception in _handle_goal_command", exc_info=True)
                 pass
         stream_response = _start_chat_stream_for_session(
             s,
@@ -23141,6 +23310,7 @@ def _handle_chat_start(handler, body, diag=None):
                 # If the in-memory LRU refuses the new session, fall through
                 # with the just-persisted sidecar; _start_run will load it
                 # from disk if needed.
+                logger.warning("Silent exception in _handle_chat_start", exc_info=True)
                 pass
         except PermissionError:
             return bad(handler, "Read-only imported sessions cannot be continued from WebUI", 403)
@@ -23262,6 +23432,7 @@ def _handle_chat_start(handler, body, diag=None):
                 from api.models import model_explicit_pick_signature as _mk_sig
                 s.model_explicit_pick_signature = _mk_sig(model, model_provider)
         except Exception:
+            logger.warning("Silent exception in _handle_chat_start", exc_info=True)
             pass
         catalog_profile_provider = _pp_provider
         if catalog_profile_provider is None and isinstance(_pp_cfg, dict):
@@ -23343,6 +23514,7 @@ def _handle_chat_start(handler, body, diag=None):
                 **start_run_kwargs,
             )
         except Exception as exc:
+            logger.warning("Silent exception in _handle_chat_start", exc_info=True)
             if not getattr(exc, "_regeneration_accepted", False):
                 _restore_cleared_recovery()
             raise
@@ -23737,6 +23909,7 @@ def _handle_cron_create(handler, body):
             job = update_job(job["id"], post_create_updates) or job
         return j(handler, {"ok": True, "job": _cron_job_for_api(job)})
     except Exception as e:
+        logger.warning("Silent exception in _handle_cron_create", exc_info=True)
         return j(handler, {"error": str(e)}, status=400)
 
 
@@ -23745,6 +23918,7 @@ def _handle_cron_delivery_options(handler):
     try:
         from cron.scheduler import _KNOWN_DELIVERY_PLATFORMS
     except Exception:
+        logger.warning("Silent exception in _handle_cron_delivery_options", exc_info=True)
         _KNOWN_DELIVERY_PLATFORMS = frozenset()
     platforms = [
         {"value": "local", "label": "Local (save output only)"},
@@ -23889,6 +24063,7 @@ def _git_locked_by_active_stream(session) -> bool:
         with STREAMS_LOCK:
             return stream_id in STREAMS
     except Exception:
+        logger.debug("Silent exception in _git_locked_by_active_stream", exc_info=True)
         return False
 
 
@@ -24418,6 +24593,7 @@ def _handle_file_save(handler, body):
                 from api.vault import sync_vault_to_rules, get_vault_dir
                 sync_vault_to_rules(get_vault_dir(ws_root), ws_root)
             except Exception:
+                logger.warning("Silent exception in _handle_file_save", exc_info=True)
                 pass
 
         return j(
@@ -24863,6 +25039,7 @@ def _handle_workspace_add(handler, body):
         if sp and sp != "global":
             sync_vault_to_rules(get_vault_dir(p), p, space=sp)
     except Exception:
+        logger.warning("Silent exception in _handle_workspace_add", exc_info=True)
         pass
     return j(handler, {"ok": True, "workspaces": wss})
 
@@ -25634,6 +25811,7 @@ def _handle_approval_respond(handler, body):
                 )
                 return j(handler, relay_payload, status=relay_status)
     except Exception:
+        logger.warning("Silent exception in _handle_approval_respond", exc_info=True)
         pass  # fall through to local approval path
 
     from api.runtime_adapter import LegacyJournalRuntimeAdapter, runtime_adapter_enabled
@@ -26106,6 +26284,7 @@ def _handle_session_compress(handler, body):
 
                 return estimate_messages_tokens_rough(msgs)
             except Exception:
+                logger.debug("Silent exception in _estimate_messages_tokens_rough", exc_info=True)
                 return _fallback_estimate_messages_tokens_rough(msgs)
 
         def _summarize_manual_compression(
@@ -26125,6 +26304,7 @@ def _handle_session_compress(handler, body):
                     after_tokens,
                 )
             except Exception:
+                logger.debug("Silent exception in _summarize_manual_compression", exc_info=True)
                 return _fallback_summarize_manual_compression(
                     original_messages,
                     compressed_messages,
@@ -26367,6 +26547,7 @@ def _extract_handoff_summary_payload(message: dict) -> dict | None:
         try:
             payload = json.loads(content or "")
         except Exception:
+            logger.debug("Silent exception in _extract_handoff_summary_payload", exc_info=True)
             return None
 
     if not isinstance(payload, dict) or not payload.get("_handoff_summary_card"):
@@ -26406,6 +26587,7 @@ def _is_matching_handoff_summary_content(content: object, target_payload: dict |
     try:
         payload = json.loads(content or "")
     except Exception:
+        logger.debug("Silent exception in _is_matching_handoff_summary_content", exc_info=True)
         return False
     if not isinstance(payload, dict):
         return False
@@ -26459,6 +26641,7 @@ def _persist_handoff_summary_to_state_db(sid: str, message: dict) -> bool:
 
         hermes_home = Path(get_active_agy_home()).expanduser().resolve()
     except Exception:
+        logger.debug("Silent exception in _persist_handoff_summary_to_state_db", exc_info=True)
         hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
 
     db_path = hermes_home / "state.db"
@@ -26575,6 +26758,7 @@ def _handle_handoff_summary(handler, body):
                 if ts_val > since:
                     filtered.append(m)
             except Exception:
+                logger.warning("Silent exception in _handle_handoff_summary", exc_info=True)
                 pass
         msgs = filtered
     else:
@@ -26716,6 +26900,7 @@ def _handle_handoff_summary(handler, body):
                         )
                         break
         except Exception:
+            logger.debug("Silent exception in _resolve_handoff_channel_label", exc_info=True)
             pass
         return channel_label
 
@@ -26816,6 +27001,7 @@ def _handle_handoff_summary(handler, body):
             resolved_model = getattr(s_obj, "model", None)
             session_model_provider = getattr(s_obj, "model_provider", None)
         except Exception:
+            logger.warning("Silent exception in _handle_handoff_summary", exc_info=True)
             pass
 
         model_for_resolution = _cfg.model_with_provider_context(
@@ -26856,6 +27042,7 @@ def _handle_handoff_summary(handler, body):
                     fallback=True,
                 )
             except Exception:
+                logger.warning("Silent exception in _handle_handoff_summary", exc_info=True)
                 pass
             return j(handler, {
                 "ok": True,
@@ -26921,6 +27108,7 @@ def _handle_handoff_summary(handler, body):
             try:
                 agent.release_clients()
             except Exception:
+                logger.warning("Silent exception in _handle_handoff_summary", exc_info=True)
                 pass
         if not summary_text:
             summary_text = _fallback_handoff_summary(msgs)
@@ -26973,6 +27161,7 @@ def _handle_handoff_summary(handler, body):
                 fallback=True,
             )
         except Exception:
+            logger.warning("Silent exception in _handle_handoff_summary", exc_info=True)
             pass
         return j(handler, {
             "ok": True,
@@ -27648,6 +27837,7 @@ def _mcp_runtime_status_by_name() -> dict[str, dict]:
         from tools.mcp_tool import get_mcp_status
         statuses = get_mcp_status()
     except Exception:
+        logger.debug("Silent exception in _mcp_runtime_status_by_name", exc_info=True)
         return {}
     if not isinstance(statuses, list):
         return {}
@@ -27834,16 +28024,19 @@ def _mcp_tools_from_registry(server_summaries):
     try:
         from tools.registry import registry
     except Exception:
+        logger.debug("Silent exception in _mcp_tools_from_registry", exc_info=True)
         return []
     tools = []
     try:
         names = registry.get_all_tool_names()
     except Exception:
+        logger.debug("Silent exception in _mcp_tools_from_registry", exc_info=True)
         return []
     for tool_name in names:
         try:
             toolset = registry.get_toolset_for_tool(tool_name)
         except Exception:
+            logger.debug("Silent exception in _mcp_tools_from_registry", exc_info=True)
             continue
         if not isinstance(toolset, str) or not toolset.startswith("mcp-"):
             continue
