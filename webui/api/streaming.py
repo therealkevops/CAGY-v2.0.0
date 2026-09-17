@@ -133,10 +133,12 @@ def get_stream_runtime_snapshot() -> dict[str, object]:
                     0, int(snapshot.get("subscriber_dropped_events", 0))
                 )
             except Exception:
+                logger.debug("Silent exception in get_stream_runtime_snapshot", exc_info=True)
                 result["unavailable_channels"] += 1
     except Exception:
         # Keep the aggregates already summed from channels that read cleanly; a
         # late unexpected failure must not discard successful sibling counts.
+        logger.debug("Silent exception in get_stream_runtime_snapshot", exc_info=True)
         return result
     return result
 
@@ -179,6 +181,7 @@ def _session_payload_with_full_messages(session, *, tool_calls=None):
         else:
             raw.pop('regeneration_revision', None)
     except Exception:
+        logger.debug("Silent exception in _session_payload_with_full_messages", exc_info=True)
         raw.pop('regeneration_revision', None)
     return raw
 
@@ -284,6 +287,7 @@ def _stream_writeback_stage(timings, name, *, clock=time.perf_counter):
         try:
             timings.append((str(name), max(0.0, float(clock() - started))))
         except Exception:
+            logger.debug("Silent exception in _stream_writeback_stage", exc_info=True)
             pass
 
 
@@ -303,6 +307,7 @@ def _log_stream_writeback_timings(
     try:
         total_seconds = max(0.0, float(clock() - started))
     except Exception:
+        logger.debug("Silent exception in _log_stream_writeback_timings", exc_info=True)
         return False
     if total_seconds < threshold:
         return False
@@ -311,6 +316,7 @@ def _log_stream_writeback_timings(
         try:
             parts.append(f"{name}={float(elapsed) * 1000.0:.1f}ms")
         except Exception:
+            logger.debug("Silent exception in _log_stream_writeback_timings", exc_info=True)
             continue
     log.debug(
         "stream final writeback timing session=%s stream=%s total=%.1fms stages=%s",
@@ -396,6 +402,7 @@ def _supports_kwarg(func, kwarg_name: str) -> bool:
                 return True
         return False
     except Exception:
+        logger.debug("Silent exception in _supports_kwarg", exc_info=True)
         return True
 
 
@@ -606,6 +613,7 @@ def _same_base_url_endpoint(url_a: str, url_b: str) -> bool:
         a = urlsplit((url_a or "").strip())
         b = urlsplit((url_b or "").strip())
     except Exception:
+        logger.debug("Silent exception in _same_base_url_endpoint", exc_info=True)
         return False
     _default_port = {"http": 80, "https": 443}
     a_host = (a.hostname or "").lower()
@@ -809,6 +817,7 @@ def _clarify_session_config(sid: str) -> dict | None:
             return None
         return get_config_for_profile_home(_get_profile_home(getattr(session, "profile", None)))
     except Exception:
+        logger.debug("Silent exception in _clarify_session_config", exc_info=True)
         return None
 
 
@@ -833,6 +842,7 @@ def _clarify_timeout_seconds(config: dict | None = None, default: int = 3600) ->
         from tools.clarify_gateway import resolve_clarify_timeout
         return int(resolve_clarify_timeout(cfg))
     except Exception:
+        logger.debug("Silent exception in _clarify_timeout_seconds", exc_info=True)
         pass
     try:
         raw = (cfg.get("clarify") or {}).get("timeout")
@@ -840,6 +850,7 @@ def _clarify_timeout_seconds(config: dict | None = None, default: int = 3600) ->
             raw = (cfg.get("agent") or {}).get("clarify_timeout", 3600)
         return int(raw)
     except Exception:
+        logger.debug("Silent exception in _clarify_timeout_seconds", exc_info=True)
         return int(default)
 
 
@@ -977,6 +988,7 @@ def _resolve_prefill_path(raw: str) -> Path:
             from api.config import _get_config_path
             path = _get_config_path().parent / path
         except Exception:
+            logger.debug("Silent exception in _resolve_prefill_path", exc_info=True)
             path = Path.cwd() / path
     return path
 
@@ -994,6 +1006,7 @@ def _prefill_context_max_chars(config_data: dict) -> int:
     try:
         value = int(raw or _PREFILL_CONTEXT_DEFAULT_MAX_CHARS)
     except Exception:
+        logger.debug("Silent exception in _prefill_context_max_chars", exc_info=True)
         value = _PREFILL_CONTEXT_DEFAULT_MAX_CHARS
     return max(0, min(value, _PREFILL_SCRIPT_OUTPUT_LIMIT))
 
@@ -1071,6 +1084,7 @@ def _load_prefill_messages_file(file_raw: str, *, source: str = "file", status: 
         messages = _valid_prefill_messages(json.loads(path.read_text(encoding="utf-8")))
         return {"status": status, "source": source, "label": label, "messages": messages, "message_count": len(messages)}
     except Exception as exc:
+        logger.warning("Silent exception in _load_prefill_messages_file", exc_info=True)
         return {"status": "error", "source": source, "label": label, "messages": [], "message_count": 0, "error": _redact_prefill_status_text(str(exc))}
 
 
@@ -1083,6 +1097,7 @@ def _prefill_script_timeout(config_data: dict) -> float:
     try:
         return max(0.1, min(float(raw or 5), 30.0))
     except Exception:
+        logger.debug("Silent exception in _prefill_script_timeout", exc_info=True)
         return 5.0
 
 
@@ -1106,6 +1121,7 @@ def _messages_from_prefill_script_output(text: str) -> list[dict]:
     try:
         payload = json.loads(stripped)
     except Exception:
+        logger.debug("Silent exception in _messages_from_prefill_script_output", exc_info=True)
         payload = None
     if isinstance(payload, dict):
         payload = payload.get("messages")
@@ -1139,6 +1155,7 @@ def _load_prefill_messages_script(config_data: dict) -> dict:
     except subprocess.TimeoutExpired:
         return {"status": "error", "source": "script", "label": label, "messages": [], "message_count": 0, "error": "prefill script timed out"}
     except Exception as exc:
+        logger.warning("Silent exception in _load_prefill_messages_script", exc_info=True)
         return {"status": "error", "source": "script", "label": label, "messages": [], "message_count": 0, "error": _redact_prefill_status_text(str(exc))}
     if proc.returncode != 0:
         err = _redact_prefill_status_text(proc.stderr or proc.stdout or f"prefill script exited {proc.returncode}")
@@ -1224,6 +1241,7 @@ def _webui_delivery_context_prompt(config_data: Optional[dict] = None) -> str:
         from hermes_constants import get_hermes_home, display_hermes_home as _dh
         display_hermes_home = _dh
     except Exception:
+        logger.debug("Silent exception in _webui_delivery_context_prompt", exc_info=True)
         get_hermes_home = None  # type: ignore[assignment]
 
     connected = ["local (files on this machine)"]
@@ -1239,6 +1257,7 @@ def _webui_delivery_context_prompt(config_data: Optional[dict] = None) -> str:
                         if isinstance(pdata, dict) and pdata.get("state") == "connected" and name != "local":
                             connected.append(f"{name}: Connected ✓")
     except Exception:
+        logger.debug("Silent exception in _webui_delivery_context_prompt", exc_info=True)
         pass
     lines.append(f"**Connected Platforms:** {', '.join(connected)}")
 
@@ -1255,6 +1274,7 @@ def _webui_delivery_context_prompt(config_data: Optional[dict] = None) -> str:
                 if isinstance(home, dict):
                     home_channels[str(name)] = str(home.get("name") or name)
     except Exception:
+        logger.debug("Silent exception in _webui_delivery_context_prompt", exc_info=True)
         home_channels = {}
 
     if home_channels:
@@ -1269,6 +1289,7 @@ def _webui_delivery_context_prompt(config_data: Optional[dict] = None) -> str:
     try:
         home_display = display_hermes_home() if display_hermes_home else "~/.hermes"
     except Exception:
+        logger.debug("Silent exception in _webui_delivery_context_prompt", exc_info=True)
         home_display = "~/.hermes"
     lines.append(f"- `\"local\"` → Save to local files only ({home_display}/cron/output/)")
     for platform, label in sorted(home_channels.items()):
@@ -1395,6 +1416,7 @@ def _provider_error_probe_text(value) -> tuple[str, int | None]:
                     try:
                         _status_code = int(_val)
                     except Exception:
+                        logger.debug("Silent exception in _walk", exc_info=True)
                         pass
                 _texts.append(str(_val))
             for _key, _val in node.items():
@@ -2706,6 +2728,7 @@ def _resolve_streaming_hermes_home_override():
             import hermes_constants  # noqa: F401
             mod = _sys.modules.get('hermes_constants')
         except Exception:
+            logger.debug("Silent exception in _resolve_streaming_hermes_home_override", exc_info=True)
             _streaming_hermes_home_override_available = False
             return None
 
@@ -2959,6 +2982,7 @@ def _drain_webui_process_notifications(
     try:
         from tools.process_registry import process_registry
     except Exception:
+        logger.debug("Silent exception in _drain_webui_process_notifications", exc_info=True)
         return []
 
     notifications: list[str] = []
@@ -3008,6 +3032,7 @@ def _drain_webui_process_notifications(
                         or str(getattr(proc, 'spawn_session_id', '') or '')
                     )
         except Exception:
+            logger.debug("Silent exception in _drain_webui_process_notifications", exc_info=True)
             evt_session_key = ''
             evt_origin_ui_session_id = ''
 
@@ -3044,6 +3069,7 @@ def _drain_webui_process_notifications(
             try:
                 claim = claim_async_delegation_delivery(evt, "webui-next-turn")
             except Exception:
+                logger.debug("Silent exception in _drain_webui_process_notifications", exc_info=True)
                 skipped_events.append(evt)
                 continue
             if claim is None:
@@ -3294,6 +3320,7 @@ def _resolve_image_input_mode(cfg: dict, active_provider: str = "", active_model
     except Exception:
         # Agent package unavailable or import error — preserve historical WebUI
         # behaviour: explicit text signal wins, otherwise native.
+        logger.debug("Silent exception in _resolve_image_input_mode", exc_info=True)
         pass
 
     if _explicit_text_signal(cfg):
@@ -3335,6 +3362,7 @@ def _build_native_multimodal_message(workspace_ctx: str, msg_text: str, attachme
         attachment_root = _attachment_root()
         _allowed_roots = (workspace_root, attachment_root)
     except Exception:
+        logger.debug("Silent exception in _build_native_multimodal_message", exc_info=True)
         _allowed_roots = (workspace_root,)
     image_count = 0
 
@@ -3361,6 +3389,7 @@ def _build_native_multimodal_message(workspace_ctx: str, msg_text: str, attachme
                 continue
             data = base64.b64encode(path.read_bytes()).decode('ascii')
         except Exception:
+            logger.debug("Silent exception in _build_native_multimodal_message", exc_info=True)
             continue
         parts.append({
             'type': 'image_url',
@@ -3946,6 +3975,7 @@ def _get_title_refresh_interval() -> int:
         val = settings.get('auto_title_refresh_every', '0')
         return int(val) if str(val).strip().isdigit() and int(val) > 0 else 0
     except Exception:
+        logger.debug("Silent exception in _get_title_refresh_interval", exc_info=True)
         return 0
 
 
@@ -4144,6 +4174,7 @@ def _route_rejects_reasoning_extra(provider: str = '', model: str = '', base_url
         from urllib.parse import urlsplit
         host = (urlsplit(str(base_url or '').strip()).hostname or '').lower()
     except Exception:
+        logger.debug("Silent exception in _route_rejects_reasoning_extra", exc_info=True)
         host = ''
     if host == 'api.openai.com' or host.endswith('.openai.azure.com'):
         return True
@@ -4171,6 +4202,7 @@ def _get_aux_title_config() -> dict:
         tg = _get_auxiliary_task_config('title_generation')
         return tg if isinstance(tg, dict) else {}
     except Exception:
+        logger.debug("Silent exception in _get_aux_title_config", exc_info=True)
         return {}
 
 
@@ -4229,6 +4261,7 @@ def _aux_title_timeout(default: float = 15.0) -> float:
         logger.debug("aux title timeout: non-positive value %s, falling back to %s", value, default)
         return default
     except Exception:
+        logger.debug("Silent exception in _aux_title_timeout", exc_info=True)
         return default
 
 def _title_completion_budget(provider: str = '', model: str = '', base_url: str = '') -> int:
@@ -4334,6 +4367,7 @@ def _extract_title_response(resp, *, aux: bool = False) -> tuple[str, str]:
             return '', f'llm_length{suffix}'
         return '', f'llm_empty{suffix}'
     except Exception:
+        logger.debug("Silent exception in _extract_title_response", exc_info=True)
         return '', f'llm_empty{suffix}'
 
 
@@ -5132,6 +5166,7 @@ def _is_local_reasoning_replay_base_url(base_url: str | None) -> bool:
             parsed = urlsplit(f"http://{raw}")
         host = (parsed.hostname or '').strip().lower()
     except Exception:
+        logger.debug("Silent exception in _is_local_reasoning_replay_base_url", exc_info=True)
         return False
     return host in {'localhost', '127.0.0.1', '::1', 'localhost.localdomain'}
 
@@ -6603,6 +6638,7 @@ def _streaming_checkpoint_fingerprint(session):
             bool(getattr(session, 'pre_compression_snapshot', None)),
         )
     except Exception:  # pragma: no cover - defensive: never block a checkpoint
+        logger.debug("Silent exception in _streaming_checkpoint_fingerprint", exc_info=True)
         return None
 
 
@@ -7403,6 +7439,7 @@ def _bounded_live_tool_prompt_delta(messages, *, cap: int = _LIVE_TOOL_PROMPT_DE
         from agent.model_metadata import estimate_messages_tokens_rough
         delta = int(estimate_messages_tokens_rough(messages) or 0)
     except Exception:
+        logger.debug("Silent exception in _bounded_live_tool_prompt_delta", exc_info=True)
         delta = 0
     if delta <= 0:
         return 0
@@ -7450,21 +7487,25 @@ def _live_usage_session_snapshot(session_id, current_session, cache_ref, *, load
         try:
             cache_ref[0] = current_session
         except Exception:
+            logger.debug("Silent exception in _live_usage_session_snapshot", exc_info=True)
             pass
         return current_session
     try:
         cached = cache_ref[0]
     except Exception:
+        logger.debug("Silent exception in _live_usage_session_snapshot", exc_info=True)
         cached = None
     if cached is not None:
         return cached
     try:
         loaded = loader(session_id)
     except Exception:
+        logger.debug("Silent exception in _live_usage_session_snapshot", exc_info=True)
         return None
     try:
         cache_ref[0] = loaded
     except Exception:
+        logger.debug("Silent exception in _live_usage_session_snapshot", exc_info=True)
         pass
     return loaded
 
@@ -7480,6 +7521,7 @@ def _tool_result_snippet(raw, limit: int = _TOOL_RESULT_SNIPPET_MAX) -> str:
             preview = data.get('output') or data.get('result') or data.get('error') or text
             text = str(preview)
     except Exception:
+        logger.debug("Silent exception in _tool_result_snippet", exc_info=True)
         pass
     return text[:limit]
 
@@ -7543,6 +7585,7 @@ def _extract_tool_calls_from_messages(messages, live_tool_calls=None):
                 try:
                     args = json.loads(fn.get('arguments', '{}') or '{}')
                 except Exception:
+                    logger.debug("Silent exception in _extract_tool_calls_from_messages", exc_info=True)
                     args = {}
                 if tid and name:
                     pending_names[tid] = name
@@ -7600,6 +7643,7 @@ def _partial_message_signature(message: dict) -> tuple:
                 default=str,
             )
         except Exception:
+            logger.debug("Silent exception in _partial_message_signature", exc_info=True)
             args_sig = str(tool_call.get('args') or '')
         tool_sig.append((
             str(tool_call.get('name') or ''),
@@ -8552,6 +8596,7 @@ def _refresh_cached_agent_runtime(agent, agent_kwargs: dict) -> bool:
         try:
             agent._credential_pool = new_pool
         except Exception:
+            logger.debug("Silent exception in _refresh_cached_agent_runtime", exc_info=True)
             pass
 
     new_key = agent_kwargs.get('api_key') or ''
@@ -8805,12 +8850,14 @@ def _run_agent_streaming(
                 if _cc:
                     _base = getattr(_cc, 'last_prompt_tokens', 0) or 0
             except Exception:
+                logger.debug("Silent exception in _seed_live_prompt_estimate", exc_info=True)
                 _base = 0
         if not _base:
             try:
                 _session_obj = _current_live_usage_session()
                 _base = getattr(_session_obj, 'last_prompt_tokens', 0) or 0
             except Exception:
+                logger.debug("Silent exception in _seed_live_prompt_estimate", exc_info=True)
                 _base = 0
         _live_prompt_estimate_tokens[0] = int(_base or 0)
         _live_prompt_exact_tokens[0] = _live_prompt_estimate_tokens[0]
@@ -8862,6 +8909,7 @@ def _run_agent_streaming(
                 _usage['cache_read_tokens'] = getattr(_agent, 'session_cache_read_tokens', 0) or 0
                 _usage['cache_write_tokens'] = getattr(_agent, 'session_cache_write_tokens', 0) or 0
             except Exception:
+                logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                 pass
             try:
                 _cc = getattr(_agent, 'context_compressor', None)
@@ -8931,6 +8979,7 @@ def _run_agent_streaming(
                                         _ph_u = _ghp_u(getattr(_session_obj, 'profile', None))
                                         _cfg_u = _gch_u(_ph_u)
                                     except Exception:
+                                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                                         from api.config import get_config as _gc_u
                                         _cfg_u = _gc_u()
                                     _lk_u = _cli_u(
@@ -8984,10 +9033,13 @@ def _run_agent_streaming(
                                         ):
                                             _resolved_real = _real_u
                                     except Exception:
+                                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                                         pass
                                 except Exception:
+                                    logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                                     pass
                         except Exception:
+                            logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                             _resolved_real = 0
                         _real_ctx_cache[0] = _resolved_real
                     # Apply the cached real cap when the guard determined one.
@@ -9013,6 +9065,7 @@ def _run_agent_streaming(
                         _usage['threshold_tokens'] = getattr(_cc, 'threshold_tokens', 0) or 0
                         _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
             except Exception:
+                logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                 pass
 
         if _session_obj is not None:
@@ -9021,6 +9074,7 @@ def _run_agent_streaming(
                     try:
                         _usage[_field] = getattr(_session_obj, _field, 0) or 0
                     except Exception:
+                        logger.debug("Silent exception in _live_usage_snapshot", exc_info=True)
                         pass
             _post_compression_estimate = getattr(
                 _session_obj, 'post_compression_context_tokens_estimate', None,
@@ -9288,6 +9342,7 @@ def _run_agent_streaming(
                 from api.profiles import get_active_profile_name
                 _resolved_profile_name = get_active_profile_name()
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 _resolved_profile_name = None
 
         _thread_env = _build_agent_thread_env(
@@ -9399,6 +9454,7 @@ def _run_agent_streaming(
             from tools.mcp_tool import discover_mcp_tools
             discover_mcp_tools()
         except Exception:
+            logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
             pass  # MCP not available or not configured — non-fatal
 
         # Register a gateway-style notify callback so the approval system can
@@ -10098,6 +10154,7 @@ def _run_agent_streaming(
             try:
                 _cfg = _get_config_for_home(_profile_home)
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 from api.config import get_config as _get_config
                 _cfg = _get_config()
             _prefill_context = _load_webui_prefill_context(_cfg)
@@ -10210,6 +10267,7 @@ def _run_agent_streaming(
                     if _parsed_max_iterations > 0:
                         _max_iterations_cfg = _parsed_max_iterations
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 _max_iterations_cfg = None
 
             # CLI-parity max output cap: read config.yaml's max_tokens and pass
@@ -10229,6 +10287,7 @@ def _run_agent_streaming(
                     if _parsed_max_tokens > 0:
                         _max_tokens_cfg = _parsed_max_tokens
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 _max_tokens_cfg = None
 
             # CLI-parity reasoning effort: read agent.reasoning_effort from the
@@ -10246,6 +10305,7 @@ def _run_agent_streaming(
                 )
                 _reasoning_config = parse_reasoning_effort(_effort)
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 _reasoning_config = None
 
             _agent_kwargs = dict(
@@ -10469,6 +10529,7 @@ def _run_agent_streaming(
                                 if _sid:
                                     _active_sids.add(_sid)
                     except Exception:
+                        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                         _active_sids = set()
                     with SESSION_AGENT_CACHE_LOCK:
                         SESSION_AGENT_CACHE[session_id] = (agent, _agent_sig)
@@ -10833,6 +10894,7 @@ def _run_agent_streaming(
                     import pathlib
                     pathlib.Path(s.path).unlink(missing_ok=True)
                 except Exception:
+                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                     pass
                 return  # skip all normal persistence for ephemeral sessions
             if _checkpoint_stop is not None:
@@ -11449,6 +11511,7 @@ def _run_agent_streaming(
                         try:
                             s.save()
                         except Exception:
+                            logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                             pass
                         _error_payload['session'] = redact_session_data(
                             _session_payload_with_full_messages(s, tool_calls=s.tool_calls)
@@ -11669,6 +11732,7 @@ def _run_agent_streaming(
                 try:
                     _turn_duration_seconds = max(0.0, time.time() - float(_turn_started_at))
                 except Exception:
+                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                     _turn_duration_seconds = 0.0
                 _turn_tps = None
                 if output_tokens and _turn_duration_seconds > 0:
@@ -11769,6 +11833,7 @@ def _run_agent_streaming(
                             if _real_cc and _real_cc != _cc_cl and _accept_cc(_cc_cl, _real_cc):
                                 _skip_cc_cl = True
                     except Exception:
+                        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                         pass
                     if not _skip_cc_cl:
                         s.context_length = _cc_cl
@@ -11836,10 +11901,12 @@ def _run_agent_streaming(
                             if _resolved_cl:
                                 s.context_length = _resolved_cl
                         except Exception:
+                            logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                             pass
                     except Exception:
                         # Older hermes-agent builds may not expose this helper.
                         # Better to leave context_length=0 than crash the save.
+                        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                         pass
                 # #3256/#3263: when we skipped the stale compressor cap for a
                 # non-default model and recomputed the real per-model window
@@ -12147,6 +12214,7 @@ def _run_agent_streaming(
                             _cc_cl_sse = 0
                             _dropped_stale_cap_sse = True
                 except Exception:
+                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                     pass
                 if _cc_cl_sse:
                     usage['context_length'] = _cc_cl_sse
@@ -12204,6 +12272,7 @@ def _run_agent_streaming(
                         if _dropped_stale_cap_sse and _orig_cc_cl_sse > 0 and _orig_cc_thresh_sse > 0:
                             usage['threshold_tokens'] = int(_orig_cc_thresh_sse * _fb_cl / _orig_cc_cl_sse)
                 except Exception:
+                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                     pass
             # Fallback: when last_prompt_tokens is missing (no compressor), use the
             # session-persisted value rather than letting the frontend fall back to
@@ -12328,6 +12397,7 @@ def _run_agent_streaming(
                 # Diagnostics must never affect the stream lifecycle: a
                 # misbehaving log handler here would otherwise skip the
                 # background-title thread spawn below. (#4923 gate hardening)
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 pass
             if _should_bg_title and _u0 and _a0:
                 threading.Thread(
@@ -12354,6 +12424,7 @@ def _run_agent_streaming(
             try:
                 _flush_reasoning_buffer()
             except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 pass
             # Stop the live metering ticker
             _metering_stop.set()
@@ -12790,6 +12861,7 @@ def _run_agent_streaming(
                 try:
                     s.save()
                 except Exception:
+                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                     pass
                 if not ephemeral:
                     try:
@@ -13135,6 +13207,7 @@ def cancel_stream(stream_id: str) -> bool:
                 with _live_config.ACTIVE_RUNS_LOCK:
                     active_run_entry = dict((_live_config.ACTIVE_RUNS or {}).get(stream_id) or {})
             except Exception:
+                logger.warning("Silent exception in cancel_stream", exc_info=True)
                 active_run_entry = None
             if not active_run_entry:
                 return False
@@ -13145,6 +13218,7 @@ def cancel_stream(stream_id: str) -> bool:
             with _live_config.ACTIVE_RUNS_LOCK:
                 active_run_entry = dict((_live_config.ACTIVE_RUNS or {}).get(stream_id) or {})
         except Exception:
+            logger.warning("Silent exception in cancel_stream", exc_info=True)
             active_run_entry = None
         if active_run_entry and not active_run_session_id:
             active_run_session_id = str(active_run_entry.get("session_id") or "").strip() or None
@@ -13173,6 +13247,7 @@ def cancel_stream(stream_id: str) -> bool:
             if cached and _cached_agent_matches_session(cached[0], active_run_session_id):
                 agent = cached[0]
         except Exception:
+            logger.warning("Silent exception in cancel_stream", exc_info=True)
             pass
     if agent:
         try:
