@@ -2630,14 +2630,14 @@ document.addEventListener('click', e => {
       try{ payload=JSON.parse(rawPayload); }catch(_){ payload={path: rawPayload}; }
       if(payload.path){
         if(typeof showToast==='function') showToast(`Auto-weaving wikilinks for ${payload.path}...`);
-        fetch('/api/vault/weave', {
+        apiFetch('/api/vault/weave', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             path: payload.path,
             space: payload.space || ''
           })
-        }).then(r => r.json()).then(res => {
+        }).then(res => {
           if(res.ok){
             if(typeof showToast==='function') showToast(`Wove ${res.links_added} new wikilinks into ${payload.path}!`);
             if(typeof loadVaultNote==='function') loadVaultNote(payload.path, true);
@@ -9080,12 +9080,11 @@ async function memorizeMessage(btn){
   btn.innerHTML=li('loader',13);
   btn.classList.add('loading');
   try {
-    const res=await fetch('/api/vault/memorize', {
+    const data=await apiFetch('/api/vault/memorize', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text})
     });
-    const data=await res.json();
     if(data.ok){
       btn.innerHTML=li('check',13);
       btn.style.color='var(--accent, #10b981)';
@@ -19803,8 +19802,7 @@ function loadDiffInline(container){
     el.setAttribute('data-loaded','1');
     const path=el.dataset.path;
     const snapQuery=_mediaSnapQuery(el);
-    fetch('api/media?path='+encodeURIComponent(path)+snapQuery)
-      .then(r=>{if(!r.ok) throw new Error(r.status);return r.text();})
+    apiFetch('api/media?path='+encodeURIComponent(path)+snapQuery)
       .then(text=>{
         if(text.length>DIFF_MAX_SIZE){
           el.outerHTML=`<div class="diff-inline-error">${esc(path.split('/').pop())}<br><span style="color:var(--muted);font-size:12px">${t('diff_too_large')}</span></div>`;
@@ -19886,8 +19884,7 @@ function loadCsvInline(container){
     const snap=_mediaSnapQuery(el).replace(/^&snap=/,'');
     const mediaUrl=_csvMediaUrl(path,{snap:snap||undefined});
     const downloadUrl=_csvMediaUrl(path,{download:true,snap:snap||undefined});
-    fetch(mediaUrl)
-      .then(r=>{if(!r.ok) throw new Error(r.status);return r.text();})
+    apiFetch(mediaUrl)
       .then(text=>{
         const preview=buildCsvTablePreview(path, text, downloadUrl);
         el.outerHTML=preview.html||_csvPreviewErrorHtml(path, preview.errorKey||'csv_error');
@@ -20133,8 +20130,7 @@ function loadHtmlInline(container){
     const snapQuery=_mediaSnapQuery(el);
     const publicMediaUrl='api/media?path='+encodeURIComponent(path);
     const mediaUrl=publicMediaUrl+(mediaSessionId?'&session_id='+encodeURIComponent(mediaSessionId):'')+snapQuery;
-    fetch(mediaUrl, {cache:'no-store'})
-      .then(r=>{if(!r.ok) throw new Error(r.status); return r.text();})
+    apiFetch(mediaUrl, {cache:'no-store'})
       .then(html=>{
         if(html.length>HTML_MAX_SIZE){
           const openUrl=publicMediaUrl+'&inline=1'+snapQuery;
