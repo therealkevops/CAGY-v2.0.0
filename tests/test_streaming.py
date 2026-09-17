@@ -29,12 +29,16 @@ from api.streaming import (
     StreamTurnContext,
     StreamingCallbacks,
     StreamingUsageCollector,
+    _attempt_stream_credential_retry,
     _compact_for_echo_compare,
     _extract_max_iterations_cfg,
     _extract_max_tokens_cfg,
     _extract_reasoning_config,
+    _handle_cancelled_turn,
     _make_agent_status_callback,
     _parse_fallback_entries,
+    _phase_execute_agent,
+    _phase_execute_ephemeral,
     _phase_prepare_context,
     _run_agent_streaming,
     _sse,
@@ -527,6 +531,146 @@ class TestPhasePrepareContextAndCheckpoints(unittest.TestCase):
             self.assertFalse(res)
             mock_finalize.assert_called_once()
             self.assertTrue(any(ev[0] == "cancel" for ev in events))
+
+
+class TestPhaseExecuteAgentAndEphemeral(unittest.TestCase):
+    """Test Sprint D4 core agent execution loop and ephemeral (/btw) branches."""
+
+    def test_phase_execute_agent_normal(self):
+        """Verify _phase_execute_agent executes agent, flushes buffer, and sets ctx.result."""
+        mock_agent = MagicMock()
+        mock_agent.run_conversation.return_value = {
+            "messages": [{"role": "assistant", "content": "Hello from agent!"}]
+        }
+        mock_callbacks = MagicMock()
+        ctx = StreamTurnContext(
+            session_id="sess-exec-1",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-exec-1",
+            agent=mock_agent,
+            callbacks=mock_callbacks,
+            cancel_event=threading.Event(),
+        )
+
+        res = _phase_execute_agent(ctx)
+        self.assertTrue(res)
+        self.assertIsNotNone(ctx.result)
+        self.assertEqual(ctx.result["messages"][0]["content"], "Hello from agent!")
+        mock_callbacks.flush_reasoning_buffer.assert_called_once()
+
+    def test_phase_execute_agent_cancelled(self):
+        """Verify _phase_execute_agent handles cancellation, emits SSE cancel, and returns False."""
+        mock_agent = MagicMock()
+        mock_agent.run_conversation.return_value = {"messages": []}
+        cancel_evt = threading.Event()
+        cancel_evt.set()
+        events = []
+        mock_session = MagicMock()
+        mock_session.session_id = "sess-cancel-exec-1"
+
+        ctx = StreamTurnContext(
+            session_id="sess-cancel-exec-1",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-cancel-exec-1",
+            s=mock_session,
+            agent=mock_agent,
+            agent_lock=threading.Lock(),
+            cancel_event=cancel_evt,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        with unittest.mock.patch("api.streaming._finalize_cancelled_turn") as mock_finalize, \
+             unittest.mock.patch("api.streaming.append_turn_journal_event_for_stream") as mock_journal:
+            res = _phase_execute_agent(ctx)
+            self.assertFalse(res)
+            mock_finalize.assert_called_once()
+            mock_journal.assert_called_once()
+            self.assertTrue(any(ev[0] == "cancel" for ev in events))
+
+    def test_phase_execute_ephemeral_normal(self):
+        """Verify _phase_execute_ephemeral extracts answer, emits done SSE, and unlinks session file."""
+        mock_agent = MagicMock()
+        mock_agent.run_conversation.return_value = {
+            "messages": [
+                {"role": "user", "content": "/btw what is pi?"},
+                {"role": "assistant", "content": "pi is approximately 3.14159"},
+            ]
+        }
+        events = []
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_f:
+            tmp_path = tmp_f.name
+
+        mock_session = MagicMock()
+        mock_session.path = tmp_path
+
+        ctx = StreamTurnContext(
+            session_id="sess-eph-1",
+            msg_text="/btw what is pi?",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-eph-1",
+            s=mock_session,
+            agent=mock_agent,
+            ephemeral=True,
+            cancel_event=threading.Event(),
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        try:
+            _phase_execute_ephemeral(ctx)
+            done_events = [ev for ev in events if ev[0] == "done"]
+            self.assertEqual(len(done_events), 1)
+            self.assertTrue(done_events[0][1]["ephemeral"])
+            self.assertEqual(done_events[0][1]["answer"], "pi is approximately 3.14159")
+            self.assertFalse(os.path.exists(tmp_path))
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_phase_execute_ephemeral_cancelled(self):
+        """Verify _phase_execute_ephemeral aborts cleanly if cancelled."""
+        mock_agent = MagicMock()
+        mock_agent.run_conversation.return_value = {"messages": []}
+        cancel_evt = threading.Event()
+        cancel_evt.set()
+        events = []
+
+        ctx = StreamTurnContext(
+            session_id="sess-eph-cancel-1",
+            msg_text="/btw cancelled",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-eph-cancel-1",
+            agent=mock_agent,
+            ephemeral=True,
+            cancel_event=cancel_evt,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        with unittest.mock.patch("api.streaming._finalize_cancelled_turn") as mock_finalize:
+            _phase_execute_ephemeral(ctx)
+            mock_finalize.assert_called_once()
+            self.assertTrue(any(ev[0] == "cancel" for ev in events))
+            self.assertFalse(any(ev[0] == "done" for ev in events))
+
+    def test_attempt_stream_credential_retry_no_heal(self):
+        """Verify _attempt_stream_credential_retry returns failure when heal_rt is None."""
+        ctx = StreamTurnContext(
+            session_id="sess-retry-1",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-retry-1",
+        )
+        with unittest.mock.patch("api.streaming._attempt_credential_self_heal", return_value=None):
+            ok, res, stale = _attempt_stream_credential_retry(ctx)
+            self.assertFalse(ok)
+            self.assertIsNone(res)
+            self.assertIsNone(stale)
 
 
 if __name__ == "__main__":

@@ -8832,6 +8832,7 @@ class StreamTurnContext:
     clarify_registered: bool = False
     unreg_clarify_notify: Optional[Callable] = None
     self_healed: bool = False
+    result: Optional[Dict[str, Any]] = None
 
     def is_cancelled(self) -> bool:
         """Check if cancel flag is set for this turn."""
@@ -10575,6 +10576,226 @@ def _phase_prepare_context(ctx: StreamTurnContext) -> bool:
     return True
 
 
+def _handle_cancelled_turn(ctx: StreamTurnContext) -> None:
+    """Handle cancellation after agent.run_conversation returns or is interrupted."""
+    _stop_periodic_checkpoint(ctx)
+    _lock_ctx = ctx.agent_lock if ctx.agent_lock is not None else contextlib.nullcontext()
+    with _lock_ctx:
+        _finalize_cancelled_turn(ctx.s, ephemeral=ctx.ephemeral, stream_id=ctx.stream_id)
+        if not ctx.ephemeral and ctx.s is not None:
+            try:
+                append_turn_journal_event_for_stream(
+                    getattr(ctx.s, 'session_id', ctx.session_id),
+                    ctx.stream_id,
+                    {
+                        "event": "interrupted",
+                        "created_at": time.time(),
+                        "reason": "cancelled",
+                    },
+                )
+            except Exception:
+                logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+    if ctx.put:
+        ctx.put('cancel', _cancel_event_payload('Cancelled by user'))
+
+
+def _phase_execute_ephemeral(ctx: StreamTurnContext) -> None:
+    """Execute ephemeral (/btw) agent turn: run, emit terminal done event, and cleanup."""
+    agent = ctx.agent
+    s = ctx.s
+    session_id = ctx.session_id
+    put = ctx.put
+    cancel_event = ctx.cancel_event
+
+    result = agent.run_conversation(**ctx.run_conversation_kwargs)
+    ctx.result = result
+    ctx.active_turn_identity = _resolve_active_turn_authority(
+        ctx.active_turn_identity,
+        result=result,
+        agent=agent,
+    )
+    if ctx.callbacks:
+        ctx.callbacks.flush_reasoning_buffer()
+
+    if cancel_event and cancel_event.is_set():
+        _handle_cancelled_turn(ctx)
+        return
+
+    _answer = ''
+    for _m in reversed((result.get('messages') or [])):
+        if isinstance(_m, dict) and _m.get('role') == 'assistant':
+            _answer = str(_m.get('content', ''))
+            break
+
+    # /btw is intentionally non-persistent, but its terminal SSE
+    # payload is still public output.  Project the ephemeral
+    # session before enqueueing it so raw Agent ``api_content`` or
+    # provenance aliases cannot cross the wire.
+    _ephemeral_session = _ephemeral_session_payload(
+        session_id, result.get('messages', [])
+    )
+    if put:
+        put('done', {
+            'session': _ephemeral_session,
+            'usage': {'input_tokens': 0, 'output_tokens': 0},
+            'ephemeral': True,
+            'answer': _answer,
+        })
+    _stop_periodic_checkpoint(ctx)
+    try:
+        import pathlib
+        if s and getattr(s, 'path', None):
+            pathlib.Path(s.path).unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+
+
+def _phase_execute_agent(ctx: StreamTurnContext) -> bool:
+    """Execute primary agent turn: run conversation, flush reasoning, handle cancels.
+
+    Returns:
+        True if the turn completed normally; False if cancelled.
+    """
+    agent = ctx.agent
+    cancel_event = ctx.cancel_event
+
+    result = agent.run_conversation(**ctx.run_conversation_kwargs)
+    ctx.result = result
+    ctx.active_turn_identity = _resolve_active_turn_authority(
+        ctx.active_turn_identity,
+        result=result,
+        agent=agent,
+    )
+    # #4729: the run is done — flush any reasoning tail still in the coalescing
+    # buffer (the agent never calls reasoning_callback(None), and a turn can end on
+    # reasoning with no trailing token/tool boundary to trigger a flush) so the last
+    # sub-100ms window reaches the live Thinking view before the terminal done event.
+    if ctx.callbacks:
+        ctx.callbacks.flush_reasoning_buffer()
+
+    if cancel_event and cancel_event.is_set():
+        _handle_cancelled_turn(ctx)
+        return False
+
+    _stop_periodic_checkpoint(ctx)
+
+    if cancel_event and cancel_event.is_set():
+        _handle_cancelled_turn(ctx)
+        return False
+
+    return True
+
+
+def _attempt_stream_credential_retry(
+    ctx: StreamTurnContext,
+    *,
+    configured_base_url: Optional[str] = None,
+    moa_config: Optional[Any] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Attempt a credential self-heal refresh and retry agent.run_conversation (#1401).
+
+    Returns:
+        (heal_ok, heal_result, heal_stale_classification)
+    """
+    from api import profiles as _profiles_api
+    with _profiles_api.profile_scope_for_detached_worker(
+        ctx.resolved_profile_name, "credential self-heal", logger_override=logger
+    ):
+        heal_rt = _attempt_credential_self_heal(
+            ctx.resolved_provider or '', ctx.session_id, ctx.agent_lock,
+            target_model=ctx.resolved_model,
+        )
+    if heal_rt is None:
+        return False, None, None
+
+    logger.info('[webui] self-heal: retrying stream after credential refresh')
+    resolved_api_key = heal_rt.get('api_key')
+    resolved_provider = ctx.resolved_provider or heal_rt.get('provider')
+    resolved_base_url = _runtime_preferred_base_url(
+        heal_rt, resolved_provider, configured_base_url or ctx.resolved_base_url
+    )
+    if not ctx.session_requested_provider:
+        ctx.session_requested_provider = resolved_provider
+    resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
+        resolved_provider, resolved_api_key, resolved_base_url,
+        profile_name=ctx.resolved_profile_name,
+    )
+    ctx.resolved_api_key = resolved_api_key
+    ctx.resolved_provider = resolved_provider
+    ctx.resolved_base_url = resolved_base_url
+
+    ctx.agent_kwargs['api_key'] = resolved_api_key
+    ctx.agent_kwargs['base_url'] = resolved_base_url
+    ctx.agent_kwargs['model'] = ctx.resolved_model
+    ctx.agent_kwargs['provider'] = resolved_provider
+    _replace_session_db_in_kwargs(ctx.agent_kwargs, ctx.state_db_path)
+    if 'credential_pool' in ctx.agent_params:
+        ctx.agent_kwargs['credential_pool'] = heal_rt.get('credential_pool')
+
+    ai_agent_cls = ctx.ai_agent_cls
+    agent = ai_agent_cls(**ctx.agent_kwargs)
+    ctx.agent = agent
+
+    with STREAMS_LOCK:
+        AGENT_INSTANCES[ctx.stream_id] = agent
+    from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
+    with _SAC_L:
+        _SAC[ctx.session_id] = (agent, ctx.agent_sig)
+        _SAC.move_to_end(ctx.session_id)
+
+    ctx.self_healed = True
+    if ctx.callbacks:
+        ctx.callbacks.token_sent = False
+
+    heal_result = None
+    heal_stale_classification = None
+    heal_ok = False
+    try:
+        (
+            heal_context_messages,
+            heal_conversation_history_revision,
+        ) = _refresh_context_and_revision_from_state_db_helper(ctx)
+        heal_kwargs = _build_run_conversation_kwargs(
+            agent.run_conversation,
+            user_message=ctx.user_message,
+            system_message=ctx.workspace_system_msg,
+            conversation_history=_sanitize_messages_for_agent(
+                heal_context_messages,
+                cfg=ctx.cfg,
+                effective_model=ctx.resolved_model,
+                effective_provider=resolved_provider,
+                effective_base_url=resolved_base_url,
+                requested_provider=(ctx.session_requested_provider or ""),
+            ),
+            conversation_history_revision=heal_conversation_history_revision,
+            task_id=ctx.session_id,
+            persist_user_message=ctx.msg_text,
+            persist_user_timestamp=getattr(ctx.s, 'pending_started_at', None),
+        )
+        if moa_config is not None:
+            heal_kwargs["moa_config"] = moa_config
+        ctx.result_partial_pre_call_context = list(heal_context_messages)
+        heal_result = agent.run_conversation(**heal_kwargs)
+        ctx.active_turn_identity = _resolve_active_turn_authority(
+            ctx.active_turn_identity,
+            result=heal_result,
+            agent=agent,
+        )
+        if _result_reports_compression_snapshot_stale(heal_result):
+            heal_stale_classification = _classify_provider_error('', result=heal_result)
+        heal_ok = _self_heal_result_succeeded(
+            heal_result,
+            heal_context_messages,
+            ctx.active_turn_identity,
+            ctx.msg_text,
+        )
+    except Exception as retry_exc:
+        logger.warning('[webui] self-heal: retry also failed: %s', retry_exc)
+        heal_ok = False
+
+    return heal_ok, heal_result, heal_stale_classification
+
+
 def _run_agent_streaming(
     session_id,
     msg_text,
@@ -10826,92 +11047,15 @@ def _run_agent_streaming(
 
             def _refresh_context_and_revision_from_state_db():
                 return _refresh_context_and_revision_from_state_db_helper(ctx)
-            result = agent.run_conversation(**_run_conversation_kwargs)
-            _active_turn_identity = _resolve_active_turn_authority(
-                _active_turn_identity,
-                result=result,
-                agent=agent,
-            )
-            # #4729: the run is done — flush any reasoning tail still in the coalescing
-            # buffer (the agent never calls reasoning_callback(None), and a turn can end on
-            # reasoning with no trailing token/tool boundary to trigger a flush) so the last
-            # sub-100ms window reaches the live Thinking view before the terminal done event.
-            _flush_reasoning_buffer()
-            if cancel_event.is_set():
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                if _ckpt_thread is not None:
-                    _ckpt_thread.join(timeout=15)
-                if ephemeral:
-                    with _agent_lock:
-                        _finalize_cancelled_turn(s, ephemeral=True, stream_id=stream_id)
-                else:
-                    with _agent_lock:
-                        _finalize_cancelled_turn(s, ephemeral=False, stream_id=stream_id)
-                        try:
-                            append_turn_journal_event_for_stream(
-                                s.session_id,
-                                stream_id,
-                                {
-                                    "event": "interrupted",
-                                    "created_at": time.time(),
-                                    "reason": "cancelled",
-                                },
-                            )
-                        except Exception:
-                            logger.debug("Failed to append cancelled turn journal event", exc_info=True)
-                put('cancel', _cancel_event_payload('Cancelled by user'))
+            if ctx.ephemeral:
+                _phase_execute_ephemeral(ctx)
                 return
-            # ── Ephemeral mode (/btw): deliver answer, skip persistence, cleanup ──
-            if ephemeral:
-                _answer = ''
-                for _m in reversed(result.get('messages') or []):
-                    if isinstance(_m, dict) and _m.get('role') == 'assistant':
-                        _answer = str(_m.get('content', ''))
-                        break
-                # /btw is intentionally non-persistent, but its terminal SSE
-                # payload is still public output.  Project the ephemeral
-                # session before enqueueing it so raw Agent ``api_content`` or
-                # provenance aliases cannot cross the wire.
-                _ephemeral_session = _ephemeral_session_payload(
-                    session_id, result.get('messages', [])
-                )
-                put('done', {
-                    'session': _ephemeral_session,
-                    'usage': {'input_tokens': 0, 'output_tokens': 0},
-                    'ephemeral': True,
-                    'answer': _answer,
-                })
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                try:
-                    import pathlib
-                    pathlib.Path(s.path).unlink(missing_ok=True)
-                except Exception:
-                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                    pass
-                return  # skip all normal persistence for ephemeral sessions
-            if _checkpoint_stop is not None:
-                _checkpoint_stop.set()
-            if _ckpt_thread is not None:
-                _ckpt_thread.join(timeout=15)
-            if cancel_event.is_set():
-                with _agent_lock:
-                    _finalize_cancelled_turn(s, ephemeral=False, stream_id=stream_id)
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": "cancelled",
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
-                put('cancel', _cancel_event_payload('Cancelled by user'))
+
+            if not _phase_execute_agent(ctx):
                 return
+
+            result = ctx.result
+            _active_turn_identity = ctx.active_turn_identity
             _writeback_timings = []
             _writeback_started = time.perf_counter()
             with _agent_lock:
@@ -11236,144 +11380,43 @@ def _run_agent_streaming(
                         # ── Credential self-heal on 401 (#1401) ──
                         # Before emitting the error, try re-reading credentials
                         # and retrying once with a fresh agent.
-                        _heal_result = None
-                        _heal_stale_classification = None
-                        # Bind the session's profile so the self-heal re-resolve
-                        # AND the custom-provider override below read one
-                        # profile-owned snapshot (finding #3): otherwise a named
-                        # profile's endpoint pairs with the default profile's key.
-                        from api import profiles as _profiles_api
-                        with _profiles_api.profile_scope_for_detached_worker(
-                            _resolved_profile_name, "credential self-heal", logger_override=logger
-                        ):
-                            _heal_rt = _attempt_credential_self_heal(
-                                resolved_provider or '', session_id, _agent_lock,
-                                target_model=resolved_model,
-                            )
-                        if _heal_rt is not None:
-                            logger.info('[webui] self-heal: retrying stream after credential refresh')
-                            # Rebuild runtime variables from the refreshed resolve
-                            _rt = _heal_rt
-                            resolved_api_key = _heal_rt.get('api_key')
-                            if not resolved_provider:
-                                resolved_provider = _heal_rt.get('provider')
-                            resolved_base_url = _runtime_preferred_base_url(
-                                _heal_rt, resolved_provider, configured_base_url
-                            )
-                            # Preserve the session's original pre-canonicalization
-                            # provider identity (captured at first resolve) so a
-                            # named custom:slug retry can still select its exact
-                            # vision-capability entry. Only initialize when empty
-                            # (e.g. the provider was first discovered on this heal).
-                            if not _session_requested_provider:
-                                _session_requested_provider = resolved_provider
-                            resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
-                                resolved_provider, resolved_api_key, resolved_base_url,
-                                profile_name=_resolved_profile_name,
-                            )
-                            # Rebuild agent kwargs and create a fresh agent
-                            _agent_kwargs['api_key'] = resolved_api_key
-                            _agent_kwargs['base_url'] = resolved_base_url
-                            _agent_kwargs['model'] = resolved_model
-                            _agent_kwargs['provider'] = resolved_provider
-                            _replace_session_db_in_kwargs(_agent_kwargs, _state_db_path)
-                            if 'credential_pool' in _agent_params:
-                                _agent_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
-                            agent = _AIAgent(**_agent_kwargs)
-                            with STREAMS_LOCK:
-                                AGENT_INSTANCES[stream_id] = agent
-                            from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
-                            with _SAC_L:
-                                _SAC[session_id] = (agent, _agent_sig)
-                                _SAC.move_to_end(session_id)
-                            # Retry the conversation once with fresh credentials
-                            _self_healed = True
-                            callbacks.token_sent = False
+                        _heal_ok, _heal_result, _heal_stale_classification = _attempt_stream_credential_retry(
+                            ctx,
+                            configured_base_url=configured_base_url,
+                            moa_config=moa_config,
+                        )
+                        if _heal_ok and _heal_result is not None:
+                            _self_healed = ctx.self_healed
+                            agent = ctx.agent
+                            resolved_api_key = ctx.resolved_api_key
+                            resolved_provider = ctx.resolved_provider
+                            resolved_base_url = ctx.resolved_base_url
+                            _session_requested_provider = ctx.session_requested_provider
+                            _active_turn_identity = ctx.active_turn_identity
+                            _result_partial_pre_call_context = ctx.result_partial_pre_call_context
                             _token_sent = False
-                            try:
-                                (
-                                    _heal_context_messages,
-                                    _heal_conversation_history_revision,
-                                ) = _refresh_context_and_revision_from_state_db()
-                                _heal_kwargs = _build_run_conversation_kwargs(
-                                    agent.run_conversation,
-                                    user_message=user_message,
-                                    system_message=workspace_system_msg,
-                                    conversation_history=_sanitize_messages_for_agent(
-                                        _heal_context_messages,
-                                        cfg=_cfg,
-                                        effective_model=resolved_model,
-                                        effective_provider=resolved_provider,
-                                        effective_base_url=resolved_base_url,
-                                        requested_provider=(_session_requested_provider or ""),
-                                    ),
-                                    conversation_history_revision=(
-                                        _heal_conversation_history_revision
-                                    ),
-                                    task_id=session_id,
-                                    persist_user_message=msg_text,
-                                    persist_user_timestamp=getattr(s, 'pending_started_at', None),
-                                )
-                                if moa_config is not None:
-                                    _heal_kwargs["moa_config"] = moa_config
-                                _result_partial_pre_call_context = list(
-                                    _heal_context_messages
-                                )
-                                _heal_result = agent.run_conversation(**_heal_kwargs)
-                                _active_turn_identity = _resolve_active_turn_authority(
-                                    _active_turn_identity,
-                                    result=_heal_result,
-                                    agent=agent,
-                                )
-                                if _result_reports_compression_snapshot_stale(_heal_result):
-                                    _heal_stale_classification = _classify_provider_error(
-                                        '',
-                                        result=_heal_result,
-                                    )
-                                    result = _heal_result
-                                _heal_ok = _self_heal_result_succeeded(
-                                    _heal_result,
-                                    _heal_context_messages,
-                                    _active_turn_identity,
-                                    msg_text,
-                                )
-                            except Exception as _retry_exc:
-                                logger.warning(
-                                    '[webui] self-heal: retry also failed: %s', _retry_exc,
-                                )
-                                _heal_ok = False
-                            if _heal_ok and _heal_result is not None:
-                                # Retry succeeded — replace result and skip error
-                                result = _heal_result
-                                # Fall through past the error-emission block;
-                                # the post-result persistence code below will
-                                # process ``result`` normally.  We jump past
-                                # the ``put('apperror', ...)`` + ``return`` by
-                                # NOT entering the ``if not _assistant_added``
-                                # guard again — but we are already inside it.
-                                # Solution: set _assistant_added so the guard
-                                # evaluates False on next conceptual pass.
-                                # Since we're in a flat block, directly run the
-                                # post-result merge logic here.
-                                _result_messages = result.get('messages')
-                                if _result_messages is None:
-                                    _result_messages = _previous_context_messages
-                                _result_messages = _drop_synthetic_max_iteration_summary_requests(
-                                    _result_messages,
-                                    enabled=_agent_result_tool_limit_reached(result),
-                                )
-                                _result_messages = _settle_result_messages(
-                                    s,
-                                    _previous_messages,
-                                    _previous_owner_context_messages,
-                                    _result_messages,
-                                    msg_text,
-                                    _turn_pending_source,
-                                    _active_turn_identity,
-                                )
-                                # normal post-result persistence path by
-                                # leaving _assistant_added truthy (set below).
-                                _assistant_added = True  # prevent re-entering guard
+                            # Retry succeeded — replace result and skip error
+                            result = _heal_result
+                            # Fall through past the error-emission block;
+                            # the post-result persistence code below will
+                            # process ``result`` normally.
+                            _result_messages = result.get('messages')
+                            if _result_messages is None:
+                                _result_messages = _previous_context_messages
+                            _result_messages = _drop_synthetic_max_iteration_summary_requests(
+                                _result_messages,
+                                enabled=_agent_result_tool_limit_reached(result),
+                            )
+                            _result_messages = _settle_result_messages(
+                                s,
+                                _previous_messages,
+                                _previous_owner_context_messages,
+                                _result_messages,
+                                msg_text,
+                                _turn_pending_source,
+                                _active_turn_identity,
+                            )
+                            _assistant_added = True  # prevent re-entering guard
                         if not _assistant_added:
                             # Self-heal didn't apply or retry failed — emit error.
                             if _heal_stale_classification is not None:
