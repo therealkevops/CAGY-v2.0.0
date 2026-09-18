@@ -39,6 +39,7 @@ from api.streaming import (
     _parse_fallback_entries,
     _phase_execute_agent,
     _phase_execute_ephemeral,
+    _phase_finalize_writeback,
     _phase_prepare_context,
     _run_agent_streaming,
     _sse,
@@ -673,5 +674,183 @@ class TestPhaseExecuteAgentAndEphemeral(unittest.TestCase):
             self.assertIsNone(stale)
 
 
+class TestPhaseFinalizeWriteback(unittest.TestCase):
+    """Unit tests for _phase_finalize_writeback post-run persistence and event dispatch."""
+
+    def test_finalize_writeback_stale_stream_skips(self):
+        """Verify stale stream writeback returns early without emitting events or mutating state."""
+        events = []
+        mock_session = MagicMock()
+        mock_session.active_stream_id = "stream-newer-999"
+        mock_session.session_id = "sess-stale-1"
+
+        ctx = StreamTurnContext(
+            session_id="sess-stale-1",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-old-111",
+            s=mock_session,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        _phase_finalize_writeback(ctx)
+        self.assertFalse(ctx.success_writeback_committed)
+        self.assertEqual(len(events), 0)
+
+    def test_finalize_writeback_cancelled_returns_cancel_event(self):
+        """Verify cancelled event causes clean early exit with cancel event emission."""
+        events = []
+        cancel_evt = threading.Event()
+        cancel_evt.set()
+
+        mock_session = MagicMock()
+        mock_session.active_stream_id = "stream-cancel-1"
+        mock_session.session_id = "sess-cancel-1"
+        mock_session.messages = [{"role": "user", "content": "cancel me"}]
+
+        ctx = StreamTurnContext(
+            session_id="sess-cancel-1",
+            msg_text="cancel me",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-cancel-1",
+            s=mock_session,
+            cancel_event=cancel_evt,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        with unittest.mock.patch("api.streaming._finalize_cancelled_turn") as mock_finalize:
+            _phase_finalize_writeback(ctx)
+            self.assertFalse(ctx.success_writeback_committed)
+            mock_finalize.assert_called_once()
+            self.assertTrue(any(ev[0] == "cancel" for ev in events))
+            self.assertFalse(any(ev[0] == "done" for ev in events))
+
+    def test_finalize_writeback_success_flow(self):
+        """Verify normal writeback flow commits session state and delivers done/metering/stream_end."""
+        events = []
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_f:
+            tmp_path = tmp_f.name
+
+        session_id = "sess-success-1"
+        stream_id = "stream-success-1"
+        s = Session(session_id=session_id, path=tmp_path)
+        s.active_stream_id = stream_id
+        s.title = "Established Title"
+        s.llm_title_generated = True
+        s.messages = [{"role": "user", "content": "hello"}]
+
+        mock_agent = MagicMock()
+        mock_agent.session_id = session_id
+        mock_agent.context_compressor = None
+        mock_agent.session_prompt_tokens = 100
+        mock_agent.session_completion_tokens = 50
+        mock_agent.session_estimated_cost_usd = 0.001
+        mock_agent.session_cache_read_tokens = 0
+        mock_agent.session_cache_write_tokens = 0
+        mock_agent.model = "gemini-3.8-flash"
+        mock_agent._last_error = None
+
+        ctx = StreamTurnContext(
+            session_id=session_id,
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            s=s,
+            agent=mock_agent,
+            result={
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "assistant", "content": "world response"},
+                ],
+                "iterations": 1,
+            },
+            put=lambda ev, d: events.append((ev, d)),
+        )
+        ctx.usage_collector = StreamingUsageCollector(ctx)
+
+        try:
+            with unittest.mock.patch("api.streaming.append_turn_journal_event_for_stream"):
+                _phase_finalize_writeback(ctx)
+
+            self.assertTrue(ctx.success_writeback_committed)
+            event_types = [ev[0] for ev in events]
+            self.assertIn("done", event_types)
+            self.assertIn("metering", event_types)
+            self.assertIn("stream_end", event_types)
+
+            done_payload = next(ev[1] for ev in events if ev[0] == "done")
+            self.assertIn("session", done_payload)
+            self.assertIn("usage", done_payload)
+            # Assistant reply was incorporated into session messages
+            self.assertTrue(any(m.get("content") == "world response" for m in s.messages if isinstance(m, dict)))
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_finalize_writeback_context_compression_migration(self):
+        """Verify writeback handles context compression session migration and anchor calculations."""
+        events = []
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_f:
+            tmp_path = tmp_f.name
+
+        old_sid = "sess-orig-1"
+        new_sid = "sess-cont-2"
+        stream_id = "stream-comp-1"
+        s = Session(session_id=old_sid, path=tmp_path)
+        s.active_stream_id = stream_id
+        s.messages = [
+            {"role": "user", "content": "msg 1"},
+            {"role": "assistant", "content": "resp 1"},
+            {"role": "system", "content": "Summary of previous context", "_type": "context_compression_marker"},
+            {"role": "user", "content": "msg 2"},
+            {"role": "assistant", "content": "resp 2"},
+        ]
+
+        mock_agent = MagicMock()
+        mock_agent.session_id = new_sid  # Agent migrated session ID during compression
+        mock_agent.context_compressor = MagicMock()
+        mock_agent.context_compressor.compression_count = 1
+        mock_agent.context_compressor.context_length = 128000
+        mock_agent.context_compressor.threshold_tokens = 100000
+        mock_agent.context_compressor.last_prompt_tokens = 0
+        mock_agent.model = "gemini-3.8-flash"
+        mock_agent.session_prompt_tokens = 100
+        mock_agent.session_completion_tokens = 50
+        mock_agent.session_estimated_cost_usd = 0.001
+        mock_agent.session_cache_read_tokens = 0
+        mock_agent.session_cache_write_tokens = 0
+        mock_agent._last_error = None
+
+        ctx = StreamTurnContext(
+            session_id=old_sid,
+            msg_text="msg 2",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            s=s,
+            agent=mock_agent,
+            result={"messages": s.messages, "iterations": 1},
+            pre_compression_count=0,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+        ctx.usage_collector = StreamingUsageCollector(ctx)
+
+        try:
+            with unittest.mock.patch("api.streaming.append_turn_journal_event_for_stream"):
+                _phase_finalize_writeback(ctx)
+
+            self.assertTrue(ctx.success_writeback_committed)
+            self.assertEqual(s.session_id, new_sid)
+            self.assertEqual(s.parent_session_id, old_sid)
+            self.assertIsNotNone(s.compression_anchor_visible_idx)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+
 if __name__ == "__main__":
     unittest.main()
+
