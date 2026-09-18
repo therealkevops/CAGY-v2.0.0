@@ -12234,12 +12234,10 @@ def _get_agy_models_payload(force: bool = False):
     return payload
 
 
-def handle_get(handler, parsed) -> bool:
-    """Handle all GET routes. Returns True if handled, False for 404."""
-    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
-    if proxy_result is not False:
-        return proxy_result
-
+def _handle_get_static_and_shell(handler, parsed):
+    """Handle static assets, manifests, and HTML shell rendering routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path.startswith("/session/static/"):
         # Strip the leading "/session" so _serve_static() sees a path that
         # starts with "/static/" (its required prefix). _serve_static enforces
@@ -12289,6 +12287,55 @@ def handle_get(handler, parsed) -> bool:
             logger.warning("Silent exception in handle_get", exc_info=True)
             return _serve_shell_unavailable(handler, exc)
 
+    if parsed.path in ("/manifest.json", "/manifest.webmanifest"):
+        return _serve_manifest(handler)
+
+    if parsed.path == "/sw.js":
+        static_root = api_config.get_static_root()
+        sw_path = (static_root / "sw.js").resolve()
+        if sw_path.exists():
+            # Inject the current git-derived version as the cache name so the
+            # service worker cache busts automatically on every new deploy.
+            from urllib.parse import quote
+            from api.updates import WEBUI_VERSION
+            version_token = quote(WEBUI_VERSION, safe="")
+            text = sw_path.read_text(encoding="utf-8").replace(
+                "__WEBUI_VERSION__", version_token
+            )
+            data = text.encode("utf-8")
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+            handler.send_header("Cache-Control", "no-store")
+            handler.send_header("Service-Worker-Allowed", "/")
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return True
+        return j(handler, {"error": "not found"}, status=404)
+
+    if parsed.path == "/favicon.ico":
+        static_root = api_config.get_static_root()
+        ico_path = (static_root / "favicon.ico").resolve()
+        if ico_path.exists() and ico_path.is_file():
+            data = ico_path.read_bytes()
+            handler.send_response(200)
+            handler.send_header("Content-Type", "image/x-icon")
+            handler.send_header("Content-Length", str(len(data)))
+            handler.send_header("Cache-Control", "public, max-age=86400")
+            handler.end_headers()
+            handler.wfile.write(data)
+        else:
+            handler.send_response(204)
+            handler.end_headers()
+        return True
+
+    return None
+
+
+def _handle_get_auth(handler, parsed):
+    """Handle authentication, OIDC callbacks, and share routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/share" or parsed.path.startswith("/share/"):
         return bad(handler, "Share links are disabled", status=404)
 
@@ -12431,52 +12478,13 @@ def handle_get(handler, parsed) -> bool:
             },
         )
 
-    if parsed.path in ("/manifest.json", "/manifest.webmanifest"):
-        return _serve_manifest(handler)
+    return None
 
-    if parsed.path == "/sw.js":
-        static_root = api_config.get_static_root()
-        sw_path = (static_root / "sw.js").resolve()
-        if sw_path.exists():
-            # Inject the current git-derived version as the cache name so the
-            # service worker cache busts automatically on every new deploy.
-            from urllib.parse import quote
-            from api.updates import WEBUI_VERSION
-            version_token = quote(WEBUI_VERSION, safe="")
-            text = sw_path.read_text(encoding="utf-8").replace(
-                "__WEBUI_VERSION__", version_token
-            )
-            data = text.encode("utf-8")
-            handler.send_response(200)
-            handler.send_header("Content-Type", "application/javascript; charset=utf-8")
-            handler.send_header("Cache-Control", "no-store")
-            handler.send_header("Service-Worker-Allowed", "/")
-            handler.send_header("Content-Length", str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-            return True
-        return j(handler, {"error": "not found"}, status=404)
 
-    if parsed.path == "/favicon.ico":
-        static_root = api_config.get_static_root()
-        ico_path = (static_root / "favicon.ico").resolve()
-        if ico_path.exists() and ico_path.is_file():
-            data = ico_path.read_bytes()
-            handler.send_response(200)
-            handler.send_header("Content-Type", "image/x-icon")
-            handler.send_header("Content-Length", str(len(data)))
-            handler.send_header("Cache-Control", "public, max-age=86400")
-            handler.end_headers()
-            handler.wfile.write(data)
-        else:
-            handler.send_response(204)
-            handler.end_headers()
-        return True
-
-    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
-        return True
-
-    # ── Insights / knowledge status ──
+def _handle_get_system(handler, parsed):
+    """Handle system health, telemetry, and log endpoints.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/insights":
         return _handle_insights(handler, parsed)
     if parsed.path == "/api/logs":
@@ -12494,6 +12502,30 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/system/health":
         j(handler, build_system_health_payload())
         return True
+
+    return None
+
+
+def handle_get(handler, parsed) -> bool:
+    """Handle all GET routes. Returns True if handled, False for 404."""
+    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
+    if proxy_result is not False:
+        return proxy_result
+
+    res = _handle_get_static_and_shell(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_auth(handler, parsed)
+    if res is not None:
+        return res
+
+    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
+        return True
+
+    res = _handle_get_system(handler, parsed)
+    if res is not None:
+        return res
 
     if parsed.path == "/api/models":
         force = False
