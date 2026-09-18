@@ -52,5 +52,55 @@ class TestSyntaxAndImports(unittest.TestCase):
                     self.fail(f"Failed to import {mod_name}: {e}")
 
 
+    def test_static_scripts_syntax_and_integrity(self):
+        """Verify that all static JS files exist, compile via Node, and are correctly referenced in index.html."""
+        import re
+        import subprocess
+
+        static_dir = WEBUI_DIR / "static"
+        js_files = list(static_dir.glob("*.js"))
+        self.assertGreater(len(js_files), 15, "Should find at least 15 JavaScript files in static/")
+
+        for js_file in js_files:
+            with self.subTest(file=js_file.name):
+                proc = subprocess.run(["node", "-c", str(js_file)], capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, f"JS syntax error in {js_file.name}: {proc.stderr}")
+
+        # Check index.html script tags
+        index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+        script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', index_html)
+        for src in script_srcs:
+            if src.startswith("http://") or src.startswith("https://"):
+                continue
+            # Strip query params
+            clean_src = src.split("?")[0]
+            if clean_src.startswith("static/"):
+                clean_src = clean_src.replace("static/", "", 1)
+            target = static_dir / clean_src
+            with self.subTest(script_src=src):
+                self.assertTrue(target.exists(), f"index.html references non-existent script: {src} -> {target}")
+
+    def test_api_js_module(self):
+        """Verify api.js exports apiFetch and ApiError and behaves as expected in Node."""
+        import subprocess
+
+        test_node_script = """
+        const { apiFetch, ApiError } = require('./webui/static/api.js');
+        if (typeof apiFetch !== 'function') throw new Error('apiFetch is not a function');
+        if (typeof ApiError !== 'function') throw new Error('ApiError is not a constructor');
+        
+        const err = new ApiError('Not Found', 404, 'Not Found', '/api/test', '{"error":"missing"}', { error: 'missing' });
+        if (err.status !== 404) throw new Error('ApiError status mismatch: ' + err.status);
+        if (err.name !== 'ApiError') throw new Error('ApiError name mismatch: ' + err.name);
+        if (!err.data || err.data.error !== 'missing') throw new Error('ApiError data mismatch');
+        
+        console.log('API_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("API_JS_OK", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
+
