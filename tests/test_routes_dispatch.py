@@ -229,6 +229,19 @@ class TestRoutesDispatch(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(onboarding.get("completed"))
 
+    def test_post_config_and_settings(self):
+        """POST /api/prompts and POST /api/agy/settings."""
+        status, prompt_res, _ = self._post("/api/prompts", {"label": "Decomp Prompt", "text": "echo hello"})
+        self.assertEqual(status, 200)
+        self.assertTrue(prompt_res.get("ok"))
+        self.assertEqual(prompt_res.get("prompt", {}).get("text"), "echo hello")
+
+        status, agy_res, _ = self._post("/api/agy/settings", {"effort": "high", "mode": "plan"})
+        self.assertEqual(status, 200)
+        self.assertTrue(agy_res.get("ok"))
+        self.assertEqual(agy_res.get("effort"), "high")
+        self.assertEqual(agy_res.get("mode"), "plan")
+
     # ─────────────────────────────────────────────────────────────
     # Domain 5: Session Management & Recovery
     # ─────────────────────────────────────────────────────────────
@@ -298,6 +311,22 @@ class TestRoutesDispatch(unittest.TestCase):
         self.assertIn("rows", diff_res)
         self.assertIn("stats", diff_res)
 
+    def test_post_projects_lifecycle(self):
+        """POST /api/projects/create, rename, delete."""
+        status, proj_res, _ = self._post("/api/projects/create", {"name": "Decomp Proj", "color": "#123456"})
+        self.assertEqual(status, 200)
+        self.assertTrue(proj_res.get("ok"))
+        proj_id = proj_res.get("project", {}).get("project_id")
+        self.assertIsNotNone(proj_id)
+
+        status, ren_res, _ = self._post("/api/projects/rename", {"project_id": proj_id, "name": "Renamed Proj"})
+        self.assertEqual(status, 200)
+        self.assertTrue(ren_res.get("ok"))
+
+        status, del_res, _ = self._post("/api/projects/delete", {"project_id": proj_id})
+        self.assertEqual(status, 200)
+        self.assertTrue(del_res.get("ok"))
+
     # ─────────────────────────────────────────────────────────────
     # Domain 7: Tools, MCP, Subagents, & Vault
     # ─────────────────────────────────────────────────────────────
@@ -317,6 +346,14 @@ class TestRoutesDispatch(unittest.TestCase):
         self.assertEqual(status, 200)
 
         status, skills, _ = self._get("/api/skills")
+        self.assertEqual(status, 200)
+
+    def test_post_commands_and_updates(self):
+        """POST /api/commands/bundles/resolve and POST /api/updates/check."""
+        status, res, _ = self._post("/api/commands/bundles/resolve", {"command": ""})
+        self.assertEqual(status, 400)
+
+        status, up_res, _ = self._post("/api/updates/check", {"force": True})
         self.assertEqual(status, 200)
 
     def test_vault_endpoints(self):

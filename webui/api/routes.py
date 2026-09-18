@@ -15982,70 +15982,10 @@ def _handle_post_chat_and_stream(handler, parsed, body, diag=None):
     return None
 
 
-def handle_post(handler, parsed) -> bool:
-    """Handle all POST routes. Returns True if handled, False for 404."""
-    diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-    if parsed.path == "/api/csp-report":
-        if diag:
-            diag.stage("csp_report")
-        try:
-            return _handle_csp_report(handler)
-        finally:
-            if diag:
-                diag.finish()
-    # T1 deprecation alias for the legacy ack endpoint that the pre-rename
-    # WebUI used to POST to after handling ``process_complete``. The new
-    # canonical SSE event is ``bg_task_complete`` and the new ack endpoint
-    # will be ``/api/bg-task-complete-ack`` (introduced by PR (b), the WebUI
-    # half of the split). Until PR (b) lands we keep the old path responding
-    # with HTTP 410 Gone + ``X-Replaced-By`` so any stale tab posting under
-    # the old name fails loudly with a discoverable hint. The handler runs
-    # BEFORE the CSRF gate on purpose: an old tab will not carry a CSRF token
-    # for the deprecated path, and surfacing 410 (not 403) is the correct
-    # contract here.
-    if parsed.path == "/api/process-complete-ack":
-        if diag:
-            diag.stage("process_complete_ack_deprecated")
-        try:
-            j(
-                handler,
-                {
-                    "error": (
-                        "gone: /api/process-complete-ack was replaced by "
-                        "/api/bg-task-complete-ack as part of the "
-                        "process_complete -> bg_task_complete event rename"
-                    ),
-                    "replaced_by": "/api/bg-task-complete-ack",
-                },
-                status=410,
-                extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
-            )
-            return True
-        finally:
-            if diag:
-                diag.finish()
-    # CSRF: reject cross-origin or tokenless authenticated browser requests.
-    # /api/auth/login has no authenticated session token yet, and /api/csp-report
-    # is intentionally unauthenticated for browser-generated violation reports.
-    if diag:
-        diag.stage("csrf")
-    if not _csrf_exempt_path(parsed.path) and not _check_csrf(handler):
-        try:
-            return j(handler, {"error": _csrf_rejection_error(handler)}, status=403)
-        finally:
-            if diag:
-                diag.finish()
-    proxy_result = _handle_extension_sidecar_proxy(
-        handler,
-        parsed,
-        "POST",
-        read_request_body=True,
-    )
-    if proxy_result is not False:
-        if diag:
-            diag.finish()
-        return proxy_result
-
+def _handle_post_pre_body(handler, parsed, diag=None):
+    """Handle POST routes that read their own body or stream raw data.
+    Returns True/response if handled, None if unhandled.
+    """
     if parsed.path == "/api/mcp/hub/add":
         from api.mcp_hub import add_or_update_mcp_server
         body = _read_json_body(handler) or {}
@@ -16255,134 +16195,246 @@ def handle_post(handler, parsed) -> bool:
             diag.stage("read_client_event_body")
         return _handle_client_event_log(handler, _read_client_event_payload(handler))
 
-    if diag:
-        diag.stage("read_body")
-    try:
-        body = read_body(handler)
-    except ValueError as exc:
-        if diag:
-            diag.finish()
-        status = 413 if "too large" in str(exc).lower() else 400
-        return bad(handler, str(exc), status=status)
-    except Exception:
-        logger.warning("Silent exception in handle_post", exc_info=True)
-        if diag:
-            diag.finish()
-        raise
-    if not _guard_request_session_visibility(handler, parsed, body=body, method="POST"):
-        if diag:
-            diag.finish()
-        return True
-
-    res = _handle_post_auth(handler, parsed, body)
-    if res is not None:
-        return res
-
-    res = _handle_post_session(handler, parsed, body)
-    if res is not None:
-        return res
-
-    res = _handle_post_chat_and_stream(handler, parsed, body, diag=diag)
-    if res is not None:
-        return res
+    return None
 
 
-    if parsed.path == "/api/updates/check":
-        settings = load_settings()
-        if not settings.get("check_for_updates", True):
-            force = bool(body.get("force", False)) if isinstance(body, dict) else False
-            if force:
-                # Manual force-check bypasses auto-check toggle (#6082)
-                pass
-            else:
-                return j(handler, {"disabled": True})
-        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
-        force = bool(body.get("force", False))
-        # Allow the client to pass the channel explicitly in the POST body. This
-        # avoids a race on channel switch: the Settings dropdown re-checks
-        # immediately, but its autosave PUT (debounced) may not have landed
-        # server-side yet, so reading the saved setting here could answer for the
-        # OLD channel. An explicit body channel (validated against the enum) wins;
-        # otherwise fall back to the saved setting. (Fable UX gate.)
-        channel = body.get("channel") if isinstance(body, dict) else None
-        if channel not in ("stable", "experimental"):
-            channel = settings.get("update_channel")
-        from api.updates import check_for_updates
+def _handle_post_workspace_and_git(handler, parsed, body):
+    """Handle POST workspace, git, file, and project operations.
+    Returns True/response if handled, None if unhandled.
+    """
+    # ── Git workspace ops (POST) ──
+    if parsed.path == "/api/git/stage":
+        return _handle_git_stage(handler, body)
 
-        logger.info("checking for updates (force=%s, include_agent=%s, channel=%s)", force, include_agent_updates, channel)
-        # Defensive-only guard: wrap check_for_updates() for consistent
-        # exception protection across all route handlers. Does NOT fix #6086
-        # (root cause is likely signal/process-group reaping, per maintainer analysis).
+    if parsed.path == "/api/git/unstage":
+        return _handle_git_unstage(handler, body)
+
+    if parsed.path == "/api/git/discard":
+        return _handle_git_discard(handler, body)
+
+    if parsed.path == "/api/git/commit-message":
+        return _handle_git_commit_message(handler, body)
+
+    if parsed.path == "/api/git/commit-message-selected":
+        return _handle_git_commit_message_selected(handler, body)
+
+    if parsed.path == "/api/git/commit":
+        return _handle_git_commit(handler, body)
+
+    if parsed.path == "/api/git/commit-selected":
+        return _handle_git_commit_selected(handler, body)
+
+    if parsed.path == "/api/git/fetch":
+        return _handle_git_remote_action(handler, body, "fetch")
+
+    if parsed.path == "/api/git/pull":
+        return _handle_git_remote_action(handler, body, "pull")
+
+    if parsed.path == "/api/git/push":
+        return _handle_git_remote_action(handler, body, "push")
+
+    if parsed.path == "/api/git/checkout":
+        return _handle_git_checkout(handler, body)
+
+    if parsed.path == "/api/git/stash-checkout":
+        return _handle_git_stash_checkout(handler, body)
+
+    # ── File ops (POST) ──
+    if parsed.path == "/api/file/delete":
+        return _handle_file_delete(handler, body)
+
+    if parsed.path == "/api/file/save":
+        return _handle_file_save(handler, body)
+
+    if parsed.path == "/api/file/office-save":
+        return _handle_office_file_save(handler, body)
+
+    if parsed.path == "/api/file/create":
+        return _handle_file_create(handler, body)
+
+    if parsed.path == "/api/file/rename":
+        return _handle_file_rename(handler, body)
+
+    if parsed.path == "/api/file/move":
+        return _handle_file_move(handler, body)
+
+    if parsed.path == "/api/file/create-dir":
+        return _handle_create_dir(handler, body)
+
+    if parsed.path == "/api/file/reveal":
+        return _handle_file_reveal(handler, body)
+
+    if parsed.path == "/api/file/path":
+        return _handle_file_path(handler, body)
+
+    if parsed.path == "/api/file/open-vscode":
+        return _handle_file_open_vscode(handler, body)
+
+    # ── Workspace management (POST) ──
+    if parsed.path == "/api/workspaces/add":
+        return _handle_workspace_add(handler, body)
+
+    if parsed.path == "/api/workspaces/remove":
+        return _handle_workspace_remove(handler, body)
+
+    if parsed.path == "/api/workspaces/rename":
+        return _handle_workspace_rename(handler, body)
+
+    if parsed.path == "/api/workspaces/reorder":
+        return _handle_workspace_reorder(handler, body)
+
+    # ── Project CRUD (POST) ──
+    if parsed.path == "/api/projects/create":
         try:
-            payload = check_for_updates(force=force, include_agent=include_agent_updates, channel=channel)
-        except Exception:
-            logger.exception("update check failed unexpectedly (defensive guard caught exception)")
-            return bad(handler, "Update check failed, see server log for details", status=500)
-        logger.info("update check completed")
-        return j(handler, payload)
+            require(body, "name")
+        except ValueError as e:
+            return bad(handler, str(e))
+        import re as _re
 
-    if parsed.path == "/api/extensions/toggle":
-        from api.extensions import ExtensionToggleError, set_extension_user_enabled
+        name = body["name"].strip()[:128]
+        if not name:
+            return bad(handler, "name required")
+        color = body.get("color")
+        if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
+            return bad(handler, "Invalid color format")
+        projects = load_projects()
+        _requested_profile = str(body.get('profile') or "").strip()
+        if _requested_profile and _requested_profile != "default":
+            from api.profiles import _PROFILE_ID_RE
+            if not _PROFILE_ID_RE.fullmatch(_requested_profile):
+                return bad(handler, "invalid profile")
+        raw_ws = body.get("default_workspace")
+        if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
+            try:
+                default_ws = str(resolve_trusted_workspace(raw_ws.strip()))
+            except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
+                default_ws = raw_ws.strip()
+        else:
+            default_ws = None
+        proj = {
+            "project_id": uuid.uuid4().hex[:12],
+            "name": name,
+            "color": color,
+            "profile": _requested_profile or get_active_profile_name() or 'default',
+            "default_workspace": default_ws,
+            "created_at": time.time(),
+        }
+        projects.append(proj)
+        save_projects(projects)
+        return j(handler, {"ok": True, "project": proj})
 
+    if parsed.path in ("/api/projects/rename", "/api/projects/update"):
         try:
-            return j(
-                handler,
-                set_extension_user_enabled(body.get("id"), body.get("enabled")),
-            )
-        except ExtensionToggleError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension toggle failed")
-            return bad(handler, "Failed to update extension state", status=500)
+            require(body, "project_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        import re as _re
 
-    if parsed.path == "/api/extensions/sidecar-proxy-consent":
-        from api.extensions import (
-            ExtensionSidecarProxyError,
-            set_extension_sidecar_proxy_consent,
+        projects = load_projects()
+        proj = next(
+            (p for p in projects if p["project_id"] == body["project_id"]), None
         )
+        if not proj:
+            return bad(handler, "Project not found", 404)
+        active_profile = get_active_profile_name()
+        if not _profiles_match(proj.get("profile"), active_profile):
+            return bad(handler, "Project not found", 404)
+        if "name" in body and body["name"]:
+            proj["name"] = body["name"].strip()[:128]
+        if "color" in body:
+            color = body["color"]
+            if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
+                return bad(handler, "Invalid color format")
+            proj["color"] = color
+        if "default_workspace" in body:
+            raw_ws = body.get("default_workspace")
+            if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
+                try:
+                    proj["default_workspace"] = str(resolve_trusted_workspace(raw_ws.strip()))
+                except Exception:
+                    logger.warning("Silent exception in handle_post", exc_info=True)
+                    proj["default_workspace"] = raw_ws.strip()
+            else:
+                proj["default_workspace"] = None
+        save_projects(projects)
+        return j(handler, {"ok": True, "project": proj})
 
+    if parsed.path == "/api/projects/delete":
         try:
-            return j(
-                handler,
-                set_extension_sidecar_proxy_consent(
-                    body.get("id"),
-                    body.get("approved"),
-                ),
-            )
-        except ExtensionSidecarProxyError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension sidecar proxy consent update failed")
-            return bad(handler, "Failed to update extension state", status=500)
+            require(body, "project_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        projects = load_projects()
+        proj = next(
+            (p for p in projects if p["project_id"] == body["project_id"]), None
+        )
+        if not proj:
+            return bad(handler, "Project not found", 404)
+        active_profile = get_active_profile_name()
+        if not _profiles_match(proj.get("profile"), active_profile):
+            return bad(handler, "Project not found", 404)
+        projects = [p for p in projects if p["project_id"] != body["project_id"]]
+        save_projects(projects)
+        if SESSION_INDEX_FILE.exists():
+            try:
+                index = json.loads(SESSION_INDEX_FILE.read_bytes())
+                active_ids = _active_stream_ids()
+                deferred_to_stream = []
+                for entry in index:
+                    if entry.get("project_id") != body["project_id"]:
+                        continue
+                    sid = entry.get("session_id")
+                    try:
+                        if entry.get("active_stream_id") in active_ids:
+                            cleared_in_cache = False
+                            with LOCK:
+                                cached = SESSIONS.get(sid)
+                                if cached is not None:
+                                    cached.project_id = None
+                                    cleared_in_cache = True
+                            if cleared_in_cache:
+                                deferred_to_stream.append(sid)
+                                continue
+                        s = get_session(sid)
+                        s.project_id = None
+                        s.save()
+                    except Exception:
+                        logger.debug("Failed to update session %s", sid)
+                if deferred_to_stream:
+                    logger.info(
+                        "projects/delete: cleared project_id on %d streaming session(s) "
+                        "in-cache; streaming thread will persist: %s",
+                        len(deferred_to_stream), deferred_to_stream,
+                    )
+            except Exception:
+                logger.debug("Failed to load session index for project unlink")
+        return j(handler, {"ok": True})
 
-    if parsed.path == "/api/extensions/install":
-        from api.extensions import ExtensionInstallError, install_extension
-
+    # ── Rollback checkpoint (POST) ──
+    if parsed.path == "/api/rollback/restore":
+        if not body:
+            return bad(handler, "request body is required")
+        workspace = body.get("workspace", "")
+        checkpoint = body.get("checkpoint", "")
+        if not workspace or not checkpoint:
+            return bad(handler, "workspace and checkpoint are required")
         try:
-            return j(
-                handler,
-                install_extension(body.get("id"), body.get("download_url"), body.get("sha256")),
-            )
-        except ExtensionInstallError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension install failed")
-            return bad(handler, "Failed to install extension", status=500)
+            from api.rollback import restore_checkpoint
+            return j(handler, restore_checkpoint(workspace, checkpoint))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except Exception as e:
+            logger.exception("rollback/restore failed")
+            return bad(handler, str(e), status=500)
 
-    if parsed.path == "/api/extensions/uninstall":
-        from api.extensions import ExtensionInstallError, uninstall_extension
+    return None
 
-        try:
-            return j(
-                handler,
-                uninstall_extension(body.get("id")),
-            )
-        except ExtensionInstallError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension uninstall failed")
-            return bad(handler, "Failed to uninstall extension", status=500)
 
+def _handle_post_config_and_settings(handler, parsed, body):
+    """Handle POST configuration, models, providers, profiles, settings, and onboarding routes.
+    Returns True/response if handled, None if unhandled.
+    """
     if parsed.path == "/api/dashboard/config":
         from api import dashboard_probe
 
@@ -16482,13 +16534,6 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, {"ok": True, "provider": provider_id})
 
     if parsed.path == "/api/reasoning":
-        # CLI-parity /reasoning handler — writes to the same config.yaml keys
-        # the CLI uses (display.show_reasoning, agent.reasoning_effort) so a
-        # preference set via WebUI is honoured in the terminal REPL and vice
-        # versa.  Body is one of:
-        #   {"display": "show"|"hide"|"on"|"off"}   → display.show_reasoning
-        #   {"effort":  "none"|"minimal"|"low"|"medium"|"high"|"xhigh"}
-        #                                            → agent.reasoning_effort
         try:
             display = body.get("display")
             effort = body.get("effort")
@@ -16519,198 +16564,13 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e), 500)
 
     if parsed.path == "/api/admin/reload":
-        # Hot-reload api.models module to pick up code changes without restart.
         import importlib
         from api import models as _models
         importlib.reload(_models)
-        # Also re-expose get_session from the reloaded module so routes.py
-        # continues to work (routes.py imported it at module level).
         import api.routes as _routes
         _routes.get_session = _models.get_session
         _routes.Session = _models.Session
         return j(handler, {"status": "ok", "reloaded": "api.models"})
-
-    if parsed.path == "/api/crons/create":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_create(handler, body)
-
-    if parsed.path == "/api/crons/update":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_update(handler, body)
-
-    if parsed.path == "/api/crons/delete":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_delete(handler, body)
-
-    if parsed.path == "/api/crons/run":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_run(handler, body)
-
-    if parsed.path == "/api/crons/pause":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_pause(handler, body)
-
-    if parsed.path == "/api/crons/resume":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_resume(handler, body)
-
-    # ── Git workspace ops (POST) ──
-    if parsed.path == "/api/git/stage":
-        return _handle_git_stage(handler, body)
-
-    if parsed.path == "/api/git/unstage":
-        return _handle_git_unstage(handler, body)
-
-    if parsed.path == "/api/git/discard":
-        return _handle_git_discard(handler, body)
-
-    if parsed.path == "/api/git/commit-message":
-        return _handle_git_commit_message(handler, body)
-
-    if parsed.path == "/api/git/commit-message-selected":
-        return _handle_git_commit_message_selected(handler, body)
-
-    if parsed.path == "/api/git/commit":
-        return _handle_git_commit(handler, body)
-
-    if parsed.path == "/api/git/commit-selected":
-        return _handle_git_commit_selected(handler, body)
-
-    if parsed.path == "/api/git/fetch":
-        return _handle_git_remote_action(handler, body, "fetch")
-
-    if parsed.path == "/api/git/pull":
-        return _handle_git_remote_action(handler, body, "pull")
-
-    if parsed.path == "/api/git/push":
-        return _handle_git_remote_action(handler, body, "push")
-
-    if parsed.path == "/api/git/checkout":
-        return _handle_git_checkout(handler, body)
-
-    if parsed.path == "/api/git/stash-checkout":
-        return _handle_git_stash_checkout(handler, body)
-
-    # ── File ops (POST) ──
-    if parsed.path == "/api/file/delete":
-        return _handle_file_delete(handler, body)
-
-    if parsed.path == "/api/file/save":
-        return _handle_file_save(handler, body)
-
-    if parsed.path == "/api/file/office-save":
-        return _handle_office_file_save(handler, body)
-
-    if parsed.path == "/api/file/create":
-        return _handle_file_create(handler, body)
-
-    if parsed.path == "/api/file/rename":
-        return _handle_file_rename(handler, body)
-
-    if parsed.path == "/api/file/move":
-        return _handle_file_move(handler, body)
-
-    if parsed.path == "/api/file/create-dir":
-        return _handle_create_dir(handler, body)
-
-    if parsed.path == "/api/file/reveal":
-        return _handle_file_reveal(handler, body)
-
-    if parsed.path == "/api/file/path":
-        return _handle_file_path(handler, body)
-
-    if parsed.path == "/api/file/open-vscode":
-        return _handle_file_open_vscode(handler, body)
-
-    # ── Workspace management (POST) ──
-    if parsed.path == "/api/workspaces/add":
-        return _handle_workspace_add(handler, body)
-
-    if parsed.path == "/api/workspaces/remove":
-        return _handle_workspace_remove(handler, body)
-
-    if parsed.path == "/api/workspaces/rename":
-        return _handle_workspace_rename(handler, body)
-
-    if parsed.path == "/api/workspaces/reorder":
-        return _handle_workspace_reorder(handler, body)
-
-    # ── Approval (POST) ──
-    if parsed.path == "/api/commands/bundles/resolve":
-        from api.commands import resolve_bundle_command
-
-        command = str(body.get("command", "") or "").strip()
-        if not command:
-            return bad(handler, "command is required")
-
-        try:
-            return j(handler, resolve_bundle_command(command))
-        except KeyError:
-            return bad(handler, "Bundle command not found", 404)
-        except ValueError as e:
-            return bad(handler, str(e), 400)
-        except RuntimeError as e:
-            return bad(handler, _sanitize_error(e), 500)
-
-    if parsed.path == "/api/commands/exec":
-        from api.commands import execute_agent_command, execute_plugin_command
-
-        command = str(body.get("command", "") or "").strip()
-        if not command:
-            return bad(handler, "command is required")
-
-        try:
-            return j(handler, {"output": execute_agent_command(command)})
-        except KeyError:
-            pass
-        except ValueError as e:
-            return bad(handler, str(e), 400)
-        except RuntimeError as e:
-            return bad(handler, _sanitize_error(e), 500)
-
-        try:
-            return j(handler, {"output": execute_plugin_command(command)})
-        except ValueError as e:
-            return bad(handler, str(e), 400)
-        except KeyError:
-            return bad(handler, "Plugin command not found", 404)
-        except RuntimeError as e:
-            return bad(handler, _sanitize_error(e), 500)
-
-    # ── Skills (POST) ──
-    if parsed.path == "/api/skills/save":
-        return _handle_skill_save(handler, body)
-
-    if parsed.path == "/api/skills/delete":
-        return _handle_skill_delete(handler, body)
-
-    if parsed.path == "/api/skills/toggle":
-        return _handle_skill_toggle(handler, body)
-
-    # ── Memory (POST) ──
-    if parsed.path == "/api/memory/write":
-        return _handle_memory_write(handler, body)
-
-    if parsed.path in {"/api/gateway/start", "/api/gateway/stop", "/api/gateway/restart"}:
-        return _handle_gateway_lifecycle(handler, parsed.path.rsplit("/", 1)[-1], body)
 
     # ── Profile API (POST) ──
     if parsed.path == "/api/profile/switch":
@@ -16729,12 +16589,7 @@ def handle_post(handler, parsed) -> bool:
             bound_profile = str((session_info or {}).get("bound_profile") or "").strip() or None
             if bound_profile and name != bound_profile:
                 return bad(handler, "Profile is bound to the current session", 403)
-            # process_wide=False: don't mutate the process-global _active_profile.
-            # Per-client profile is managed via cookie + thread-local (#798).
             result = switch_profile(name, process_wide=False)
-            # Invalidate the models cache so the very next /api/models request
-            # rebuilds from the new profile's config.yaml rather than returning
-            # the old profile's cached model list (#1200 — profile-switch model bug).
             from api.config import invalidate_models_cache
             invalidate_models_cache()
             try:
@@ -16868,11 +16723,6 @@ def handle_post(handler, parsed) -> bool:
 
         current_password = body.pop("_current_password", None)
 
-        # #1560: HERMES_WEBUI_PASSWORD env var takes precedence in
-        # api.auth.get_password_hash(), so writing password_hash to settings.json
-        # has no effect on auth. Refuse loudly with 409 instead of silently
-        # succeeding — the previous behaviour returned 200 + a green save toast
-        # while every subsequent login still required the env-var password.
         if requested_password or requested_clear_password:
             active_env_var = "AGY_WEBUI_PASSWORD" if os.getenv("AGY_WEBUI_PASSWORD", "").strip() else ("HERMES_WEBUI_PASSWORD" if os.getenv("HERMES_WEBUI_PASSWORD", "").strip() else None)
             if active_env_var:
@@ -16887,11 +16737,6 @@ def handle_post(handler, parsed) -> bool:
         max_tokens_status = None
         max_tokens_value = body.pop("max_tokens", None) if max_tokens_provided else None
 
-        # First password creation decides who owns a previously passwordless
-        # WebUI. While auth is disabled, the generic /api/settings route is also
-        # unauthenticated, so gate bootstrap password setup the same way as
-        # onboarding setup: local/private networks only, unless the operator
-        # explicitly opts into remote bootstrap with HERMES_WEBUI_ONBOARDING_OPEN.
         if requested_password and not auth_enabled_before:
             if not _onboarding_gate_allows(handler, auth_enabled_before):
                 return bad(
@@ -16901,8 +16746,6 @@ def handle_post(handler, parsed) -> bool:
                     403,
                 )
 
-        # Auth-disable safety: when password auth is currently enabled, require
-        # the current password to change, clear, or switch to passwordless.
         if auth_enabled_before and password_auth_enabled_before and (requested_password or requested_clear_password):
             if not isinstance(current_password, str) or not current_password:
                 return bad(
@@ -16930,7 +16773,6 @@ def handle_post(handler, parsed) -> bool:
 
             clear_credentials()
 
-        # Handle auth_disabled_acknowledged setting
         ack = body.pop("_auth_disabled_acknowledged", None)
         if ack is not None and not is_auth_enabled():
             body["auth_disabled_acknowledged"] = bool(ack)
@@ -16943,18 +16785,9 @@ def handle_post(handler, parsed) -> bool:
         saved["persisted_speech_keys"] = persisted_speech_settings_keys()
         if max_tokens_provided:
             max_tokens_status = set_max_tokens(max_tokens_value)
-        saved.pop("password_hash", None)  # never expose hash to client
+        saved.pop("password_hash", None)
         saved.update(max_tokens_status if max_tokens_provided else get_max_tokens_status())
 
-        # Settings that change which sessions appear in the sidebar must
-        # invalidate the session-list cache directly. Relying on the cache's
-        # settings-file mtime stamp is fragile: a toggle that writes the
-        # settings file within the same mtime granularity as a cached entry (and
-        # produces the default-valued key, e.g. show_cli_sessions back to its
-        # True default) can leave a stale row set served for up to the cache TTL.
-        # This is the root cause of the intermittent gateway_sync test flake
-        # (a freshly-inserted CLI/gateway session occasionally absent from
-        # /api/sessions right after the visibility toggle). Invalidate explicitly.
         if any(
             k in body
             for k in (
@@ -17037,13 +16870,6 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e))
 
     if parsed.path == "/api/onboarding/setup":
-        # Writing API keys to disk - restrict to local/private networks unless auth is active.
-        # In Docker, requests arrive from the bridge network (172.x.x.x), not 127.0.0.1,
-        # even when the user accesses via localhost:8787 on the host.
-        # Behind a reverse proxy (nginx/Caddy/Traefik) or SSH tunnel, X-Forwarded-For
-        # carries the real origin IP — read it first before falling back to the raw socket addr.
-        # HERMES_WEBUI_ONBOARDING_OPEN=1 lets operators on remote servers explicitly bypass
-        # the check when they control network access themselves (e.g. firewall + VPN).
         if not _onboarding_gate_allows(handler):
             return bad(handler, "Onboarding setup is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
         try:
@@ -17054,21 +16880,11 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e), 500)
 
     if parsed.path == "/api/onboarding/complete":
-        # Marking onboarding complete flips the first-run wizard off (persists
-        # onboarding_completed=True). Gate it on the same local-network check as
-        # the other onboarding mutators so an unauthenticated public client on a
-        # passwordless bind can't hide the first-run wizard. (#3765)
         if not _onboarding_gate_allows(handler):
             return bad(handler, "Onboarding is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
         return j(handler, complete_onboarding())
 
     if parsed.path == "/api/onboarding/probe":
-        # Probe a self-hosted provider endpoint (#1499).  Validates the
-        # configured base URL is reachable + parses /models, returns the
-        # model catalog so the wizard can populate its dropdown.
-        # Read-only: no config.yaml or .env writes happen here.  Same local-
-        # network gate as /api/onboarding/setup (also writing-adjacent in
-        # spirit because it carries an api_key the user typed).
         if not _onboarding_gate_allows(handler):
             return bad(handler, "Onboarding probe is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
         provider = str((body or {}).get("provider") or "").strip().lower()
@@ -17080,165 +16896,204 @@ def handle_post(handler, parsed) -> bool:
             logger.warning("Silent exception in handle_post", exc_info=True)
             return bad(handler, f"probe failed: {e}", 500)
 
-    # ── Session pin (POST) ──
-    if parsed.path == "/api/projects/create":
-        try:
-            require(body, "name")
-        except ValueError as e:
-            return bad(handler, str(e))
-        import re as _re
+    return None
 
-        name = body["name"].strip()[:128]
-        if not name:
-            return bad(handler, "name required")
-        color = body.get("color")
-        if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
-            return bad(handler, "Invalid color format")
-        projects = load_projects()
-        # #3331 follow-up (Codex+Opus gate): validate the optional client-supplied
-        # `profile` before stamping it, mirroring /api/profile/switch — otherwise a
-        # client could create a project tagged with an arbitrary/unknown profile,
-        # producing hidden cross-profile rows that can't be managed normally.
-        _requested_profile = str(body.get('profile') or "").strip()
-        if _requested_profile and _requested_profile != "default":
-            from api.profiles import _PROFILE_ID_RE
-            if not _PROFILE_ID_RE.fullmatch(_requested_profile):
-                return bad(handler, "invalid profile")
-        raw_ws = body.get("default_workspace")
-        if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
-            try:
-                default_ws = str(resolve_trusted_workspace(raw_ws.strip()))
-            except Exception:
-                logger.warning("Silent exception in handle_post", exc_info=True)
-                default_ws = raw_ws.strip()
-        else:
-            default_ws = None
-        proj = {
-            "project_id": uuid.uuid4().hex[:12],
-            "name": name,
-            "color": color,
-            "profile": _requested_profile or get_active_profile_name() or 'default',
-            "default_workspace": default_ws,
-            "created_at": time.time(),
-        }
-        projects.append(proj)
-        save_projects(projects)
-        return j(handler, {"ok": True, "project": proj})
 
-    if parsed.path in ("/api/projects/rename", "/api/projects/update"):
-        try:
-            require(body, "project_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        import re as _re
-
-        projects = load_projects()
-        proj = next(
-            (p for p in projects if p["project_id"] == body["project_id"]), None
-        )
-        if not proj:
-            return bad(handler, "Project not found", 404)
-        # #1614: a project can only be renamed/updated by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
-        if "name" in body and body["name"]:
-            proj["name"] = body["name"].strip()[:128]
-        if "color" in body:
-            color = body["color"]
-            if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
-                return bad(handler, "Invalid color format")
-            proj["color"] = color
-        if "default_workspace" in body:
-            raw_ws = body.get("default_workspace")
-            if raw_ws and isinstance(raw_ws, str) and raw_ws.strip():
-                try:
-                    proj["default_workspace"] = str(resolve_trusted_workspace(raw_ws.strip()))
-                except Exception:
-                    logger.warning("Silent exception in handle_post", exc_info=True)
-                    proj["default_workspace"] = raw_ws.strip()
+def _handle_post_tools_and_mcp(handler, parsed, body, diag=None):
+    """Handle POST tools, MCP, updates, extensions, crons, skills, memory, and gateway routes.
+    Returns True/response if handled, None if unhandled.
+    """
+    if parsed.path == "/api/updates/check":
+        settings = load_settings()
+        if not settings.get("check_for_updates", True):
+            force = bool(body.get("force", False)) if isinstance(body, dict) else False
+            if force:
+                pass
             else:
-                proj["default_workspace"] = None
-        save_projects(projects)
-        return j(handler, {"ok": True, "project": proj})
+                return j(handler, {"disabled": True})
+        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+        force = bool(body.get("force", False))
+        channel = body.get("channel") if isinstance(body, dict) else None
+        if channel not in ("stable", "experimental"):
+            channel = settings.get("update_channel")
+        from api.updates import check_for_updates
 
-    if parsed.path == "/api/projects/delete":
+        logger.info("checking for updates (force=%s, include_agent=%s, channel=%s)", force, include_agent_updates, channel)
         try:
-            require(body, "project_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        projects = load_projects()
-        proj = next(
-            (p for p in projects if p["project_id"] == body["project_id"]), None
-        )
-        if not proj:
-            return bad(handler, "Project not found", 404)
-        # #1614: a project can only be deleted by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
-        projects = [p for p in projects if p["project_id"] != body["project_id"]]
-        save_projects(projects)
-        # Unassign all sessions that belonged to this project.
-        # #3746: this loop is O(N) full-JSON read+save per session, and each
-        # save() reserializes the entire messages array. For a project with many
-        # messageful sessions that throughput alone can blow past the client's
-        # 30s timeout. For an actively-streaming session we must NOT issue our own
-        # s.save() — it would race the streaming thread's atomic writer and it
-        # carries the largest in-memory message array. Instead we clear project_id
-        # on the live cached Session object (under LOCK); the streaming thread owns
-        # that object and persists it on its next checkpoint/final save (the worker
-        # always does a final s.save() at turn completion), so the unlink still
-        # lands without a competing write. (If the streaming session isn't in the
-        # cache for some reason, fall back to a direct save.) Guard each per-session
-        # update so one slow/failing session can't abort the whole request.
-        if SESSION_INDEX_FILE.exists():
-            try:
-                index = json.loads(SESSION_INDEX_FILE.read_bytes())
-                active_ids = _active_stream_ids()
-                deferred_to_stream = []
-                for entry in index:
-                    if entry.get("project_id") != body["project_id"]:
-                        continue
-                    sid = entry.get("session_id")
-                    try:
-                        if entry.get("active_stream_id") in active_ids:
-                            # Clear on the live cached object so the streaming
-                            # thread's own next save persists project_id=None.
-                            cleared_in_cache = False
-                            with LOCK:
-                                cached = SESSIONS.get(sid)
-                                if cached is not None:
-                                    cached.project_id = None
-                                    cleared_in_cache = True
-                            if cleared_in_cache:
-                                deferred_to_stream.append(sid)
-                                continue
-                            # Not cached — fall through to a direct save.
-                        s = get_session(sid)
-                        s.project_id = None
-                        s.save()
-                    except Exception:
-                        logger.debug("Failed to update session %s", sid)
-                if deferred_to_stream:
-                    logger.info(
-                        "projects/delete: cleared project_id on %d streaming session(s) "
-                        "in-cache; streaming thread will persist: %s",
-                        len(deferred_to_stream), deferred_to_stream,
-                    )
-            except Exception:
-                logger.debug("Failed to load session index for project unlink")
-        return j(handler, {"ok": True})
+            payload = check_for_updates(force=force, include_agent=include_agent_updates, channel=channel)
+        except Exception:
+            logger.exception("update check failed unexpectedly (defensive guard caught exception)")
+            return bad(handler, "Update check failed, see server log for details", status=500)
+        logger.info("update check completed")
+        return j(handler, payload)
 
-    # ── Session import from JSON (POST) ──
+    if parsed.path == "/api/extensions/toggle":
+        from api.extensions import ExtensionToggleError, set_extension_user_enabled
+
+        try:
+            return j(
+                handler,
+                set_extension_user_enabled(body.get("id"), body.get("enabled")),
+            )
+        except ExtensionToggleError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension toggle failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/sidecar-proxy-consent":
+        from api.extensions import (
+            ExtensionSidecarProxyError,
+            set_extension_sidecar_proxy_consent,
+        )
+
+        try:
+            return j(
+                handler,
+                set_extension_sidecar_proxy_consent(
+                    body.get("id"),
+                    body.get("approved"),
+                ),
+            )
+        except ExtensionSidecarProxyError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension sidecar proxy consent update failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/install":
+        from api.extensions import ExtensionInstallError, install_extension
+
+        try:
+            return j(
+                handler,
+                install_extension(body.get("id"), body.get("download_url"), body.get("sha256")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension install failed")
+            return bad(handler, "Failed to install extension", status=500)
+
+    if parsed.path == "/api/extensions/uninstall":
+        from api.extensions import ExtensionInstallError, uninstall_extension
+
+        try:
+            return j(
+                handler,
+                uninstall_extension(body.get("id")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension uninstall failed")
+            return bad(handler, "Failed to uninstall extension", status=500)
+
+    if parsed.path == "/api/crons/create":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_create(handler, body)
+
+    if parsed.path == "/api/crons/update":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_update(handler, body)
+
+    if parsed.path == "/api/crons/delete":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_delete(handler, body)
+
+    if parsed.path == "/api/crons/run":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_run(handler, body)
+
+    if parsed.path == "/api/crons/pause":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_pause(handler, body)
+
+    if parsed.path == "/api/crons/resume":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_resume(handler, body)
+
+    if parsed.path == "/api/commands/bundles/resolve":
+        from api.commands import resolve_bundle_command
+
+        command = str(body.get("command", "") or "").strip()
+        if not command:
+            return bad(handler, "command is required")
+
+        try:
+            return j(handler, resolve_bundle_command(command))
+        except KeyError:
+            return bad(handler, "Bundle command not found", 404)
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+    if parsed.path == "/api/commands/exec":
+        from api.commands import execute_agent_command, execute_plugin_command
+
+        command = str(body.get("command", "") or "").strip()
+        if not command:
+            return bad(handler, "command is required")
+
+        try:
+            return j(handler, {"output": execute_agent_command(command)})
+        except KeyError:
+            pass
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+        try:
+            return j(handler, {"output": execute_plugin_command(command)})
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except KeyError:
+            return bad(handler, "Plugin command not found", 404)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+    # ── Skills (POST) ──
+    if parsed.path == "/api/skills/save":
+        return _handle_skill_save(handler, body)
+
+    if parsed.path == "/api/skills/delete":
+        return _handle_skill_delete(handler, body)
+
+    if parsed.path == "/api/skills/toggle":
+        return _handle_skill_toggle(handler, body)
+
+    # ── Memory (POST) ──
+    if parsed.path == "/api/memory/write":
+        return _handle_memory_write(handler, body)
+
+    if parsed.path in {"/api/gateway/start", "/api/gateway/stop", "/api/gateway/restart"}:
+        return _handle_gateway_lifecycle(handler, parsed.path.rsplit("/", 1)[-1], body)
+
+    # ── Updates lifecycle (POST) ──
     if parsed.path == "/api/updates/apply":
         target = body.get("target", "")
         if target not in ("webui", "agent"):
             return bad(handler, 'target must be "webui" or "agent"')
-        # Honor an explicit validated body channel (the client sends the channel
-        # the banner was offering) so a channel switch whose debounced autosave
-        # hasn't landed can't make apply read the OLD saved channel (Codex gate).
-        # Fall back to the saved setting when absent/invalid.
         _apply_channel = body.get("channel") if isinstance(body, dict) else None
         if _apply_channel not in ("stable", "experimental"):
             _apply_channel = None
@@ -17258,13 +17113,6 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, apply_force_update(target, _force_channel))
 
     if parsed.path == "/api/updates/clear_lock":
-        # Manual-instruction recovery for the .git/index.lock case. The
-        # endpoint NEVER removes a lock file from the server -- it returns
-        # the diagnostic + the exact 'rm' command for the operator, and on
-        # a re-click with the lock already gone, it re-runs the normal
-        # non-destructive apply path. See apply_clear_lock for the v2.2
-        # design rationale (round-2 gate cert: fcntl-flock cannot detect
-        # git's O_CREAT|O_EXCL locks, so any auto-delete path races).
         target = body.get("target", "")
         if target not in ("webui", "agent"):
             return bad(handler, 'target must be "webui" or "agent"')
@@ -17334,10 +17182,6 @@ def handle_post(handler, parsed) -> bool:
                 try:
                     from agent.auxiliary_client import get_text_auxiliary_client
 
-                    # Update summaries are a short text-compression/summarization task.
-                    # Reuse the documented auxiliary.compression slot instead of
-                    # inventing a WebUI-only auxiliary task name that users cannot
-                    # discover in the Hermes Agent setup/config UI.
                     aux_client, aux_model = get_text_auxiliary_client(
                         "compression",
                         main_runtime=main_runtime,
@@ -17373,22 +17217,119 @@ def handle_post(handler, parsed) -> bool:
 
         return j(handler, summarize_update_payload(updates, llm_callback=_llm_update_summary, target=target))
 
-    # ── CLI session import (POST) ──
-    if parsed.path == "/api/rollback/restore":
-        if not body:
-            return bad(handler, "request body is required")
-        workspace = body.get("workspace", "")
-        checkpoint = body.get("checkpoint", "")
-        if not workspace or not checkpoint:
-            return bad(handler, "workspace and checkpoint are required")
+    return None
+
+
+def handle_post(handler, parsed) -> bool:
+    """Handle all POST routes. Returns True if handled, False for 404."""
+    diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    if parsed.path == "/api/csp-report":
+        if diag:
+            diag.stage("csp_report")
         try:
-            from api.rollback import restore_checkpoint
-            return j(handler, restore_checkpoint(workspace, checkpoint))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/restore failed")
-            return bad(handler, str(e), status=500)
+            return _handle_csp_report(handler)
+        finally:
+            if diag:
+                diag.finish()
+    # T1 deprecation alias for the legacy ack endpoint that the pre-rename
+    # WebUI used to POST to after handling ``process_complete``. The new
+    # canonical SSE event is ``bg_task_complete`` and the new ack endpoint
+    # will be ``/api/bg-task-complete-ack`` (introduced by PR (b), the WebUI
+    # half of the split). Until PR (b) lands we keep the old path responding
+    # with HTTP 410 Gone + ``X-Replaced-By`` so any stale tab posting under
+    # the old name fails loudly with a discoverable hint. The handler runs
+    # BEFORE the CSRF gate on purpose: an old tab will not carry a CSRF token
+    # for the deprecated path, and surfacing 410 (not 403) is the correct
+    # contract here.
+    if parsed.path == "/api/process-complete-ack":
+        if diag:
+            diag.stage("process_complete_ack_deprecated")
+        try:
+            j(
+                handler,
+                {
+                    "error": (
+                        "gone: /api/process-complete-ack was replaced by "
+                        "/api/bg-task-complete-ack as part of the "
+                        "process_complete -> bg_task_complete event rename"
+                    ),
+                    "replaced_by": "/api/bg-task-complete-ack",
+                },
+                status=410,
+                extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
+            )
+            return True
+        finally:
+            if diag:
+                diag.finish()
+    # CSRF: reject cross-origin or tokenless authenticated browser requests.
+    # /api/auth/login has no authenticated session token yet, and /api/csp-report
+    # is intentionally unauthenticated for browser-generated violation reports.
+    if diag:
+        diag.stage("csrf")
+    if not _csrf_exempt_path(parsed.path) and not _check_csrf(handler):
+        try:
+            return j(handler, {"error": _csrf_rejection_error(handler)}, status=403)
+        finally:
+            if diag:
+                diag.finish()
+    proxy_result = _handle_extension_sidecar_proxy(
+        handler,
+        parsed,
+        "POST",
+        read_request_body=True,
+    )
+    if proxy_result is not False:
+        if diag:
+            diag.finish()
+        return proxy_result
+
+    res = _handle_post_pre_body(handler, parsed, diag=diag)
+    if res is not None:
+        return res
+
+    if diag:
+        diag.stage("read_body")
+    try:
+        body = read_body(handler)
+    except ValueError as exc:
+        if diag:
+            diag.finish()
+        status = 413 if "too large" in str(exc).lower() else 400
+        return bad(handler, str(exc), status=status)
+    except Exception:
+        logger.warning("Silent exception in handle_post", exc_info=True)
+        if diag:
+            diag.finish()
+        raise
+    if not _guard_request_session_visibility(handler, parsed, body=body, method="POST"):
+        if diag:
+            diag.finish()
+        return True
+
+    res = _handle_post_auth(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_session(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_chat_and_stream(handler, parsed, body, diag=diag)
+    if res is not None:
+        return res
+
+    res = _handle_post_workspace_and_git(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_config_and_settings(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_tools_and_mcp(handler, parsed, body, diag=diag)
+    if res is not None:
+        return res
 
     return False  # 404
 
