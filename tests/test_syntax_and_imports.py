@@ -247,7 +247,77 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
         self.assertIn("UI_COMPOSER_JS_OK", proc.stdout)
 
+    def test_ui_layout_js_module(self):
+        """Verify ui-layout.js exports expected layout constants, workspace panel modes, and helpers."""
+        import subprocess
+
+        test_node_script = """
+        const layoutMod = require('./webui/static/ui-layout.js');
+        const {
+            _SIDEBAR_COLLAPSED_KEY,
+            SIDEBAR_MIN,
+            SIDEBAR_MAX,
+            PANEL_MIN,
+            PANEL_MAX,
+            getWorkspacePanelMode,
+            setWorkspacePanelMode,
+            openWorkspacePanel,
+            closeWorkspacePanel,
+            toggleWorkspacePanel,
+            syncWorkspacePanelState,
+            syncWorkspacePanelUI,
+            toggleSidebar,
+            expandSidebar,
+            toggleMobileSidebar,
+            closeMobileSidebar,
+            mobileSwitchPanel,
+            _initResizePanels,
+            initResize,
+            _pwaSidebarSwipePoint,
+            _uiText
+        } = layoutMod;
+
+        if (_SIDEBAR_COLLAPSED_KEY !== 'agy-webui-sidebar-collapsed') throw new Error('Invalid _SIDEBAR_COLLAPSED_KEY');
+        if (SIDEBAR_MIN !== 180 || SIDEBAR_MAX !== 420) throw new Error('Invalid sidebar min/max');
+        if (PANEL_MIN !== 180 || PANEL_MAX !== 1200) throw new Error('Invalid panel min/max');
+
+        if (typeof openWorkspacePanel !== 'function') throw new Error('openWorkspacePanel missing');
+        if (typeof closeWorkspacePanel !== 'function') throw new Error('closeWorkspacePanel missing');
+        if (typeof toggleWorkspacePanel !== 'function') throw new Error('toggleWorkspacePanel missing');
+        if (typeof syncWorkspacePanelState !== 'function') throw new Error('syncWorkspacePanelState missing');
+        if (typeof syncWorkspacePanelUI !== 'function') throw new Error('syncWorkspacePanelUI missing');
+        if (typeof toggleSidebar !== 'function') throw new Error('toggleSidebar missing');
+        if (typeof expandSidebar !== 'function') throw new Error('expandSidebar missing');
+        if (typeof toggleMobileSidebar !== 'function') throw new Error('toggleMobileSidebar missing');
+        if (typeof closeMobileSidebar !== 'function') throw new Error('closeMobileSidebar missing');
+        if (typeof mobileSwitchPanel !== 'function') throw new Error('mobileSwitchPanel missing');
+        if (typeof _initResizePanels !== 'function') throw new Error('_initResizePanels missing');
+        if (typeof initResize !== 'function') throw new Error('initResize missing');
+
+        // Test mode transitions
+        if (getWorkspacePanelMode() !== 'closed') throw new Error('Initial mode must be closed');
+        setWorkspacePanelMode('browse');
+        if (getWorkspacePanelMode() !== 'browse') throw new Error('Mode should be browse');
+        setWorkspacePanelMode('preview');
+        if (getWorkspacePanelMode() !== 'preview') throw new Error('Mode should be preview');
+        setWorkspacePanelMode('anything_else');
+        if (getWorkspacePanelMode() !== 'closed') throw new Error('Invalid mode should normalize to closed');
+
+        // Swipe point helper
+        const pt = _pwaSidebarSwipePoint({ touches: [{ clientX: 42, clientY: 100 }] });
+        if (!pt || pt.clientX !== 42 || pt.clientY !== 100) throw new Error('_pwaSidebarSwipePoint touch extraction failed');
+
+        // UI text fallback
+        if (_uiText('unknown_key', 'Fallback') !== 'Fallback') throw new Error('_uiText fallback failed');
+
+        console.log('UI_LAYOUT_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("UI_LAYOUT_JS_OK", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
