@@ -156,6 +156,51 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertIn("UI_NOTIFICATIONS_JS_OK", proc.stdout)
 
 
+    def test_ui_composer_js_module(self):
+        """Verify ui-composer.js exports expected composer methods, paste thresholds, and action helpers."""
+        import subprocess
+
+        test_node_script = """
+        const composerMod = require('./webui/static/ui-composer.js');
+        const {
+            LARGE_TEXT_PASTE_CHAR_THRESHOLD,
+            LARGE_TEXT_PASTE_LINE_THRESHOLD,
+            setComposerStatus,
+            lockComposerForClarify,
+            unlockComposerForClarify,
+            getComposerPrimaryAction,
+            updateSendBtn,
+            setBusy,
+            autoResizeTextarea,
+            _isImeEnter,
+            _largeTextPasteLineCount,
+            _shouldAttachLargePastedText,
+            _largeTextPasteFileName
+        } = composerMod;
+        
+        if (LARGE_TEXT_PASTE_CHAR_THRESHOLD !== 4000) throw new Error('Invalid LARGE_TEXT_PASTE_CHAR_THRESHOLD');
+        if (LARGE_TEXT_PASTE_LINE_THRESHOLD !== 100) throw new Error('Invalid LARGE_TEXT_PASTE_LINE_THRESHOLD');
+        if (typeof setComposerStatus !== 'function') throw new Error('setComposerStatus missing');
+        if (typeof lockComposerForClarify !== 'function') throw new Error('lockComposerForClarify missing');
+        if (typeof unlockComposerForClarify !== 'function') throw new Error('unlockComposerForClarify missing');
+        if (typeof getComposerPrimaryAction !== 'function') throw new Error('getComposerPrimaryAction missing');
+        if (typeof updateSendBtn !== 'function') throw new Error('updateSendBtn missing');
+        if (typeof setBusy !== 'function') throw new Error('setBusy missing');
+        if (typeof autoResizeTextarea !== 'function') throw new Error('autoResizeTextarea missing');
+        
+        if (_largeTextPasteLineCount('a\\nb\\nc') !== 3) throw new Error('_largeTextPasteLineCount mismatch');
+        if (!_largeTextPasteFileName(1234567890).startsWith('pasted-text-')) throw new Error('_largeTextPasteFileName format error');
+        if (_isImeEnter({ isComposing: false, keyCode: 229 }) !== true) throw new Error('_isImeEnter keyCode 229 check failed');
+        if (_isImeEnter({ isComposing: true, keyCode: 13 }) !== true) throw new Error('_isImeEnter isComposing check failed');
+        if (_isImeEnter({ isComposing: false, keyCode: 13 }) !== false) throw new Error('_isImeEnter plain Enter check failed');
+        
+        console.log('UI_COMPOSER_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("UI_COMPOSER_JS_OK", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
 

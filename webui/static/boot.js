@@ -2484,40 +2484,10 @@ document.addEventListener('keydown',async e=>{
     }
   }
 });
-const LARGE_TEXT_PASTE_CHAR_THRESHOLD=4000;
-const LARGE_TEXT_PASTE_LINE_THRESHOLD=100;
-function _largeTextPasteLineCount(text){
-  const value=String(text||'');
-  const lines=value.split('\n');
-  return value.endsWith('\n')?lines.length-1:lines.length;
-}
-function _shouldAttachLargePastedText(text){
-  if(window._largeTextPasteAsAttachment===false)return false;
-  const value=String(text||'');
-  if(!value.trim())return false;
-  return value.length>=LARGE_TEXT_PASTE_CHAR_THRESHOLD || _largeTextPasteLineCount(value)>=LARGE_TEXT_PASTE_LINE_THRESHOLD;
-}
-function _largeTextPasteFileName(now){
-  const d=new Date(now||Date.now());
-  const p=n=>String(n).padStart(2,'0');
-  const stamp=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3,'0')}`;
-  const existing=new Set((S.pendingFiles||[]).map(f=>f&&f.name).filter(Boolean));
-  let name=`pasted-text-${stamp}.md`;
-  for(let i=2;existing.has(name);i++)name=`pasted-text-${stamp}-${i}.md`;
-  return name;
-}
-function _largeTextPasteFile(text,now){
-  const name=_largeTextPasteFileName(now||Date.now());
-  return new File([String(text||'')],name,{type:'text/markdown;charset=utf-8'});
-}
-function _largeTextPasteFitsUploadLimit(file){
-  return !(file&&typeof MAX_UPLOAD_BYTES==='number'&&file.size>MAX_UPLOAD_BYTES);
-}
-function _attachLargePastedText(file){
-  addFiles([file]);
-  if(typeof setStatus==='function')setStatus(t('text_pasted')+file.name);
-  return file;
-}
+// Large pasted text helpers (LARGE_TEXT_PASTE_CHAR_THRESHOLD, _largeTextPasteLineCount,
+// _shouldAttachLargePastedText, _largeTextPasteFileName, _largeTextPasteFile,
+// _largeTextPasteFitsUploadLimit, _attachLargePastedText) are centralized in ui-composer.js.
+
 $('msg').addEventListener('paste',e=>{
   const items=Array.from(e.clipboardData?.items||[]);
   // Extract image items (kind==='file' filter avoids misclassifying text/html
