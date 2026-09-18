@@ -9,12 +9,18 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
+import sqlite3
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator, Sequence
 
 import api.models as models
+
+logger = logging.getLogger(__name__)
 
 
 _METADATA_FIELDS = frozenset(
@@ -253,3 +259,184 @@ def archive(sid: str, archived: bool = True) -> dict[str, Any]:
 
 def write_session(session: dict[str, Any]) -> dict[str, Any]:
     return WebUIJsonSessionDB().write_session(session)
+
+
+# ── Centralized SQLite Connection Management & Context Managers ───────────────
+
+def create_db_connection(
+    db_path: Path | str,
+    read_only: bool = False,
+    timeout: float = 5.0,
+    row_factory: bool = True,
+    busy_timeout_ms: int = 5000,
+    query_only: bool = False,
+    log: logging.Logger | None = None,
+) -> sqlite3.Connection:
+    """Create and configure a hardened SQLite connection.
+
+    - If `read_only` is True:
+        Requires the database file to exist on disk (raises ``FileNotFoundError``),
+        preventing SQLite from creating empty zero-byte ghost databases.
+        Opens via read-only URI: ``file:...uri?mode=ro``.
+        Applies ``PRAGMA query_only = ON``.
+        Falls back to a standard connection if the filesystem does not support URI mode=ro.
+    - If `read_only` is False:
+        Configures WAL journal mode (``PRAGMA journal_mode = WAL``).
+        Configures normal synchronous mode (``PRAGMA synchronous = NORMAL``).
+        Enforces foreign keys (``PRAGMA foreign_keys = ON``).
+    - On all connections:
+        Applies ``PRAGMA busy_timeout = {busy_timeout_ms}`` to prevent transient lock contention.
+        Optionally configures ``conn.row_factory = sqlite3.Row``.
+    """
+    _log = log or logger
+    str_path = str(db_path).strip()
+    is_memory = str_path in (":memory:", "") or "mode=memory" in str_path
+
+    if is_memory:
+        conn = sqlite3.connect(":memory:", timeout=timeout)
+    elif read_only:
+        p = Path(db_path).resolve()
+        if not p.exists():
+            raise FileNotFoundError(f"SQLite database not found: {db_path}")
+        read_only_uri = f"{p.as_uri()}?mode=ro"
+        try:
+            conn = sqlite3.connect(read_only_uri, uri=True, timeout=timeout)
+        except sqlite3.Error as exc:
+            _log.warning(
+                "SQLite read-only open failed for %s; falling back to writable connection: %s",
+                db_path,
+                exc,
+            )
+            conn = sqlite3.connect(str(p), timeout=timeout)
+    else:
+        p = Path(db_path).resolve()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(p), timeout=timeout)
+
+    # Configure pragmas defensively
+    if read_only or query_only:
+        try:
+            conn.execute("PRAGMA query_only = ON")
+        except sqlite3.Error:
+            pass
+    elif not is_memory:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA foreign_keys = ON")
+        except sqlite3.Error as pragma_err:
+            _log.debug("Notice: pragma configuration warning: %s", pragma_err)
+
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
+    except sqlite3.Error:
+        pass
+
+    if row_factory:
+        conn.row_factory = sqlite3.Row
+
+    return conn
+
+
+@contextmanager
+def get_db_connection(
+    db_path: Path | str,
+    read_only: bool = False,
+    timeout: float = 5.0,
+    row_factory: bool = True,
+    busy_timeout_ms: int = 5000,
+    query_only: bool = False,
+    log: logging.Logger | None = None,
+) -> Generator[sqlite3.Connection, None, None]:
+    """Context manager providing a managed SQLite connection that closes on exit."""
+    conn = create_db_connection(
+        db_path=db_path,
+        read_only=read_only,
+        timeout=timeout,
+        row_factory=row_factory,
+        busy_timeout_ms=busy_timeout_ms,
+        query_only=query_only,
+        log=log,
+    )
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def open_db_readonly(
+    db_path: Path | str,
+    timeout: float = 5.0,
+    row_factory: bool = True,
+    busy_timeout_ms: int = 5000,
+    log: logging.Logger | None = None,
+) -> Generator[sqlite3.Connection, None, None]:
+    """Shorthand context manager for read-only database access."""
+    return get_db_connection(
+        db_path=db_path,
+        read_only=True,
+        timeout=timeout,
+        row_factory=row_factory,
+        busy_timeout_ms=busy_timeout_ms,
+        query_only=True,
+        log=log,
+    )
+
+
+def open_db_writable(
+    db_path: Path | str,
+    timeout: float = 5.0,
+    row_factory: bool = True,
+    busy_timeout_ms: int = 5000,
+    log: logging.Logger | None = None,
+) -> Generator[sqlite3.Connection, None, None]:
+    """Shorthand context manager for writable database access."""
+    return get_db_connection(
+        db_path=db_path,
+        read_only=False,
+        timeout=timeout,
+        row_factory=row_factory,
+        busy_timeout_ms=busy_timeout_ms,
+        log=log,
+    )
+
+
+def execute_query(
+    db_path: Path | str,
+    sql: str,
+    params: Sequence[Any] | dict[str, Any] = (),
+    read_only: bool = True,
+    timeout: float = 5.0,
+) -> list[sqlite3.Row]:
+    """Execute a query within a managed connection and return all fetched rows."""
+    with get_db_connection(db_path, read_only=read_only, timeout=timeout) as conn:
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
+        if not read_only:
+            conn.commit()
+        return rows
+
+
+def check_db_healthy(db_path: Path | str, timeout: float = 2.0) -> dict[str, Any]:
+    """Fast health probe on a SQLite database checking accessibility and schema_version."""
+    str_path = str(db_path).strip()
+    if str_path == ":memory:":
+        return {"status": "ok", "ms": 0.0}
+    p = Path(db_path).resolve()
+    t0 = time.time()
+    if not p.exists():
+        return {"status": "missing", "ms": round((time.time() - t0) * 1000, 1)}
+    try:
+        with get_db_connection(p, read_only=True, timeout=timeout) as conn:
+            conn.execute("PRAGMA schema_version").fetchone()
+        return {"status": "ok", "ms": round((time.time() - t0) * 1000, 1)}
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": type(exc).__name__,
+            "ms": round((time.time() - t0) * 1000, 1),
+        }
+
