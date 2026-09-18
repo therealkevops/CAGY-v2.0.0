@@ -46,6 +46,7 @@ from api.agent_sessions import (
     read_session_lineage_metadata,
 )
 from api.process_event_utils import stamp_message_source
+import api.webui_session_db as webui_session_db
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -7384,44 +7385,39 @@ def _sqlite_content_fingerprint(db_path: Path):
         # cheap file-stat stamp, so correctness degrades gracefully to the prior
         # behavior rather than blocking for the default multi-second busy timeout.
         try:
-            conn = sqlite3.connect(
-                f"file:{db_path}?mode=ro", uri=True, timeout=0.05
-            )
+            with webui_session_db.open_db_readonly(
+                db_path,
+                timeout=0.05,
+                busy_timeout_ms=50,
+                log=logger,
+            ) as conn:
+                parts = []
+                for table in ("sessions", "messages"):
+                    try:
+                        # MAX(rowid) is an O(1) index lookup (no table scan) and
+                        # advances on every INSERT. Pair it with the table's largest
+                        # rowid + a count-free total: we deliberately avoid COUNT(*)
+                        # which forces a full SCAN on large messages tables (~tens of
+                        # ms per sidebar refresh on a big store). MAX(rowid) misses a
+                        # pure DELETE-without-insert, but the file-stat fallback in
+                        # _sqlite_file_stat_cache_key still moves on a delete commit,
+                        # and a delete never makes a MISSING row appear (the flake we
+                        # fix is an ADDED row not showing up). It also misses a plain
+                        # `UPDATE sessions SET title/message_count` with no message
+                        # insert (state_sync.py sync) — those fall back to the stat
+                        # stamp + 5s TTL, i.e. the prior behavior (a title-only rename
+                        # can lag <=5s); no regression vs the old stat-only key.
+                        row = conn.execute(
+                            f"SELECT MAX(rowid) FROM {table}"
+                        ).fetchone()
+                        parts.append(row[0] if row else None)
+                    except Exception:
+                        logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
+                        parts.append(None)
+                return tuple(parts)
         except Exception:
             logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
             return None
-        try:
-            conn.execute("PRAGMA busy_timeout=50")
-            parts = []
-            for table in ("sessions", "messages"):
-                try:
-                    # MAX(rowid) is an O(1) index lookup (no table scan) and
-                    # advances on every INSERT. Pair it with the table's largest
-                    # rowid + a count-free total: we deliberately avoid COUNT(*)
-                    # which forces a full SCAN on large messages tables (~tens of
-                    # ms per sidebar refresh on a big store). MAX(rowid) misses a
-                    # pure DELETE-without-insert, but the file-stat fallback in
-                    # _sqlite_file_stat_cache_key still moves on a delete commit,
-                    # and a delete never makes a MISSING row appear (the flake we
-                    # fix is an ADDED row not showing up). It also misses a plain
-                    # `UPDATE sessions SET title/message_count` with no message
-                    # insert (state_sync.py sync) — those fall back to the stat
-                    # stamp + 5s TTL, i.e. the prior behavior (a title-only rename
-                    # can lag <=5s); no regression vs the old stat-only key.
-                    row = conn.execute(
-                        f"SELECT MAX(rowid) FROM {table}"
-                    ).fetchone()
-                    parts.append(row[0] if row else None)
-                except Exception:
-                    logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
-                    parts.append(None)
-            return tuple(parts)
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
-                pass
     except Exception:
         logger.debug("Silent exception in _sqlite_content_fingerprint", exc_info=True)
         return None
@@ -10886,14 +10882,7 @@ def _delete_cli_session_locked(sid, hermes_home) -> bool:
         return False
 
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
-            conn.row_factory = sqlite3.Row
-            # SQLite does not enforce foreign keys by default; enabling
-            # PRAGMA foreign_keys makes the ON DELETE CASCADE clauses on
-            # session_model_usage and telegram_dm_topic_bindings fire
-            # automatically.  Compression locks have no FK, so they are
-            # cleaned explicitly below.
-            conn.execute("PRAGMA foreign_keys = ON")
+        with webui_session_db.open_db_writable(db_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
             columns = {
                 row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
@@ -11313,8 +11302,7 @@ def _process_stale_cleanup_manifests(hermes_home) -> bool:
         # read-only URI also prevents SQLite from creating a fresh empty DB if
         # state.db disappears between the existence check and connect().
         try:
-            db_uri = f"{db_path.resolve().as_uri()}?mode=ro"
-            with closing(sqlite3.connect(db_uri, uri=True)) as conn:
+            with webui_session_db.open_db_readonly(db_path) as conn:
                 cursor = conn.execute(
                     "SELECT id FROM sessions WHERE id IN ({})".format(
                         ",".join("?" * len(pending_ids))
