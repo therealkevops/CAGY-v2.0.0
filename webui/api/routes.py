@@ -12754,31 +12754,10 @@ def _handle_get_config_and_models(handler, parsed):
     return None
 
 
-def handle_get(handler, parsed) -> bool:
-    """Handle all GET routes. Returns True if handled, False for 404."""
-    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
-    if proxy_result is not False:
-        return proxy_result
-
-    res = _handle_get_static_and_shell(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_auth(handler, parsed)
-    if res is not None:
-        return res
-
-    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
-        return True
-
-    res = _handle_get_system(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_config_and_models(handler, parsed)
-    if res is not None:
-        return res
-
+def _handle_get_session(handler, parsed):
+    """Handle session lifecycle, recovery, lineage, and listing routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/session/worktree/status":
         query = parse_qs(parsed.query)
         sid = query.get("session_id", [""])[0]
@@ -13511,6 +13490,38 @@ def handle_get(handler, parsed) -> bool:
             return j(handler, _session_list_payload_to_response(payload), pretty=False)
         finally:
             diag.finish()
+
+    return None
+
+
+def handle_get(handler, parsed) -> bool:
+    """Handle all GET routes. Returns True if handled, False for 404."""
+    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
+    if proxy_result is not False:
+        return proxy_result
+
+    res = _handle_get_static_and_shell(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_auth(handler, parsed)
+    if res is not None:
+        return res
+
+    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
+        return True
+
+    res = _handle_get_system(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_config_and_models(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_session(handler, parsed)
+    if res is not None:
+        return res
 
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
