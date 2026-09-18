@@ -14458,431 +14458,187 @@ def _read_json_body(handler) -> dict:
         return {}
 
 
-def handle_post(handler, parsed) -> bool:
-    """Handle all POST routes. Returns True if handled, False for 404."""
-    diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-    if parsed.path == "/api/csp-report":
-        if diag:
-            diag.stage("csp_report")
-        try:
-            return _handle_csp_report(handler)
-        finally:
-            if diag:
-                diag.finish()
-    # T1 deprecation alias for the legacy ack endpoint that the pre-rename
-    # WebUI used to POST to after handling ``process_complete``. The new
-    # canonical SSE event is ``bg_task_complete`` and the new ack endpoint
-    # will be ``/api/bg-task-complete-ack`` (introduced by PR (b), the WebUI
-    # half of the split). Until PR (b) lands we keep the old path responding
-    # with HTTP 410 Gone + ``X-Replaced-By`` so any stale tab posting under
-    # the old name fails loudly with a discoverable hint. The handler runs
-    # BEFORE the CSRF gate on purpose: an old tab will not carry a CSRF token
-    # for the deprecated path, and surfacing 410 (not 403) is the correct
-    # contract here.
-    if parsed.path == "/api/process-complete-ack":
-        if diag:
-            diag.stage("process_complete_ack_deprecated")
-        try:
-            j(
-                handler,
-                {
-                    "error": (
-                        "gone: /api/process-complete-ack was replaced by "
-                        "/api/bg-task-complete-ack as part of the "
-                        "process_complete -> bg_task_complete event rename"
-                    ),
-                    "replaced_by": "/api/bg-task-complete-ack",
-                },
-                status=410,
-                extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
-            )
-            return True
-        finally:
-            if diag:
-                diag.finish()
-    # CSRF: reject cross-origin or tokenless authenticated browser requests.
-    # /api/auth/login has no authenticated session token yet, and /api/csp-report
-    # is intentionally unauthenticated for browser-generated violation reports.
-    if diag:
-        diag.stage("csrf")
-    if not _csrf_exempt_path(parsed.path) and not _check_csrf(handler):
-        try:
-            return j(handler, {"error": _csrf_rejection_error(handler)}, status=403)
-        finally:
-            if diag:
-                diag.finish()
-    proxy_result = _handle_extension_sidecar_proxy(
-        handler,
-        parsed,
-        "POST",
-        read_request_body=True,
-    )
-    if proxy_result is not False:
-        if diag:
-            diag.finish()
-        return proxy_result
-
-    if parsed.path == "/api/mcp/hub/add":
-        from api.mcp_hub import add_or_update_mcp_server
-        body = _read_json_body(handler) or {}
-        name = str(body.get("name", "")).strip()
-        if not name:
-            return bad(handler, "Server name is required", status=400)
-        return j(handler, add_or_update_mcp_server(name, body))
-
-    if parsed.path == "/api/mcp/hub/toggle":
-        from api.mcp_hub import toggle_mcp_server
-        body = _read_json_body(handler) or {}
-        name = str(body.get("name", "")).strip()
-        enabled = bool(body.get("enabled", True))
-        return j(handler, toggle_mcp_server(name, enabled))
-
-    if parsed.path == "/api/mcp/hub/delete":
-        from api.mcp_hub import delete_mcp_server
-        body = _read_json_body(handler) or {}
-        name = str(body.get("name", "")).strip()
-        return j(handler, delete_mcp_server(name))
-
-    if parsed.path == "/api/mcp/hub/test":
-        from api.mcp_hub import test_mcp_server
-        body = _read_json_body(handler) or {}
-        return j(handler, test_mcp_server(body))
-
-    if parsed.path == "/api/diff/compute":
-        from api.diff_viewer import compute_structured_diff
-        body = _read_json_body(handler) or {}
-        original = body.get("original", "")
-        modified = body.get("modified", "")
-        filename = body.get("filename", "")
-        return j(handler, compute_structured_diff(original, modified, filename=filename))
-
-    # ── Knowledge Vault & Graph Memory (POST) ──
-    if parsed.path == "/api/vault/note":
-        from api.vault import save_note, get_vault_dir
-        body = _read_json_body(handler) or {}
-        path = body.get("path", "")
-        if path.startswith("knowledge/"):
-            path = path[len("knowledge/"):]
-        content = body.get("content", "")
-        return j(handler, save_note(get_vault_dir(), path, content))
-
-    if parsed.path == "/api/vault/delete":
-        from api.vault import delete_note, get_vault_dir
-        body = _read_json_body(handler) or {}
-        path = body.get("path", "")
-        if path.startswith("knowledge/"):
-            path = path[len("knowledge/"):]
-        return j(handler, delete_note(get_vault_dir(), path))
-
-    if parsed.path == "/api/vault/sync":
-        from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
-        body = _read_json_body(handler) or {}
-        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
-        ws_param = body.get("workspace") or qs.get("workspace", [None])[0]
-        space_param = body.get("space") or qs.get("space", [None])[0]
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        if not space_param:
-            space_param = infer_space_from_workspace(ws_root)
-        return j(handler, sync_vault_to_rules(get_vault_dir(ws_root), ws_root, space=space_param))
-
-    if parsed.path == "/api/vault/memorize":
-        from api.vault import memorize_insight, get_vault_dir, infer_space_from_workspace
-        body = _read_json_body(handler) or {}
-        text = str(body.get("text", "")).strip()
-        category = body.get("category")
-        title = body.get("title")
-        space_param = body.get("space")
-        ws_param = body.get("workspace")
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        if not space_param:
-            space_param = infer_space_from_workspace(ws_root)
-        return j(handler, memorize_insight(get_vault_dir(ws_root), text, category=category, title=title, workspace_path=ws_root, space=space_param))
-
-    if parsed.path == "/api/vault/rename":
-        from api.vault import rename_note, get_vault_dir
-        body = _read_json_body(handler) or {}
-        old_path = body.get("old_path", "")
-        new_path = body.get("new_path", "")
-        if old_path.startswith("knowledge/"):
-            old_path = old_path[len("knowledge/"):]
-        if new_path.startswith("knowledge/"):
-            new_path = new_path[len("knowledge/"):]
-        ws_param = body.get("workspace")
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        return j(handler, rename_note(get_vault_dir(ws_root), old_path, new_path, workspace_path=ws_root))
-
-    if parsed.path == "/api/vault/heal":
-        from api.vault import heal_vault, get_vault_dir, infer_space_from_workspace
-        body = _read_json_body(handler) or {}
-        space_param = body.get("space")
-        ws_param = body.get("workspace")
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        if not space_param:
-            space_param = infer_space_from_workspace(ws_root)
-        return j(handler, heal_vault(get_vault_dir(ws_root), workspace_path=ws_root, space=space_param))
-
-    if parsed.path == "/api/vault/weave":
-        from api.vault import weave_wikilinks, get_vault_dir, infer_space_from_workspace, get_note, save_note
-        body = _read_json_body(handler) or {}
-        content = body.get("content", "")
-        note_path = body.get("path", "")
-        if note_path.startswith("knowledge/"):
-            note_path = note_path[len("knowledge/"):]
-        space_param = body.get("space")
-        ws_param = body.get("workspace")
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        if not space_param:
-            space_param = infer_space_from_workspace(ws_root)
-        vdir = get_vault_dir(ws_root)
-        if note_path:
-            existing = get_note(vdir, note_path)
-            if existing.get("ok"):
-                content = existing.get("content", "")
-                weaved = weave_wikilinks(vdir, content, space=space_param, exclude_id=existing.get("id"))
-                if weaved.get("links_added", 0) > 0:
-                    save_note(vdir, note_path, weaved["content"], workspace_path=ws_root)
-                return j(handler, weaved)
-        return j(handler, weave_wikilinks(vdir, content, space=space_param))
-
-    if parsed.path == "/api/vault/digest":
-        from api.vault import digest_note, get_vault_dir, infer_space_from_workspace
-        body = _read_json_body(handler) or {}
-        text = str(body.get("text", "")).strip()
-        title = body.get("title")
-        category = body.get("category", "notes")
-        space_param = body.get("space")
-        ws_param = body.get("workspace")
-        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
-        if not ws_root:
-            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
-                val = os.environ.get(var)
-                if val and Path(val).exists():
-                    ws_root = Path(val)
-                    break
-        if not ws_root:
-            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
-        if not space_param:
-            space_param = infer_space_from_workspace(ws_root)
-        return j(handler, digest_note(get_vault_dir(ws_root), text, space=space_param, title=title, category=category, workspace_path=ws_root))
-
-    if parsed.path == "/api/skills/scaffold":
-        from api.skills_wizard import scaffold_skill_or_rule
-        body = _read_json_body(handler) or {}
-        return j(handler, scaffold_skill_or_rule(body))
-
-    if parsed.path == "/api/shutdown":
-        return _handle_shutdown(handler)
-
-    if parsed.path == "/api/health/restart":
-        return _handle_health_restart(handler)
-
-    if parsed.path == "/api/upload":
-        return handle_upload(handler)
-    if parsed.path == "/api/upload/extract":
-        return handle_upload_extract(handler)
-    if parsed.path == "/api/workspace/upload":
-        return handle_workspace_upload(handler)
-
-    if parsed.path == "/api/transcribe":
-        return handle_transcribe(handler)
-
-    if parsed.path == "/api/client-events/log":
-        if diag:
-            diag.stage("read_client_event_body")
-        return _handle_client_event_log(handler, _read_client_event_payload(handler))
-
-    if diag:
-        diag.stage("read_body")
-    try:
-        body = read_body(handler)
-    except ValueError as exc:
-        if diag:
-            diag.finish()
-        status = 413 if "too large" in str(exc).lower() else 400
-        return bad(handler, str(exc), status=status)
-    except Exception:
-        logger.warning("Silent exception in handle_post", exc_info=True)
-        if diag:
-            diag.finish()
-        raise
-    if not _guard_request_session_visibility(handler, parsed, body=body, method="POST"):
-        if diag:
-            diag.finish()
-        return True
-
+def _handle_post_auth(handler, parsed, body):
+    """Handle authentication, passkeys, share links, and authorization routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/escape/authorize":
         return _handle_escape_authorize(handler, parsed, body)
 
-    if parsed.path == "/api/updates/check":
-        settings = load_settings()
-        if not settings.get("check_for_updates", True):
-            force = bool(body.get("force", False)) if isinstance(body, dict) else False
-            if force:
-                # Manual force-check bypasses auto-check toggle (#6082)
-                pass
-            else:
-                return j(handler, {"disabled": True})
-        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
-        force = bool(body.get("force", False))
-        # Allow the client to pass the channel explicitly in the POST body. This
-        # avoids a race on channel switch: the Settings dropdown re-checks
-        # immediately, but its autosave PUT (debounced) may not have landed
-        # server-side yet, so reading the saved setting here could answer for the
-        # OLD channel. An explicit body channel (validated against the enum) wins;
-        # otherwise fall back to the saved setting. (Fable UX gate.)
-        channel = body.get("channel") if isinstance(body, dict) else None
-        if channel not in ("stable", "experimental"):
-            channel = settings.get("update_channel")
-        from api.updates import check_for_updates
+    if parsed.path in ("/api/share/create", "/api/share/revoke"):
+        return bad(handler, "Public sharing is disabled in this environment", 400)
 
-        logger.info("checking for updates (force=%s, include_agent=%s, channel=%s)", force, include_agent_updates, channel)
-        # Defensive-only guard: wrap check_for_updates() for consistent
-        # exception protection across all route handlers. Does NOT fix #6086
-        # (root cause is likely signal/process-group reaping, per maintainer analysis).
-        try:
-            payload = check_for_updates(force=force, include_agent=include_agent_updates, channel=channel)
-        except Exception:
-            logger.exception("update check failed unexpectedly (defensive guard caught exception)")
-            return bad(handler, "Update check failed, see server log for details", status=500)
-        logger.info("update check completed")
-        return j(handler, payload)
-
-    if parsed.path == "/api/extensions/toggle":
-        from api.extensions import ExtensionToggleError, set_extension_user_enabled
-
-        try:
-            return j(
-                handler,
-                set_extension_user_enabled(body.get("id"), body.get("enabled")),
-            )
-        except ExtensionToggleError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension toggle failed")
-            return bad(handler, "Failed to update extension state", status=500)
-
-    if parsed.path == "/api/extensions/sidecar-proxy-consent":
-        from api.extensions import (
-            ExtensionSidecarProxyError,
-            set_extension_sidecar_proxy_consent,
+    if parsed.path == "/api/auth/login":
+        from api.auth import (
+            verify_password,
+            create_session,
+            set_auth_cookie,
+            is_auth_enabled,
         )
+        from api.auth import _check_login_rate, _record_login_attempt, _clear_login_attempts
 
-        try:
+        if not is_auth_enabled():
+            return j(handler, {"ok": True, "message": "Auth not enabled"})
+        client_ip = handler.client_address[0]
+        if not _check_login_rate(client_ip):
             return j(
                 handler,
-                set_extension_sidecar_proxy_consent(
-                    body.get("id"),
-                    body.get("approved"),
-                ),
+                {"error": "Too many attempts. Try again in a minute."},
+                status=429,
             )
-        except ExtensionSidecarProxyError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension sidecar proxy consent update failed")
-            return bad(handler, "Failed to update extension state", status=500)
+        password = body.get("password", "")
+        if not verify_password(password):
+            _record_login_attempt(client_ip)
+            return bad(handler, "Invalid password", 401)
+        _clear_login_attempts(client_ip)
+        cookie_val = create_session()
+        body = json.dumps({"ok": True}).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Cache-Control", "no-store")
+        _security_headers(handler)
+        set_auth_cookie(handler, cookie_val)
+        handler.end_headers()
+        handler.wfile.write(body)
+        return True
 
-    if parsed.path == "/api/extensions/install":
-        from api.extensions import ExtensionInstallError, install_extension
+    if parsed.path == "/api/auth/passkey/options":
+        from api.auth import _passkey_feature_flag_enabled, is_auth_enabled
+        from api.passkeys import PasskeyError, PasskeyRateLimitError, authentication_options
 
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"error": "Passkey support is disabled. Set AGY_WEBUI_PASSKEY=1 (or HERMES_WEBUI_PASSKEY=1) or webui_passkey_enabled: true to enable."}, status=404)
+        if not is_auth_enabled():
+            return j(handler, {"error": "Auth not enabled"}, status=400)
         try:
-            return j(
-                handler,
-                install_extension(body.get("id"), body.get("download_url"), body.get("sha256")),
-            )
-        except ExtensionInstallError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension install failed")
-            return bad(handler, "Failed to install extension", status=500)
+            return j(handler, {"ok": True, "publicKey": authentication_options(handler)})
+        except PasskeyRateLimitError as e:
+            return bad(handler, str(e), status=429)
+        except PasskeyError as e:
+            return bad(handler, str(e), status=400)
 
-    if parsed.path == "/api/extensions/uninstall":
-        from api.extensions import ExtensionInstallError, uninstall_extension
+    if parsed.path == "/api/auth/passkey/login":
+        from api.auth import _passkey_feature_flag_enabled, create_session, is_auth_enabled, set_auth_cookie
+        from api.auth import _check_login_rate, _record_login_attempt
+        from api.passkeys import PasskeyError, finish_login
 
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"error": "Passkey support is disabled."}, status=404)
+        if not is_auth_enabled():
+            return j(handler, {"error": "Auth not enabled"}, status=400)
+        client_ip = handler.client_address[0]
+        if not _check_login_rate(client_ip):
+            return j(handler, {"error": "Too many attempts. Try again in a minute."}, status=429)
         try:
-            return j(
-                handler,
-                uninstall_extension(body.get("id")),
-            )
-        except ExtensionInstallError as exc:
-            return bad(handler, str(exc), status=exc.status)
-        except Exception:
-            logger.exception("extension uninstall failed")
-            return bad(handler, "Failed to uninstall extension", status=500)
+            finish_login(body, handler)
+        except PasskeyError as e:
+            _record_login_attempt(client_ip)
+            return bad(handler, str(e), status=401)
+        cookie_val = create_session()
+        body = json.dumps({"ok": True}).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Cache-Control", "no-store")
+        _security_headers(handler)
+        set_auth_cookie(handler, cookie_val)
+        handler.end_headers()
+        handler.wfile.write(body)
+        return True
 
+    if parsed.path == "/api/auth/passkey/register/options":
+        from api.auth import _passkey_feature_flag_enabled
+        from api.passkeys import PasskeyError, PasskeyRateLimitError, registration_options
+
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"error": "Passkey support is disabled."}, status=404)
+        ok, error, status = _require_passkey_registration_auth(handler)
+        if not ok:
+            return j(handler, {"error": error}, status=status)
+        try:
+            return j(handler, {"ok": True, "publicKey": registration_options(handler)})
+        except PasskeyRateLimitError as e:
+            return bad(handler, str(e), status=429)
+        except PasskeyError as e:
+            return bad(handler, str(e), status=400)
+
+    if parsed.path == "/api/auth/passkey/register":
+        from api.auth import _passkey_feature_flag_enabled
+        from api.passkeys import PasskeyError, finish_registration, registered_credentials
+
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"error": "Passkey support is disabled."}, status=404)
+        ok, error, status = _require_passkey_registration_auth(handler)
+        if not ok:
+            return j(handler, {"error": error}, status=status)
+        try:
+            result = finish_registration(body, handler)
+            result["credentials"] = registered_credentials()
+            return j(handler, result)
+        except PasskeyError as e:
+            return bad(handler, str(e), status=400)
+
+    if parsed.path == "/api/auth/passkey/delete":
+        from api.auth import _passkey_feature_flag_enabled, get_password_hash
+        from api.passkeys import PasskeyError, delete_credential, registered_credentials
+
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"error": "Passkey support is disabled."}, status=404)
+        try:
+            credential_id = str(body.get("id") or "")
+            creds = registered_credentials()
+            if get_password_hash() is None and len(creds) <= 1 and any(c.get("id") == credential_id for c in creds):
+                return bad(handler, "Set a password or disable auth before removing the last passkey.", 409)
+            return j(handler, delete_credential(credential_id))
+        except PasskeyError as e:
+            return bad(handler, str(e), status=404)
+
+    if parsed.path == "/api/auth/passkeys":
+        from api.auth import _passkey_feature_flag_enabled
+        from api.passkeys import registered_credentials
+
+        if not _passkey_feature_flag_enabled():
+            return j(handler, {"credentials": [], "disabled": True})
+        return j(handler, {"credentials": registered_credentials()})
+
+    if parsed.path == "/api/auth/logout":
+        from api.auth import clear_auth_cookie, ensure_trusted_auth_session, get_trusted_auth_logout_url, invalidate_session, parse_cookie
+        from api.helpers import clear_profile_cookie
+
+        session_info = ensure_trusted_auth_session(handler)
+        cookie_val = getattr(handler, '_trusted_auth_session_cookie_value', None) or parse_cookie(handler)
+        if cookie_val:
+            invalidate_session(cookie_val)
+        payload = {"ok": True}
+        if session_info and session_info.get("auth_type") == "trusted":
+            logout_url = get_trusted_auth_logout_url()
+            if logout_url:
+                payload["trusted_logout_url"] = logout_url
+        body = json.dumps(payload).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Cache-Control", "no-store")
+        _security_headers(handler)
+        clear_auth_cookie(handler)
+        clear_profile_cookie(handler)
+        handler.end_headers()
+        handler.wfile.write(body)
+        return True
+
+    # ── Checkpoints / Rollback (POST) ──
+    return None
+
+
+def _handle_post_session(handler, parsed, body):
+    """Handle session lifecycle, metadata, branching, recovery, and compression routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/session/recovery/repair-safe":
         from api.session_recovery import repair_safe_session_recovery
         result = repair_safe_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path())
         return j(handler, result, status=200 if result.get("clean") else 409)
-
-    if parsed.path == "/api/dashboard/config":
-        from api import dashboard_probe
-
-        try:
-            j(handler, dashboard_probe.save_dashboard_config(body))
-        except ValueError as exc:
-            bad(handler, str(exc), status=400)
-        except Exception as exc:
-            logger.exception("dashboard config save failed")
-            bad(handler, str(exc), status=500)
-        return True
-
-    if parsed.path == "/api/prompts":
-        text = str(body.get("text") or "").strip()
-        label = str(body.get("label") or "").strip()
-        if not text:
-            return bad(handler, "text is required")
-        if len(text) > 8000:
-            return bad(handler, "text too long (max 8000 chars)")
-        prompts = _load_saved_prompts()
-        if len(prompts) >= 200:
-            return bad(handler, "saved prompts limit reached (max 200)")
-        new_prompt = {"id": uuid.uuid4().hex[:12], "label": label or text[:60], "text": text, "created_at": time.time()}
-        prompts.append(new_prompt)
-        _save_saved_prompts(prompts)
-        return j(handler, {"ok": True, "prompt": new_prompt})
-
-    if parsed.path in ("/api/share/create", "/api/share/revoke"):
-        return bad(handler, "Public sharing is disabled in this environment", 400)
 
     if parsed.path == "/api/session/new":
         workspace_prev_session_id = body.get("prev_session_id")
@@ -15136,126 +14892,6 @@ def handle_post(handler, parsed) -> bool:
         except Exception as e:
             logger.warning("Silent exception in handle_post", exc_info=True)
             return bad(handler, str(e))
-
-    if parsed.path == "/api/default-model":
-        try:
-            advanced = body.get("advanced") if isinstance(body, dict) else None
-            provider = body.get("provider") if isinstance(body, dict) else None
-            if str(provider or "").strip().lower() == "auto":
-                provider = None
-            return j(handler, set_hermes_default_model(body.get("model"), provider=provider, advanced=advanced))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
-
-    # ── Auxiliary model set (POST) ──
-    if parsed.path == "/api/model/set":
-        scope = str(body.get("scope") or "").strip()
-        task = str(body.get("task") or "").strip()
-        provider = str(body.get("provider") or "auto").strip()
-        model = str(body.get("model") or "").strip()
-        advanced = body.get("advanced") if isinstance(body, dict) else None
-        if scope == "auxiliary":
-            from api.config import set_auxiliary_model
-            try:
-                return j(handler, set_auxiliary_model(task, provider, model, advanced=advanced))
-            except Exception as exc:
-                logger.warning("Silent exception in handle_post", exc_info=True)
-                return bad(handler, str(exc), status=400)
-        if scope == "main":
-            try:
-                main_provider = provider if provider != "auto" else None
-                return j(handler, set_hermes_default_model(model, provider=main_provider, advanced=advanced))
-            except ValueError as exc:
-                return bad(handler, str(exc), status=400)
-        return bad(handler, f"unknown scope: {scope}", status=400)
-
-    # ── Providers (POST) ──
-    if parsed.path == "/api/providers":
-        provider_id = (body.get("provider") or "").strip().lower()
-        api_key = body.get("api_key")
-        if not provider_id:
-            return bad(handler, "provider is required")
-        if api_key is not None:
-            api_key = str(api_key).strip() or None
-        result = set_provider_key(provider_id, api_key)
-        if not result.get("ok"):
-            return bad(handler, result.get("error", "Unknown error"))
-        return j(handler, result)
-
-    if parsed.path == "/api/providers/delete":
-        provider_id = (body.get("provider") or "").strip().lower()
-        if not provider_id:
-            return bad(handler, "provider is required")
-        result = remove_provider_key(provider_id)
-        if not result.get("ok"):
-            return bad(handler, result.get("error", "Unknown error"))
-        return j(handler, result)
-
-    if parsed.path == "/api/providers/self-hosted":
-        try:
-            from api.onboarding import apply_self_hosted_provider_setup
-            return j(handler, apply_self_hosted_provider_setup(body))
-        except ValueError as exc:
-            return bad(handler, str(exc), 400)
-
-    if parsed.path == "/api/models/refresh":
-        provider_id = (body.get("provider") or "").strip().lower()
-        if not provider_id:
-            return bad(handler, "provider is required")
-        from api.config import invalidate_provider_models_cache
-        invalidate_provider_models_cache(provider_id)
-        return j(handler, {"ok": True, "provider": provider_id})
-
-    if parsed.path == "/api/reasoning":
-        # CLI-parity /reasoning handler — writes to the same config.yaml keys
-        # the CLI uses (display.show_reasoning, agent.reasoning_effort) so a
-        # preference set via WebUI is honoured in the terminal REPL and vice
-        # versa.  Body is one of:
-        #   {"display": "show"|"hide"|"on"|"off"}   → display.show_reasoning
-        #   {"effort":  "none"|"minimal"|"low"|"medium"|"high"|"xhigh"}
-        #                                            → agent.reasoning_effort
-        try:
-            display = body.get("display")
-            effort = body.get("effort")
-            if display is not None:
-                flag = str(display).strip().lower()
-                if flag in ("show", "on", "true", "1"):
-                    return j(handler, set_reasoning_display(True))
-                if flag in ("hide", "off", "false", "0"):
-                    return j(handler, set_reasoning_display(False))
-                return bad(handler, f"display must be show|hide|on|off (got '{display}')")
-            if effort is not None:
-                model_id = str(body.get("model") or "").strip() or None
-                provider_id = str(body.get("provider") or "").strip() or None
-                base_url = str(body.get("base_url") or "").strip() or None
-                return j(
-                    handler,
-                    set_reasoning_effort(
-                        effort,
-                        model_id=model_id,
-                        provider_id=provider_id,
-                        base_url=base_url,
-                    ),
-                )
-            return bad(handler, "reasoning: must supply 'display' or 'effort'")
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
-
-    if parsed.path == "/api/admin/reload":
-        # Hot-reload api.models module to pick up code changes without restart.
-        import importlib
-        from api import models as _models
-        importlib.reload(_models)
-        # Also re-expose get_session from the reloaded module so routes.py
-        # continues to work (routes.py imported it at module level).
-        import api.routes as _routes
-        _routes.get_session = _models.get_session
-        _routes.Session = _models.Session
-        return j(handler, {"status": "ok", "reloaded": "api.models"})
 
     if parsed.path == "/api/sessions/cleanup":
         return _handle_sessions_cleanup(handler, body, zero_only=False)
@@ -16048,6 +15684,256 @@ def handle_post(handler, parsed) -> bool:
         payload, status = _enable_session_yolo_and_release_pending(sid, choice="once")
         return j(handler, payload, status=status)
 
+    if parsed.path == "/api/session/pin":
+        try:
+            require(body, "session_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        if _session_is_subagent_view_only(body["session_id"]):
+            return bad(handler, "Subagent sessions are view-only and cannot be modified from WebUI", 400)
+        try:
+            s = get_session(body["session_id"])
+            s = _ensure_full_session_before_mutation(body["session_id"], s)
+        except KeyError:
+            return bad(handler, "Session not found", 404)
+        pin_requested = bool(body.get("pinned", True))
+        # TOCTOU guard (Opus stage-389): the count check and the pin write
+        # must happen under the same lock, otherwise two parallel pin
+        # requests can both pass `len(pinned_ids) >= 3` against the same
+        # snapshot and both succeed, leaving the user with 4 pins. The check
+        # must be careful not to nest `all_sessions()` (which acquires LOCK
+        # internally) inside a `with LOCK:` block — that's a deadlock since
+        # LOCK is a non-reentrant `threading.Lock`. We snapshot the
+        # persisted index outside the lock, then re-check the in-memory
+        # mutation set inside the lock and commit the pin atomically.
+        if pin_requested and not getattr(s, "pinned", False):
+            # Pre-snapshot from persisted index (acquires LOCK internally,
+            # so must run outside our own LOCK acquire below).
+            persisted_rows = [
+                existing for existing in all_sessions()
+                if _session_counts_toward_pin_quota(existing)
+            ]
+            with LOCK:
+                # Final authoritative count: merge persisted pinned rows with the
+                # in-memory SESSIONS snapshot. Count logical sidebar-visible pin
+                # lineages rather than raw session rows so continuation siblings
+                # in the same visible lineage do not consume extra pin quota.
+                candidate_rows = list(persisted_rows)
+                candidate_rows.extend(
+                    existing.compact() for existing in SESSIONS.values()
+                    if _session_counts_toward_pin_quota(existing)
+                )
+                target_row = s.compact()
+                candidate_rows.append(target_row)
+                pinned_lineage_ids = _visible_pinned_lineage_ids(candidate_rows)
+                target_lineage = _session_row_lineage_root_id(
+                    target_row,
+                    {
+                        str(_session_field(row, "session_id", "") or ""): row
+                        for row in candidate_rows
+                        if _session_field(row, "session_id", None)
+                    },
+                )
+                pinned_lineage_ids.discard(target_lineage)
+                pinned_sessions_limit = int(load_settings().get("pinned_sessions_limit", 3) or 3)
+                if len(pinned_lineage_ids) >= pinned_sessions_limit:
+                    return bad(handler, f"Up to {pinned_sessions_limit} sessions can be pinned. Unpin one before pinning another.", 400)
+                # Mark in-memory pin state under LOCK so concurrent pin
+                # requests see the increment immediately, even before
+                # save() finishes flushing to disk.
+                s.pinned = True
+            with _get_session_agent_lock(body["session_id"]):
+                s.save()
+        else:
+            with _get_session_agent_lock(body["session_id"]):
+                s.pinned = pin_requested
+                s.save()
+        publish_session_list_changed(
+            "session_pin",
+            profile=getattr(s, "profile", None),
+            session_id=getattr(s, "session_id", body["session_id"]),
+        )
+        return j(handler, {"ok": True, "session": s.compact()})
+
+    # ── Session archive (POST) ──
+    if parsed.path == "/api/session/archive":
+        try:
+            require(body, "session_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        sid = body["session_id"]
+        if _session_is_subagent_view_only(sid):
+            return bad(handler, "Subagent sessions are view-only and cannot be archived from WebUI", 400)
+        try:
+            s = get_session(sid)
+            # #1558: save() refuses metadata-only session stubs because their
+            # messages list is intentionally empty. If a sidebar/status preload
+            # left one in the LRU cache, upgrade to a full disk load before
+            # mutating archived state so the guard stays intact.
+            if getattr(s, "_loaded_metadata_only", False):
+                s = Session.load(sid)
+                if s is None:
+                    raise KeyError(sid)
+                with LOCK:
+                    SESSIONS[sid] = s
+        except KeyError:
+            cli_meta = _lookup_cli_session_metadata(sid)
+            if not cli_meta:
+                return bad(handler, "Session not found", 404)
+            if cli_meta.get("read_only"):
+                return bad(handler, "Read-only imported sessions cannot be archived from WebUI", 400)
+            # Delegated subagent children (#5307) are view-only and owned by the
+            # delegate runner — never materialize one into a writable WebUI
+            # sidecar via the archive fallback (the 3rd of the shared
+            # import_cli_session write paths).
+            _arch_source_tag = (cli_meta.get("source_tag") or cli_meta.get("raw_source") or "").strip().lower()
+            if _arch_source_tag == "subagent" or _is_subagent_child_session_id(sid):
+                return bad(handler, "Subagent sessions cannot be archived from WebUI", 400)
+            if _is_messaging_session_record(cli_meta):
+                s = Session(
+                    session_id=sid,
+                    title=cli_meta.get("title") or title_from(get_cli_session_messages(sid), "CLI Session"),
+                    workspace=get_last_workspace(),
+                    messages=[],
+                    model=cli_meta.get("model") or "unknown",
+                    created_at=cli_meta.get("created_at"),
+                    updated_at=cli_meta.get("updated_at"),
+                )
+                s.is_cli_session = is_cli_session_row(cli_meta)
+                s.source_tag = cli_meta.get("source_tag")
+                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
+                s.session_source = cli_meta.get("session_source")
+                s.source_label = cli_meta.get("source_label")
+                s.user_id = cli_meta.get("user_id")
+                s.chat_id = cli_meta.get("chat_id")
+                s.chat_type = cli_meta.get("chat_type")
+                s.thread_id = cli_meta.get("thread_id")
+                s.session_key = cli_meta.get("session_key")
+                s.platform = cli_meta.get("platform")
+                s.save(touch_updated_at=False)
+            else:
+                msgs = get_cli_session_messages(sid)
+                if not msgs:
+                    return bad(handler, "Session not found", 404)
+                s = import_cli_session(
+                    sid,
+                    cli_meta.get("title") or title_from(msgs, "CLI Session"),
+                    msgs,
+                    cli_meta.get("model") or "unknown",
+                    profile=cli_meta.get("profile"),
+                    created_at=cli_meta.get("created_at"),
+                    updated_at=cli_meta.get("updated_at"),
+                )
+                s.is_cli_session = is_cli_session_row(cli_meta)
+                s.source_tag = cli_meta.get("source_tag")
+                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
+                s.session_source = cli_meta.get("session_source")
+                s.source_label = cli_meta.get("source_label")
+                s.user_id = cli_meta.get("user_id")
+                s.chat_id = cli_meta.get("chat_id")
+                s.chat_type = cli_meta.get("chat_type")
+                s.thread_id = cli_meta.get("thread_id")
+                s.session_key = cli_meta.get("session_key")
+                s.platform = cli_meta.get("platform")
+        with _get_session_agent_lock(sid):
+            s.archived = bool(body.get("archived", True))
+            s.save(touch_updated_at=False)
+        publish_session_list_changed(
+            "session_archive",
+            profile=getattr(s, "profile", None),
+            session_id=getattr(s, "session_id", sid),
+        )
+        return j(handler, {"ok": True, "session": s.compact(), **_worktree_retained_payload(s)})
+
+    # ── Session move to project (POST) ──
+    if parsed.path == "/api/session/move":
+        try:
+            require(body, "session_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        try:
+            s = _get_or_materialize_session(body["session_id"])
+        except KeyError:
+            return bad(handler, "Session not found", 404)
+        except PermissionError:
+            return bad(handler, "Read-only imported sessions cannot be moved from WebUI", 403)
+        # #1614: refuse moves into a project owned by another profile.
+        target_pid = body.get("project_id") or None
+        if target_pid:
+            # Use the session's own profile for authorization, not the global
+            # active profile. A session belongs to a specific profile set at
+            # creation; projects from that profile should always be assignable,
+            # regardless of which profile is "active" at the process level.
+            # Matches the same principle as the profile chip fix — prefer
+            # session-scoped state over global active profile. (#3325 follow-up)
+            _session_profile = getattr(s, 'profile', None) or get_active_profile_name()
+            target = next(
+                (p for p in load_projects() if p["project_id"] == target_pid),
+                None,
+            )
+            if not target:
+                return bad(handler, "Project not found", 404)
+            if not _profiles_match(target.get("profile"), _session_profile):
+                return bad(handler, "Project not found", 404)
+        # #3746: acquire the per-session agent lock with a bounded timeout
+        # instead of blocking indefinitely. The streaming thread holds this same
+        # lock during checkpoint saves; on slow file I/O (e.g. WSL/DrvFs) a bare
+        # blocking acquire could outlast the client's 30s abort and surface as a
+        # silent "Request timed out" toast with no server-side signal. Bounding
+        # the wait converts that into an actionable HTTP 503 the client can retry.
+        # We keep the lock (rather than dropping it for this metadata-only write)
+        # because s.save() still races the streaming thread's atomic writer.
+        _move_lock = _get_session_agent_lock(body["session_id"])
+        if not _move_lock.acquire(timeout=5):
+            return j(
+                handler,
+                {"error": "Session is busy (streaming). Please try again in a moment."},
+                status=503,
+            )
+        try:
+            s.project_id = target_pid
+            if target_pid and body.get("sync_workspace"):
+                target_p = next((p for p in load_projects() if p["project_id"] == target_pid), None)
+                if target_p and target_p.get("default_workspace"):
+                    try:
+                        s.workspace = str(resolve_trusted_workspace(target_p["default_workspace"]))
+                    except Exception:
+                        logger.warning("Silent exception in handle_post", exc_info=True)
+                        s.workspace = target_p["default_workspace"]
+            s.save()
+        finally:
+            _move_lock.release()
+        publish_session_list_changed(
+            "session_move",
+            profile=getattr(s, "profile", None),
+            session_id=getattr(s, "session_id", body["session_id"]),
+        )
+        return j(handler, {"ok": True, "session": s.compact()})
+
+    # ── Project CRUD (POST) ──
+    if parsed.path == "/api/session/import":
+        return _handle_session_import(handler, body)
+
+    # ── Session export to workspace (POST) ──
+    if parsed.path == "/api/session/export/workspace":
+        return _handle_session_export_workspace(handler, body)
+
+    # ── Session import from workspace (POST) ──
+    if parsed.path == "/api/session/import/workspace":
+        return _handle_session_import_workspace(handler, body)
+
+    # ── Self-update (POST) ──
+    if parsed.path == "/api/session/import_cli":
+        return _handle_session_import_cli(handler, body)
+
+    # ── Auth endpoints (POST) ──
+    return None
+
+
+def _handle_post_chat_and_stream(handler, parsed, body, diag=None):
+    """Handle chat execution, streaming, steer commands, approvals, and terminal routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/btw":
         return _handle_btw(handler, body)
 
@@ -16085,6 +15971,565 @@ def handle_post(handler, parsed) -> bool:
     # ── Cron API (POST) ──
     # See GET-side comment above: wrap in cron_profile_context so writes go
     # to the TLS-active profile's jobs.json instead of the process default.
+    if parsed.path == "/api/approval/respond":
+        return _handle_approval_respond(handler, body)
+
+    # ── Clarify (POST) ──
+    if parsed.path == "/api/clarify/respond":
+        return _handle_clarify_respond(handler, body)
+
+    # ── Commands (POST) ──
+    return None
+
+
+def handle_post(handler, parsed) -> bool:
+    """Handle all POST routes. Returns True if handled, False for 404."""
+    diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    if parsed.path == "/api/csp-report":
+        if diag:
+            diag.stage("csp_report")
+        try:
+            return _handle_csp_report(handler)
+        finally:
+            if diag:
+                diag.finish()
+    # T1 deprecation alias for the legacy ack endpoint that the pre-rename
+    # WebUI used to POST to after handling ``process_complete``. The new
+    # canonical SSE event is ``bg_task_complete`` and the new ack endpoint
+    # will be ``/api/bg-task-complete-ack`` (introduced by PR (b), the WebUI
+    # half of the split). Until PR (b) lands we keep the old path responding
+    # with HTTP 410 Gone + ``X-Replaced-By`` so any stale tab posting under
+    # the old name fails loudly with a discoverable hint. The handler runs
+    # BEFORE the CSRF gate on purpose: an old tab will not carry a CSRF token
+    # for the deprecated path, and surfacing 410 (not 403) is the correct
+    # contract here.
+    if parsed.path == "/api/process-complete-ack":
+        if diag:
+            diag.stage("process_complete_ack_deprecated")
+        try:
+            j(
+                handler,
+                {
+                    "error": (
+                        "gone: /api/process-complete-ack was replaced by "
+                        "/api/bg-task-complete-ack as part of the "
+                        "process_complete -> bg_task_complete event rename"
+                    ),
+                    "replaced_by": "/api/bg-task-complete-ack",
+                },
+                status=410,
+                extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
+            )
+            return True
+        finally:
+            if diag:
+                diag.finish()
+    # CSRF: reject cross-origin or tokenless authenticated browser requests.
+    # /api/auth/login has no authenticated session token yet, and /api/csp-report
+    # is intentionally unauthenticated for browser-generated violation reports.
+    if diag:
+        diag.stage("csrf")
+    if not _csrf_exempt_path(parsed.path) and not _check_csrf(handler):
+        try:
+            return j(handler, {"error": _csrf_rejection_error(handler)}, status=403)
+        finally:
+            if diag:
+                diag.finish()
+    proxy_result = _handle_extension_sidecar_proxy(
+        handler,
+        parsed,
+        "POST",
+        read_request_body=True,
+    )
+    if proxy_result is not False:
+        if diag:
+            diag.finish()
+        return proxy_result
+
+    if parsed.path == "/api/mcp/hub/add":
+        from api.mcp_hub import add_or_update_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return bad(handler, "Server name is required", status=400)
+        return j(handler, add_or_update_mcp_server(name, body))
+
+    if parsed.path == "/api/mcp/hub/toggle":
+        from api.mcp_hub import toggle_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        enabled = bool(body.get("enabled", True))
+        return j(handler, toggle_mcp_server(name, enabled))
+
+    if parsed.path == "/api/mcp/hub/delete":
+        from api.mcp_hub import delete_mcp_server
+        body = _read_json_body(handler) or {}
+        name = str(body.get("name", "")).strip()
+        return j(handler, delete_mcp_server(name))
+
+    if parsed.path == "/api/mcp/hub/test":
+        from api.mcp_hub import test_mcp_server
+        body = _read_json_body(handler) or {}
+        return j(handler, test_mcp_server(body))
+
+    if parsed.path == "/api/diff/compute":
+        from api.diff_viewer import compute_structured_diff
+        body = _read_json_body(handler) or {}
+        original = body.get("original", "")
+        modified = body.get("modified", "")
+        filename = body.get("filename", "")
+        return j(handler, compute_structured_diff(original, modified, filename=filename))
+
+    # ── Knowledge Vault & Graph Memory (POST) ──
+    if parsed.path == "/api/vault/note":
+        from api.vault import save_note, get_vault_dir
+        body = _read_json_body(handler) or {}
+        path = body.get("path", "")
+        if path.startswith("knowledge/"):
+            path = path[len("knowledge/"):]
+        content = body.get("content", "")
+        return j(handler, save_note(get_vault_dir(), path, content))
+
+    if parsed.path == "/api/vault/delete":
+        from api.vault import delete_note, get_vault_dir
+        body = _read_json_body(handler) or {}
+        path = body.get("path", "")
+        if path.startswith("knowledge/"):
+            path = path[len("knowledge/"):]
+        return j(handler, delete_note(get_vault_dir(), path))
+
+    if parsed.path == "/api/vault/sync":
+        from api.vault import sync_vault_to_rules, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        ws_param = body.get("workspace") or qs.get("workspace", [None])[0]
+        space_param = body.get("space") or qs.get("space", [None])[0]
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, sync_vault_to_rules(get_vault_dir(ws_root), ws_root, space=space_param))
+
+    if parsed.path == "/api/vault/memorize":
+        from api.vault import memorize_insight, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        text = str(body.get("text", "")).strip()
+        category = body.get("category")
+        title = body.get("title")
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, memorize_insight(get_vault_dir(ws_root), text, category=category, title=title, workspace_path=ws_root, space=space_param))
+
+    if parsed.path == "/api/vault/rename":
+        from api.vault import rename_note, get_vault_dir
+        body = _read_json_body(handler) or {}
+        old_path = body.get("old_path", "")
+        new_path = body.get("new_path", "")
+        if old_path.startswith("knowledge/"):
+            old_path = old_path[len("knowledge/"):]
+        if new_path.startswith("knowledge/"):
+            new_path = new_path[len("knowledge/"):]
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        return j(handler, rename_note(get_vault_dir(ws_root), old_path, new_path, workspace_path=ws_root))
+
+    if parsed.path == "/api/vault/heal":
+        from api.vault import heal_vault, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, heal_vault(get_vault_dir(ws_root), workspace_path=ws_root, space=space_param))
+
+    if parsed.path == "/api/vault/weave":
+        from api.vault import weave_wikilinks, get_vault_dir, infer_space_from_workspace, get_note, save_note
+        body = _read_json_body(handler) or {}
+        content = body.get("content", "")
+        note_path = body.get("path", "")
+        if note_path.startswith("knowledge/"):
+            note_path = note_path[len("knowledge/"):]
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        vdir = get_vault_dir(ws_root)
+        if note_path:
+            existing = get_note(vdir, note_path)
+            if existing.get("ok"):
+                content = existing.get("content", "")
+                weaved = weave_wikilinks(vdir, content, space=space_param, exclude_id=existing.get("id"))
+                if weaved.get("links_added", 0) > 0:
+                    save_note(vdir, note_path, weaved["content"], workspace_path=ws_root)
+                return j(handler, weaved)
+        return j(handler, weave_wikilinks(vdir, content, space=space_param))
+
+    if parsed.path == "/api/vault/digest":
+        from api.vault import digest_note, get_vault_dir, infer_space_from_workspace
+        body = _read_json_body(handler) or {}
+        text = str(body.get("text", "")).strip()
+        title = body.get("title")
+        category = body.get("category", "notes")
+        space_param = body.get("space")
+        ws_param = body.get("workspace")
+        ws_root = Path(ws_param) if ws_param and Path(ws_param).exists() else None
+        if not ws_root:
+            for var in ("AGY_WORKSPACE_ROOT", "WORKSPACE_DIR", "AGY_WORKSPACE_DIR", "HERMES_WORKSPACE_ROOT"):
+                val = os.environ.get(var)
+                if val and Path(val).exists():
+                    ws_root = Path(val)
+                    break
+        if not ws_root:
+            ws_root = Path("/workspace") if Path("/workspace").exists() else Path.cwd()
+        if not space_param:
+            space_param = infer_space_from_workspace(ws_root)
+        return j(handler, digest_note(get_vault_dir(ws_root), text, space=space_param, title=title, category=category, workspace_path=ws_root))
+
+    if parsed.path == "/api/skills/scaffold":
+        from api.skills_wizard import scaffold_skill_or_rule
+        body = _read_json_body(handler) or {}
+        return j(handler, scaffold_skill_or_rule(body))
+
+    if parsed.path == "/api/shutdown":
+        return _handle_shutdown(handler)
+
+    if parsed.path == "/api/health/restart":
+        return _handle_health_restart(handler)
+
+    if parsed.path == "/api/upload":
+        return handle_upload(handler)
+    if parsed.path == "/api/upload/extract":
+        return handle_upload_extract(handler)
+    if parsed.path == "/api/workspace/upload":
+        return handle_workspace_upload(handler)
+
+    if parsed.path == "/api/transcribe":
+        return handle_transcribe(handler)
+
+    if parsed.path == "/api/client-events/log":
+        if diag:
+            diag.stage("read_client_event_body")
+        return _handle_client_event_log(handler, _read_client_event_payload(handler))
+
+    if diag:
+        diag.stage("read_body")
+    try:
+        body = read_body(handler)
+    except ValueError as exc:
+        if diag:
+            diag.finish()
+        status = 413 if "too large" in str(exc).lower() else 400
+        return bad(handler, str(exc), status=status)
+    except Exception:
+        logger.warning("Silent exception in handle_post", exc_info=True)
+        if diag:
+            diag.finish()
+        raise
+    if not _guard_request_session_visibility(handler, parsed, body=body, method="POST"):
+        if diag:
+            diag.finish()
+        return True
+
+    res = _handle_post_auth(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_session(handler, parsed, body)
+    if res is not None:
+        return res
+
+    res = _handle_post_chat_and_stream(handler, parsed, body, diag=diag)
+    if res is not None:
+        return res
+
+
+    if parsed.path == "/api/updates/check":
+        settings = load_settings()
+        if not settings.get("check_for_updates", True):
+            force = bool(body.get("force", False)) if isinstance(body, dict) else False
+            if force:
+                # Manual force-check bypasses auto-check toggle (#6082)
+                pass
+            else:
+                return j(handler, {"disabled": True})
+        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+        force = bool(body.get("force", False))
+        # Allow the client to pass the channel explicitly in the POST body. This
+        # avoids a race on channel switch: the Settings dropdown re-checks
+        # immediately, but its autosave PUT (debounced) may not have landed
+        # server-side yet, so reading the saved setting here could answer for the
+        # OLD channel. An explicit body channel (validated against the enum) wins;
+        # otherwise fall back to the saved setting. (Fable UX gate.)
+        channel = body.get("channel") if isinstance(body, dict) else None
+        if channel not in ("stable", "experimental"):
+            channel = settings.get("update_channel")
+        from api.updates import check_for_updates
+
+        logger.info("checking for updates (force=%s, include_agent=%s, channel=%s)", force, include_agent_updates, channel)
+        # Defensive-only guard: wrap check_for_updates() for consistent
+        # exception protection across all route handlers. Does NOT fix #6086
+        # (root cause is likely signal/process-group reaping, per maintainer analysis).
+        try:
+            payload = check_for_updates(force=force, include_agent=include_agent_updates, channel=channel)
+        except Exception:
+            logger.exception("update check failed unexpectedly (defensive guard caught exception)")
+            return bad(handler, "Update check failed, see server log for details", status=500)
+        logger.info("update check completed")
+        return j(handler, payload)
+
+    if parsed.path == "/api/extensions/toggle":
+        from api.extensions import ExtensionToggleError, set_extension_user_enabled
+
+        try:
+            return j(
+                handler,
+                set_extension_user_enabled(body.get("id"), body.get("enabled")),
+            )
+        except ExtensionToggleError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension toggle failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/sidecar-proxy-consent":
+        from api.extensions import (
+            ExtensionSidecarProxyError,
+            set_extension_sidecar_proxy_consent,
+        )
+
+        try:
+            return j(
+                handler,
+                set_extension_sidecar_proxy_consent(
+                    body.get("id"),
+                    body.get("approved"),
+                ),
+            )
+        except ExtensionSidecarProxyError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension sidecar proxy consent update failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/install":
+        from api.extensions import ExtensionInstallError, install_extension
+
+        try:
+            return j(
+                handler,
+                install_extension(body.get("id"), body.get("download_url"), body.get("sha256")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension install failed")
+            return bad(handler, "Failed to install extension", status=500)
+
+    if parsed.path == "/api/extensions/uninstall":
+        from api.extensions import ExtensionInstallError, uninstall_extension
+
+        try:
+            return j(
+                handler,
+                uninstall_extension(body.get("id")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension uninstall failed")
+            return bad(handler, "Failed to uninstall extension", status=500)
+
+    if parsed.path == "/api/dashboard/config":
+        from api import dashboard_probe
+
+        try:
+            j(handler, dashboard_probe.save_dashboard_config(body))
+        except ValueError as exc:
+            bad(handler, str(exc), status=400)
+        except Exception as exc:
+            logger.exception("dashboard config save failed")
+            bad(handler, str(exc), status=500)
+        return True
+
+    if parsed.path == "/api/prompts":
+        text = str(body.get("text") or "").strip()
+        label = str(body.get("label") or "").strip()
+        if not text:
+            return bad(handler, "text is required")
+        if len(text) > 8000:
+            return bad(handler, "text too long (max 8000 chars)")
+        prompts = _load_saved_prompts()
+        if len(prompts) >= 200:
+            return bad(handler, "saved prompts limit reached (max 200)")
+        new_prompt = {"id": uuid.uuid4().hex[:12], "label": label or text[:60], "text": text, "created_at": time.time()}
+        prompts.append(new_prompt)
+        _save_saved_prompts(prompts)
+        return j(handler, {"ok": True, "prompt": new_prompt})
+
+    if parsed.path == "/api/default-model":
+        try:
+            advanced = body.get("advanced") if isinstance(body, dict) else None
+            provider = body.get("provider") if isinstance(body, dict) else None
+            if str(provider or "").strip().lower() == "auto":
+                provider = None
+            return j(handler, set_hermes_default_model(body.get("model"), provider=provider, advanced=advanced))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    # ── Auxiliary model set (POST) ──
+    if parsed.path == "/api/model/set":
+        scope = str(body.get("scope") or "").strip()
+        task = str(body.get("task") or "").strip()
+        provider = str(body.get("provider") or "auto").strip()
+        model = str(body.get("model") or "").strip()
+        advanced = body.get("advanced") if isinstance(body, dict) else None
+        if scope == "auxiliary":
+            from api.config import set_auxiliary_model
+            try:
+                return j(handler, set_auxiliary_model(task, provider, model, advanced=advanced))
+            except Exception as exc:
+                logger.warning("Silent exception in handle_post", exc_info=True)
+                return bad(handler, str(exc), status=400)
+        if scope == "main":
+            try:
+                main_provider = provider if provider != "auto" else None
+                return j(handler, set_hermes_default_model(model, provider=main_provider, advanced=advanced))
+            except ValueError as exc:
+                return bad(handler, str(exc), status=400)
+        return bad(handler, f"unknown scope: {scope}", status=400)
+
+    # ── Providers (POST) ──
+    if parsed.path == "/api/providers":
+        provider_id = (body.get("provider") or "").strip().lower()
+        api_key = body.get("api_key")
+        if not provider_id:
+            return bad(handler, "provider is required")
+        if api_key is not None:
+            api_key = str(api_key).strip() or None
+        result = set_provider_key(provider_id, api_key)
+        if not result.get("ok"):
+            return bad(handler, result.get("error", "Unknown error"))
+        return j(handler, result)
+
+    if parsed.path == "/api/providers/delete":
+        provider_id = (body.get("provider") or "").strip().lower()
+        if not provider_id:
+            return bad(handler, "provider is required")
+        result = remove_provider_key(provider_id)
+        if not result.get("ok"):
+            return bad(handler, result.get("error", "Unknown error"))
+        return j(handler, result)
+
+    if parsed.path == "/api/providers/self-hosted":
+        try:
+            from api.onboarding import apply_self_hosted_provider_setup
+            return j(handler, apply_self_hosted_provider_setup(body))
+        except ValueError as exc:
+            return bad(handler, str(exc), 400)
+
+    if parsed.path == "/api/models/refresh":
+        provider_id = (body.get("provider") or "").strip().lower()
+        if not provider_id:
+            return bad(handler, "provider is required")
+        from api.config import invalidate_provider_models_cache
+        invalidate_provider_models_cache(provider_id)
+        return j(handler, {"ok": True, "provider": provider_id})
+
+    if parsed.path == "/api/reasoning":
+        # CLI-parity /reasoning handler — writes to the same config.yaml keys
+        # the CLI uses (display.show_reasoning, agent.reasoning_effort) so a
+        # preference set via WebUI is honoured in the terminal REPL and vice
+        # versa.  Body is one of:
+        #   {"display": "show"|"hide"|"on"|"off"}   → display.show_reasoning
+        #   {"effort":  "none"|"minimal"|"low"|"medium"|"high"|"xhigh"}
+        #                                            → agent.reasoning_effort
+        try:
+            display = body.get("display")
+            effort = body.get("effort")
+            if display is not None:
+                flag = str(display).strip().lower()
+                if flag in ("show", "on", "true", "1"):
+                    return j(handler, set_reasoning_display(True))
+                if flag in ("hide", "off", "false", "0"):
+                    return j(handler, set_reasoning_display(False))
+                return bad(handler, f"display must be show|hide|on|off (got '{display}')")
+            if effort is not None:
+                model_id = str(body.get("model") or "").strip() or None
+                provider_id = str(body.get("provider") or "").strip() or None
+                base_url = str(body.get("base_url") or "").strip() or None
+                return j(
+                    handler,
+                    set_reasoning_effort(
+                        effort,
+                        model_id=model_id,
+                        provider_id=provider_id,
+                        base_url=base_url,
+                    ),
+                )
+            return bad(handler, "reasoning: must supply 'display' or 'effort'")
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/admin/reload":
+        # Hot-reload api.models module to pick up code changes without restart.
+        import importlib
+        from api import models as _models
+        importlib.reload(_models)
+        # Also re-expose get_session from the reloaded module so routes.py
+        # continues to work (routes.py imported it at module level).
+        import api.routes as _routes
+        _routes.get_session = _models.get_session
+        _routes.Session = _models.Session
+        return j(handler, {"status": "ok", "reloaded": "api.models"})
+
     if parsed.path == "/api/crons/create":
         from api.profiles import cron_profile_context
 
@@ -16209,14 +16654,6 @@ def handle_post(handler, parsed) -> bool:
         return _handle_workspace_reorder(handler, body)
 
     # ── Approval (POST) ──
-    if parsed.path == "/api/approval/respond":
-        return _handle_approval_respond(handler, body)
-
-    # ── Clarify (POST) ──
-    if parsed.path == "/api/clarify/respond":
-        return _handle_clarify_respond(handler, body)
-
-    # ── Commands (POST) ──
     if parsed.path == "/api/commands/bundles/resolve":
         from api.commands import resolve_bundle_command
 
@@ -16644,233 +17081,6 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, f"probe failed: {e}", 500)
 
     # ── Session pin (POST) ──
-    if parsed.path == "/api/session/pin":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        if _session_is_subagent_view_only(body["session_id"]):
-            return bad(handler, "Subagent sessions are view-only and cannot be modified from WebUI", 400)
-        try:
-            s = get_session(body["session_id"])
-            s = _ensure_full_session_before_mutation(body["session_id"], s)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        pin_requested = bool(body.get("pinned", True))
-        # TOCTOU guard (Opus stage-389): the count check and the pin write
-        # must happen under the same lock, otherwise two parallel pin
-        # requests can both pass `len(pinned_ids) >= 3` against the same
-        # snapshot and both succeed, leaving the user with 4 pins. The check
-        # must be careful not to nest `all_sessions()` (which acquires LOCK
-        # internally) inside a `with LOCK:` block — that's a deadlock since
-        # LOCK is a non-reentrant `threading.Lock`. We snapshot the
-        # persisted index outside the lock, then re-check the in-memory
-        # mutation set inside the lock and commit the pin atomically.
-        if pin_requested and not getattr(s, "pinned", False):
-            # Pre-snapshot from persisted index (acquires LOCK internally,
-            # so must run outside our own LOCK acquire below).
-            persisted_rows = [
-                existing for existing in all_sessions()
-                if _session_counts_toward_pin_quota(existing)
-            ]
-            with LOCK:
-                # Final authoritative count: merge persisted pinned rows with the
-                # in-memory SESSIONS snapshot. Count logical sidebar-visible pin
-                # lineages rather than raw session rows so continuation siblings
-                # in the same visible lineage do not consume extra pin quota.
-                candidate_rows = list(persisted_rows)
-                candidate_rows.extend(
-                    existing.compact() for existing in SESSIONS.values()
-                    if _session_counts_toward_pin_quota(existing)
-                )
-                target_row = s.compact()
-                candidate_rows.append(target_row)
-                pinned_lineage_ids = _visible_pinned_lineage_ids(candidate_rows)
-                target_lineage = _session_row_lineage_root_id(
-                    target_row,
-                    {
-                        str(_session_field(row, "session_id", "") or ""): row
-                        for row in candidate_rows
-                        if _session_field(row, "session_id", None)
-                    },
-                )
-                pinned_lineage_ids.discard(target_lineage)
-                pinned_sessions_limit = int(load_settings().get("pinned_sessions_limit", 3) or 3)
-                if len(pinned_lineage_ids) >= pinned_sessions_limit:
-                    return bad(handler, f"Up to {pinned_sessions_limit} sessions can be pinned. Unpin one before pinning another.", 400)
-                # Mark in-memory pin state under LOCK so concurrent pin
-                # requests see the increment immediately, even before
-                # save() finishes flushing to disk.
-                s.pinned = True
-            with _get_session_agent_lock(body["session_id"]):
-                s.save()
-        else:
-            with _get_session_agent_lock(body["session_id"]):
-                s.pinned = pin_requested
-                s.save()
-        publish_session_list_changed(
-            "session_pin",
-            profile=getattr(s, "profile", None),
-            session_id=getattr(s, "session_id", body["session_id"]),
-        )
-        return j(handler, {"ok": True, "session": s.compact()})
-
-    # ── Session archive (POST) ──
-    if parsed.path == "/api/session/archive":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        sid = body["session_id"]
-        if _session_is_subagent_view_only(sid):
-            return bad(handler, "Subagent sessions are view-only and cannot be archived from WebUI", 400)
-        try:
-            s = get_session(sid)
-            # #1558: save() refuses metadata-only session stubs because their
-            # messages list is intentionally empty. If a sidebar/status preload
-            # left one in the LRU cache, upgrade to a full disk load before
-            # mutating archived state so the guard stays intact.
-            if getattr(s, "_loaded_metadata_only", False):
-                s = Session.load(sid)
-                if s is None:
-                    raise KeyError(sid)
-                with LOCK:
-                    SESSIONS[sid] = s
-        except KeyError:
-            cli_meta = _lookup_cli_session_metadata(sid)
-            if not cli_meta:
-                return bad(handler, "Session not found", 404)
-            if cli_meta.get("read_only"):
-                return bad(handler, "Read-only imported sessions cannot be archived from WebUI", 400)
-            # Delegated subagent children (#5307) are view-only and owned by the
-            # delegate runner — never materialize one into a writable WebUI
-            # sidecar via the archive fallback (the 3rd of the shared
-            # import_cli_session write paths).
-            _arch_source_tag = (cli_meta.get("source_tag") or cli_meta.get("raw_source") or "").strip().lower()
-            if _arch_source_tag == "subagent" or _is_subagent_child_session_id(sid):
-                return bad(handler, "Subagent sessions cannot be archived from WebUI", 400)
-            if _is_messaging_session_record(cli_meta):
-                s = Session(
-                    session_id=sid,
-                    title=cli_meta.get("title") or title_from(get_cli_session_messages(sid), "CLI Session"),
-                    workspace=get_last_workspace(),
-                    messages=[],
-                    model=cli_meta.get("model") or "unknown",
-                    created_at=cli_meta.get("created_at"),
-                    updated_at=cli_meta.get("updated_at"),
-                )
-                s.is_cli_session = is_cli_session_row(cli_meta)
-                s.source_tag = cli_meta.get("source_tag")
-                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-                s.session_source = cli_meta.get("session_source")
-                s.source_label = cli_meta.get("source_label")
-                s.user_id = cli_meta.get("user_id")
-                s.chat_id = cli_meta.get("chat_id")
-                s.chat_type = cli_meta.get("chat_type")
-                s.thread_id = cli_meta.get("thread_id")
-                s.session_key = cli_meta.get("session_key")
-                s.platform = cli_meta.get("platform")
-                s.save(touch_updated_at=False)
-            else:
-                msgs = get_cli_session_messages(sid)
-                if not msgs:
-                    return bad(handler, "Session not found", 404)
-                s = import_cli_session(
-                    sid,
-                    cli_meta.get("title") or title_from(msgs, "CLI Session"),
-                    msgs,
-                    cli_meta.get("model") or "unknown",
-                    profile=cli_meta.get("profile"),
-                    created_at=cli_meta.get("created_at"),
-                    updated_at=cli_meta.get("updated_at"),
-                )
-                s.is_cli_session = is_cli_session_row(cli_meta)
-                s.source_tag = cli_meta.get("source_tag")
-                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-                s.session_source = cli_meta.get("session_source")
-                s.source_label = cli_meta.get("source_label")
-                s.user_id = cli_meta.get("user_id")
-                s.chat_id = cli_meta.get("chat_id")
-                s.chat_type = cli_meta.get("chat_type")
-                s.thread_id = cli_meta.get("thread_id")
-                s.session_key = cli_meta.get("session_key")
-                s.platform = cli_meta.get("platform")
-        with _get_session_agent_lock(sid):
-            s.archived = bool(body.get("archived", True))
-            s.save(touch_updated_at=False)
-        publish_session_list_changed(
-            "session_archive",
-            profile=getattr(s, "profile", None),
-            session_id=getattr(s, "session_id", sid),
-        )
-        return j(handler, {"ok": True, "session": s.compact(), **_worktree_retained_payload(s)})
-
-    # ── Session move to project (POST) ──
-    if parsed.path == "/api/session/move":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = _get_or_materialize_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        except PermissionError:
-            return bad(handler, "Read-only imported sessions cannot be moved from WebUI", 403)
-        # #1614: refuse moves into a project owned by another profile.
-        target_pid = body.get("project_id") or None
-        if target_pid:
-            # Use the session's own profile for authorization, not the global
-            # active profile. A session belongs to a specific profile set at
-            # creation; projects from that profile should always be assignable,
-            # regardless of which profile is "active" at the process level.
-            # Matches the same principle as the profile chip fix — prefer
-            # session-scoped state over global active profile. (#3325 follow-up)
-            _session_profile = getattr(s, 'profile', None) or get_active_profile_name()
-            target = next(
-                (p for p in load_projects() if p["project_id"] == target_pid),
-                None,
-            )
-            if not target:
-                return bad(handler, "Project not found", 404)
-            if not _profiles_match(target.get("profile"), _session_profile):
-                return bad(handler, "Project not found", 404)
-        # #3746: acquire the per-session agent lock with a bounded timeout
-        # instead of blocking indefinitely. The streaming thread holds this same
-        # lock during checkpoint saves; on slow file I/O (e.g. WSL/DrvFs) a bare
-        # blocking acquire could outlast the client's 30s abort and surface as a
-        # silent "Request timed out" toast with no server-side signal. Bounding
-        # the wait converts that into an actionable HTTP 503 the client can retry.
-        # We keep the lock (rather than dropping it for this metadata-only write)
-        # because s.save() still races the streaming thread's atomic writer.
-        _move_lock = _get_session_agent_lock(body["session_id"])
-        if not _move_lock.acquire(timeout=5):
-            return j(
-                handler,
-                {"error": "Session is busy (streaming). Please try again in a moment."},
-                status=503,
-            )
-        try:
-            s.project_id = target_pid
-            if target_pid and body.get("sync_workspace"):
-                target_p = next((p for p in load_projects() if p["project_id"] == target_pid), None)
-                if target_p and target_p.get("default_workspace"):
-                    try:
-                        s.workspace = str(resolve_trusted_workspace(target_p["default_workspace"]))
-                    except Exception:
-                        logger.warning("Silent exception in handle_post", exc_info=True)
-                        s.workspace = target_p["default_workspace"]
-            s.save()
-        finally:
-            _move_lock.release()
-        publish_session_list_changed(
-            "session_move",
-            profile=getattr(s, "profile", None),
-            session_id=getattr(s, "session_id", body["session_id"]),
-        )
-        return j(handler, {"ok": True, "session": s.compact()})
-
-    # ── Project CRUD (POST) ──
     if parsed.path == "/api/projects/create":
         try:
             require(body, "name")
@@ -17021,18 +17231,6 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, {"ok": True})
 
     # ── Session import from JSON (POST) ──
-    if parsed.path == "/api/session/import":
-        return _handle_session_import(handler, body)
-
-    # ── Session export to workspace (POST) ──
-    if parsed.path == "/api/session/export/workspace":
-        return _handle_session_export_workspace(handler, body)
-
-    # ── Session import from workspace (POST) ──
-    if parsed.path == "/api/session/import/workspace":
-        return _handle_session_import_workspace(handler, body)
-
-    # ── Self-update (POST) ──
     if parsed.path == "/api/updates/apply":
         target = body.get("target", "")
         if target not in ("webui", "agent"):
@@ -17176,170 +17374,6 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, summarize_update_payload(updates, llm_callback=_llm_update_summary, target=target))
 
     # ── CLI session import (POST) ──
-    if parsed.path == "/api/session/import_cli":
-        return _handle_session_import_cli(handler, body)
-
-    # ── Auth endpoints (POST) ──
-    if parsed.path == "/api/auth/login":
-        from api.auth import (
-            verify_password,
-            create_session,
-            set_auth_cookie,
-            is_auth_enabled,
-        )
-        from api.auth import _check_login_rate, _record_login_attempt, _clear_login_attempts
-
-        if not is_auth_enabled():
-            return j(handler, {"ok": True, "message": "Auth not enabled"})
-        client_ip = handler.client_address[0]
-        if not _check_login_rate(client_ip):
-            return j(
-                handler,
-                {"error": "Too many attempts. Try again in a minute."},
-                status=429,
-            )
-        password = body.get("password", "")
-        if not verify_password(password):
-            _record_login_attempt(client_ip)
-            return bad(handler, "Invalid password", 401)
-        _clear_login_attempts(client_ip)
-        cookie_val = create_session()
-        body = json.dumps({"ok": True}).encode()
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Content-Length", str(len(body)))
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        set_auth_cookie(handler, cookie_val)
-        handler.end_headers()
-        handler.wfile.write(body)
-        return True
-
-    if parsed.path == "/api/auth/passkey/options":
-        from api.auth import _passkey_feature_flag_enabled, is_auth_enabled
-        from api.passkeys import PasskeyError, PasskeyRateLimitError, authentication_options
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled. Set AGY_WEBUI_PASSKEY=1 (or HERMES_WEBUI_PASSKEY=1) or webui_passkey_enabled: true to enable."}, status=404)
-        if not is_auth_enabled():
-            return j(handler, {"error": "Auth not enabled"}, status=400)
-        try:
-            return j(handler, {"ok": True, "publicKey": authentication_options(handler)})
-        except PasskeyRateLimitError as e:
-            return bad(handler, str(e), status=429)
-        except PasskeyError as e:
-            return bad(handler, str(e), status=400)
-
-    if parsed.path == "/api/auth/passkey/login":
-        from api.auth import _passkey_feature_flag_enabled, create_session, is_auth_enabled, set_auth_cookie
-        from api.auth import _check_login_rate, _record_login_attempt
-        from api.passkeys import PasskeyError, finish_login
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled."}, status=404)
-        if not is_auth_enabled():
-            return j(handler, {"error": "Auth not enabled"}, status=400)
-        client_ip = handler.client_address[0]
-        if not _check_login_rate(client_ip):
-            return j(handler, {"error": "Too many attempts. Try again in a minute."}, status=429)
-        try:
-            finish_login(body, handler)
-        except PasskeyError as e:
-            _record_login_attempt(client_ip)
-            return bad(handler, str(e), status=401)
-        cookie_val = create_session()
-        body = json.dumps({"ok": True}).encode()
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Content-Length", str(len(body)))
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        set_auth_cookie(handler, cookie_val)
-        handler.end_headers()
-        handler.wfile.write(body)
-        return True
-
-    if parsed.path == "/api/auth/passkey/register/options":
-        from api.auth import _passkey_feature_flag_enabled
-        from api.passkeys import PasskeyError, PasskeyRateLimitError, registration_options
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled."}, status=404)
-        ok, error, status = _require_passkey_registration_auth(handler)
-        if not ok:
-            return j(handler, {"error": error}, status=status)
-        try:
-            return j(handler, {"ok": True, "publicKey": registration_options(handler)})
-        except PasskeyRateLimitError as e:
-            return bad(handler, str(e), status=429)
-        except PasskeyError as e:
-            return bad(handler, str(e), status=400)
-
-    if parsed.path == "/api/auth/passkey/register":
-        from api.auth import _passkey_feature_flag_enabled
-        from api.passkeys import PasskeyError, finish_registration, registered_credentials
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled."}, status=404)
-        ok, error, status = _require_passkey_registration_auth(handler)
-        if not ok:
-            return j(handler, {"error": error}, status=status)
-        try:
-            result = finish_registration(body, handler)
-            result["credentials"] = registered_credentials()
-            return j(handler, result)
-        except PasskeyError as e:
-            return bad(handler, str(e), status=400)
-
-    if parsed.path == "/api/auth/passkey/delete":
-        from api.auth import _passkey_feature_flag_enabled, get_password_hash
-        from api.passkeys import PasskeyError, delete_credential, registered_credentials
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"error": "Passkey support is disabled."}, status=404)
-        try:
-            credential_id = str(body.get("id") or "")
-            creds = registered_credentials()
-            if get_password_hash() is None and len(creds) <= 1 and any(c.get("id") == credential_id for c in creds):
-                return bad(handler, "Set a password or disable auth before removing the last passkey.", 409)
-            return j(handler, delete_credential(credential_id))
-        except PasskeyError as e:
-            return bad(handler, str(e), status=404)
-
-    if parsed.path == "/api/auth/passkeys":
-        from api.auth import _passkey_feature_flag_enabled
-        from api.passkeys import registered_credentials
-
-        if not _passkey_feature_flag_enabled():
-            return j(handler, {"credentials": [], "disabled": True})
-        return j(handler, {"credentials": registered_credentials()})
-
-    if parsed.path == "/api/auth/logout":
-        from api.auth import clear_auth_cookie, ensure_trusted_auth_session, get_trusted_auth_logout_url, invalidate_session, parse_cookie
-        from api.helpers import clear_profile_cookie
-
-        session_info = ensure_trusted_auth_session(handler)
-        cookie_val = getattr(handler, '_trusted_auth_session_cookie_value', None) or parse_cookie(handler)
-        if cookie_val:
-            invalidate_session(cookie_val)
-        payload = {"ok": True}
-        if session_info and session_info.get("auth_type") == "trusted":
-            logout_url = get_trusted_auth_logout_url()
-            if logout_url:
-                payload["trusted_logout_url"] = logout_url
-        body = json.dumps(payload).encode()
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Content-Length", str(len(body)))
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        clear_auth_cookie(handler)
-        clear_profile_cookie(handler)
-        handler.end_headers()
-        handler.wfile.write(body)
-        return True
-
-    # ── Checkpoints / Rollback (POST) ──
     if parsed.path == "/api/rollback/restore":
         if not body:
             return bad(handler, "request body is required")
