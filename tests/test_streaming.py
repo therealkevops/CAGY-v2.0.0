@@ -40,7 +40,9 @@ from api.streaming import (
     _phase_execute_agent,
     _phase_execute_ephemeral,
     _phase_finalize_writeback,
+    _phase_handle_stream_error,
     _phase_prepare_context,
+    _phase_teardown_stream,
     _run_agent_streaming,
     _sse,
     _sse_set_write_deadline,
@@ -851,6 +853,109 @@ class TestPhaseFinalizeWriteback(unittest.TestCase):
                 os.unlink(tmp_path)
 
 
+class TestPhaseHandleStreamErrorAndTeardown(unittest.TestCase):
+    """Unit tests for _phase_handle_stream_error and _phase_teardown_stream."""
+
+    def test_phase_handle_stream_error_cancelled(self):
+        """Verify _phase_handle_stream_error emits cancel payload when cancel_event is set."""
+        events = []
+        cancel_evt = threading.Event()
+        cancel_evt.set()
+
+        mock_session = MagicMock()
+        mock_session.active_stream_id = "stream-err-cancel"
+        mock_session.session_id = "sess-err-cancel"
+
+        ctx = StreamTurnContext(
+            session_id="sess-err-cancel",
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id="stream-err-cancel",
+            s=mock_session,
+            cancel_event=cancel_evt,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        with unittest.mock.patch("api.streaming._finalize_cancelled_turn") as mock_finalize:
+            _phase_handle_stream_error(ctx, RuntimeError("stream interrupted"))
+            mock_finalize.assert_called_once()
+            self.assertTrue(any(ev[0] == "cancel" for ev in events))
+            self.assertFalse(any(ev[0] == "apperror" for ev in events))
+
+    def test_phase_handle_stream_error_emits_apperror(self):
+        """Verify _phase_handle_stream_error appends error message and emits apperror payload."""
+        events = []
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_f:
+            tmp_path = tmp_f.name
+
+        session_id = "sess-err-app"
+        stream_id = "stream-err-app"
+        s = Session(session_id=session_id, path=tmp_path)
+        s.active_stream_id = stream_id
+        s.messages = [{"role": "user", "content": "hello"}]
+
+        ctx = StreamTurnContext(
+            session_id=session_id,
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+            s=s,
+            put=lambda ev, d: events.append((ev, d)),
+        )
+
+        try:
+            with unittest.mock.patch("api.streaming.append_turn_journal_event_for_stream"):
+                _phase_handle_stream_error(ctx, RuntimeError("Quota exceeded: 429 insufficient credits"))
+
+            self.assertTrue(any(ev[0] == "apperror" for ev in events))
+            apperror_payload = next(ev[1] for ev in events if ev[0] == "apperror")
+            self.assertEqual(apperror_payload.get("type"), "quota_exhausted")
+            self.assertTrue(any(m.get("_error") is True for m in s.messages if isinstance(m, dict)))
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_phase_teardown_stream_cleans_registries(self):
+        """Verify _phase_teardown_stream releases locks, registers, and memory flags."""
+        stream_id = "stream-teardown-test-1"
+        session_id = "sess-teardown-test-1"
+
+        with STREAMS_LOCK:
+            STREAMS[stream_id] = queue.Queue()
+            CANCEL_FLAGS[stream_id] = threading.Event()
+            from api.config import (
+                STREAM_LIVE_TOOL_CALLS,
+                STREAM_PARTIAL_TEXT,
+                STREAM_REASONING_TEXT,
+            )
+            STREAM_PARTIAL_TEXT[stream_id] = "partial"
+            STREAM_REASONING_TEXT[stream_id] = "reasoning"
+            STREAM_LIVE_TOOL_CALLS[stream_id] = [{"name": "test"}]
+
+        ctx = StreamTurnContext(
+            session_id=session_id,
+            msg_text="hello",
+            model="gemini-3.8-flash",
+            workspace="/tmp/ws",
+            stream_id=stream_id,
+        )
+
+        with unittest.mock.patch("api.streaming.meter") as mock_meter, \
+             unittest.mock.patch("api.background_process.drain_deferred_wakeups_for_session"):
+            mock_meter.return_value = MagicMock()
+            _phase_teardown_stream(ctx)
+
+        with STREAMS_LOCK:
+            self.assertNotIn(stream_id, STREAMS)
+            self.assertNotIn(stream_id, CANCEL_FLAGS)
+            self.assertNotIn(stream_id, STREAM_PARTIAL_TEXT)
+            self.assertNotIn(stream_id, STREAM_REASONING_TEXT)
+            self.assertNotIn(stream_id, STREAM_LIVE_TOOL_CALLS)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

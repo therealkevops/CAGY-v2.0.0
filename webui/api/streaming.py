@@ -11961,6 +11961,566 @@ def _phase_finalize_writeback(ctx: StreamTurnContext) -> None:
         _maybe_schedule_title_refresh(s, put, agent)
 
 
+def _phase_handle_stream_error(ctx: StreamTurnContext, e: Exception) -> None:
+    """Classify provider error, snapshot partial turn state, and emit SSE error or cancel."""
+    logging.exception("[webui] stream error")
+    err_str = str(e)
+    # Sanitize HTML from provider error responses — some providers return
+    # full HTML pages (e.g. nginx "404 page not found") instead of JSON errors.
+    # Strip HTML tags to avoid rendering raw markup in the chat message.
+    _stripped = re.sub(r'<[^>]+>', ' ', err_str)
+    _stripped = re.sub(r'\s+', ' ', _stripped).strip()
+    if _stripped != err_str:
+        err_str = _stripped
+    _classification = _classify_provider_error(err_str, e)
+    _exc_is_credential_pool_empty = _classification['type'] == 'credential_pool_empty'
+
+    s = ctx.s
+    stream_id = ctx.stream_id
+    session_id = ctx.session_id
+    ephemeral = ctx.ephemeral
+    cancel_event = ctx.cancel_event or threading.Event()
+    put = ctx.put
+    _agent_lock = ctx.agent_lock or _get_session_agent_lock(getattr(s, 'session_id', session_id))
+    _checkpoint_stop = ctx.checkpoint_stop
+    _ckpt_thread = ctx.ckpt_thread
+    _turn_pending_source = ctx.turn_pending_source
+    _turn_route_model = ctx.turn_route_model or ctx.model
+    _turn_route_provider = ctx.turn_route_provider or ctx.model_provider
+
+    if cancel_event.is_set():
+        if s is not None:
+            if _checkpoint_stop is not None:
+                _checkpoint_stop.set()
+            if _ckpt_thread is not None:
+                _ckpt_thread.join(timeout=15)
+            _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
+            with _lock_ctx:
+                if (
+                    not ephemeral
+                    and _turn_pending_source == 'process_wakeup'
+                    and _exc_is_credential_pool_empty
+                ):
+                    # Merge the pause into the CURRENT session object under
+                    # the canonical lock. The worker-held ``s`` may be a
+                    # detached snapshot (LRU-evicted + replaced by a
+                    # distinct object through which a successor was
+                    # admitted); saving it would serialize stale state over
+                    # the successor even though the generation-guarded
+                    # finalizer below later no-ops. The pause is
+                    # session-wide suppression metadata that must survive
+                    # regardless of stream ownership (#6623 re-gate).
+                    _merge_process_wakeup_pause_into_current_session(
+                        s,
+                        classification=_classification['type'],
+                        model=_turn_route_model,
+                        provider=_turn_route_provider,
+                    )
+                _finalize_cancelled_turn(s, ephemeral=ephemeral, stream_id=stream_id)
+                if not ephemeral:
+                    try:
+                        append_turn_journal_event_for_stream(
+                            s.session_id,
+                            stream_id,
+                            {
+                                "event": "interrupted",
+                                "created_at": time.time(),
+                                "reason": "cancelled",
+                            },
+                        )
+                    except Exception:
+                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+        put('cancel', _cancel_event_payload('Cancelled by user'))
+        return
+
+    _exc_is_quota = _classification['type'] == 'quota_exhausted'
+    # Exception quota text still includes: 'more credits' in _exc_lower, 'can only afford' in _exc_lower, 'fewer max_tokens' in _exc_lower.
+    # Rate-limit detection remains guarded as: (not _exc_is_quota).
+    _exc_is_rate_limit = (_classification['type'] == 'rate_limit') and (not _exc_is_quota)
+    _exc_is_auth = _classification['type'] == 'auth_mismatch'  # detects '401' and 'unauthorized' via _classify_provider_error.
+    _exc_is_not_found = _classification['type'] == 'model_not_found'  # detects '404', 'not found', 'does not exist', and 'invalid model'.
+    _exc_is_cancelled = _classification['type'] == 'cancelled'
+    _exc_is_interrupted = _classification['type'] == 'interrupted'
+    _exc_is_compression_exhausted = _classification['type'] == 'compression_exhausted'
+    _exc_is_compression_snapshot_stale = (
+        _classification['type'] == 'compression_snapshot_stale'
+    )
+
+    # The user hint still points to Settings / `hermes model` from _classify_provider_error().
+    if _exc_is_quota:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_credential_pool_empty:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_rate_limit:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_auth:
+        _heal_stale_classification = None
+        if not ctx.self_healed:
+            # ── Credential self-heal on 401 (#1401) ──
+            # Bind the session's profile so the self-heal re-resolve AND the
+            # custom-provider override below read one profile-owned snapshot
+            # (finding #3): otherwise a named profile's endpoint pairs with
+            # the default profile's key.
+            from api import profiles as _profiles_api
+            with _profiles_api.profile_scope_for_detached_worker(
+                ctx.resolved_profile_name, "credential self-heal", logger_override=logger
+            ):
+                _heal_rt = _attempt_credential_self_heal(
+                    ctx.resolved_provider or '', session_id, _agent_lock,
+                    target_model=ctx.resolved_model,
+                )
+            if _heal_rt is not None:
+                logger.info('[webui] self-heal (except path): retrying stream after credential refresh')
+                ctx.self_healed = True
+                _rt = _heal_rt
+                resolved_api_key = _heal_rt.get('api_key')
+                resolved_provider = ctx.resolved_provider or _heal_rt.get('provider')
+                configured_base_url = ctx.resolved_base_url
+                resolved_base_url = _runtime_preferred_base_url(
+                    _heal_rt, resolved_provider, configured_base_url
+                )
+                # Preserve the session's original pre-canonicalization provider
+                # identity (captured at first resolve) so a named custom:slug
+                # retry can still select its exact vision-capability entry.
+                # Only initialize when empty.
+                if not ctx.session_requested_provider:
+                    ctx.session_requested_provider = resolved_provider
+                resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
+                    resolved_provider, resolved_api_key, resolved_base_url,
+                    profile_name=ctx.resolved_profile_name,
+                )
+                ctx.resolved_provider = resolved_provider
+                ctx.resolved_api_key = resolved_api_key
+                ctx.resolved_base_url = resolved_base_url
+
+                # Build a fresh agent with the new credentials
+                _heal_kwargs = dict(ctx.agent_kwargs)
+                _heal_kwargs['api_key'] = resolved_api_key
+                _heal_kwargs['base_url'] = resolved_base_url
+                _heal_kwargs['model'] = ctx.resolved_model
+                _heal_kwargs['provider'] = resolved_provider
+                _replace_session_db_in_kwargs(_heal_kwargs, ctx.state_db_path)
+                if 'credential_pool' in ctx.agent_params:
+                    _heal_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
+                _heal_agent = ctx.ai_agent_cls(**_heal_kwargs)
+                ctx.agent = _heal_agent
+                with STREAMS_LOCK:
+                    AGENT_INSTANCES[stream_id] = _heal_agent
+                from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
+                with _SAC2_L:
+                    _SAC2[session_id] = (_heal_agent, ctx.agent_sig)
+                    _SAC2.move_to_end(session_id)
+                # Retry the conversation
+                if ctx.callbacks:
+                    ctx.callbacks.token_sent = False
+                try:
+                    (
+                        _heal_context_messages,
+                        _heal_conversation_history_revision,
+                    ) = _refresh_context_and_revision_from_state_db_helper(ctx)
+                    _heal_kwargs2 = _build_run_conversation_kwargs(
+                        _heal_agent.run_conversation,
+                        user_message=ctx.user_message,
+                        system_message=ctx.workspace_system_msg,
+                        conversation_history=_sanitize_messages_for_agent(
+                            _heal_context_messages,
+                            cfg=ctx.cfg,
+                            effective_model=ctx.resolved_model,
+                            effective_provider=resolved_provider,
+                            effective_base_url=resolved_base_url,
+                            requested_provider=(ctx.session_requested_provider or ""),
+                        ),
+                        conversation_history_revision=_heal_conversation_history_revision,
+                        task_id=session_id,
+                        persist_user_message=ctx.msg_text,
+                        persist_user_timestamp=getattr(s, 'pending_started_at', None),
+                    )
+                    if ctx.moa_config is not None:
+                        _heal_kwargs2["moa_config"] = ctx.moa_config
+                    ctx.result_partial_pre_call_context = list(_heal_context_messages)
+                    _heal_result = _heal_agent.run_conversation(**_heal_kwargs2)
+                    ctx.result = _heal_result
+                    ctx.active_turn_identity = _resolve_active_turn_authority(
+                        ctx.active_turn_identity,
+                        result=_heal_result,
+                        agent=_heal_agent,
+                    )
+                    _heal_stale_classification = None
+                    if _result_reports_compression_snapshot_stale(_heal_result):
+                        _heal_stale_classification = _classify_provider_error(
+                            '',
+                            result=_heal_result,
+                        )
+                    elif _self_heal_result_succeeded(
+                        _heal_result,
+                        _heal_context_messages,
+                        ctx.active_turn_identity,
+                        ctx.msg_text,
+                    ):
+                        # Retry succeeded — persist the result normally.
+                        _done_session_payload = None
+                        if s is not None:
+                            if _checkpoint_stop is not None:
+                                _checkpoint_stop.set()
+                            if _ckpt_thread is not None:
+                                _ckpt_thread.join(timeout=15)
+                            _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
+                            with _lock_ctx:
+                                if not ephemeral and not _stream_writeback_is_current(s, stream_id):
+                                    logger.info(
+                                        "Skipping stale stream self-heal writeback for session %s stream %s; active_stream_id=%s",
+                                        getattr(s, 'session_id', session_id),
+                                        stream_id,
+                                        getattr(s, 'active_stream_id', None),
+                                    )
+                                    return
+                                _result_messages = _heal_result.get('messages')
+                                if _result_messages is None:
+                                    _result_messages = ctx.previous_context_messages
+                                _result_messages = _settle_result_messages(
+                                    s,
+                                    ctx.previous_messages,
+                                    ctx.previous_owner_context_messages,
+                                    _result_messages,
+                                    ctx.msg_text,
+                                    _turn_pending_source,
+                                    ctx.active_turn_identity,
+                                )
+                                # Terminal self-heal success must finalize the
+                                # turn exactly once: clear the pending markers
+                                # so the last-resort recovery sync in the outer
+                                # ``finally`` cannot re-materialize this user
+                                # turn and append a spurious "Response
+                                # interrupted" marker after the settled answer.
+                                _live_tool_calls = ctx.callbacks.live_tool_calls if ctx.callbacks else []
+                                s.tool_calls = _extract_tool_calls_from_messages(
+                                    s.messages,
+                                    live_tool_calls=_live_tool_calls,
+                                )
+                                s.active_stream_id = None
+                                s.pending_user_message = None
+                                s.pending_attachments = []
+                                s.pending_started_at = None
+                                s.pending_user_source = None
+                                s.save()
+                                _done_session_payload = redact_session_data(
+                                    _session_payload_with_full_messages(
+                                        s, tool_calls=s.tool_calls
+                                    )
+                                )
+                        if _done_session_payload is not None:
+                            put('done', {
+                                'session': _done_session_payload,
+                                'usage': {'input_tokens': 0, 'output_tokens': 0},
+                            })
+                            put('stream_end', {'session_id': session_id})
+                        logger.info('[webui] self-heal (except path): retry succeeded')
+                        return  # skip error emission
+                except Exception as _retry_exc2:
+                    logger.warning('[webui] self-heal (except path): retry failed: %s', _retry_exc2)
+                    # Fall through to emit the original error
+        if _heal_stale_classification is not None:
+            _exc_label = _heal_stale_classification['label']
+            _exc_type = _heal_stale_classification['type']
+            _exc_hint = _heal_stale_classification['hint']
+            _exc_is_compression_snapshot_stale = True
+        else:
+            # Self-heal didn't apply or retry failed — emit the auth error.
+            _exc_label, _exc_type, _exc_hint = (
+                'Authentication error', 'auth_mismatch',
+                'The selected model may not be supported by your configured provider. '
+                'Run `hermes model` in your terminal to switch providers, then restart the WebUI.',
+            )
+    elif _exc_is_not_found:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_cancelled or _exc_is_interrupted:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_compression_snapshot_stale:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    elif _exc_is_compression_exhausted:
+        _exc_label, _exc_type, _exc_hint = (
+            _classification['label'], _classification['type'], _classification['hint'],
+        )
+    else:
+        _exc_label, _exc_type, _exc_hint = 'Error', 'error', ''
+
+    if _exc_is_compression_snapshot_stale:
+        # The typed exception may carry expected/observed revision details for
+        # diagnostics. Keep those out of the persisted transcript and SSE UI.
+        err_str = (
+            'The conversation changed while context compression was being prepared.'
+        )
+    _error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)
+    if s is not None:
+        if _checkpoint_stop is not None:
+            _checkpoint_stop.set()
+        if _ckpt_thread is not None:
+            _ckpt_thread.join(timeout=15)
+        # Persist the error so it survives page reload.
+        # _error=True ensures _sanitize_messages_for_api excludes it from subsequent
+        # API calls so the LLM never sees its own error as prior context on the next turn.
+        _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
+        with _lock_ctx:
+            if not ephemeral and not _stream_writeback_is_current(s, stream_id):
+                if _turn_pending_source == 'process_wakeup':
+                    # #6623 re-gate: merge the pause into the CURRENT
+                    # session object under the canonical lock — never save
+                    # the worker's detached snapshot. The helper fails
+                    # closed (no write) when the current object cannot be
+                    # resolved.
+                    _merge_process_wakeup_pause_into_current_session(
+                        s,
+                        classification=_exc_type,
+                        model=_turn_route_model,
+                        provider=_turn_route_provider,
+                    )
+                logger.info(
+                    "Skipping stale stream error writeback for session %s stream %s; active_stream_id=%s",
+                    getattr(s, 'session_id', session_id),
+                    stream_id,
+                    getattr(s, 'active_stream_id', None),
+                )
+                return
+
+            if _turn_pending_source == 'process_wakeup':
+                _recorded_pause = record_process_wakeup_provider_unavailable_pause(
+                    s,
+                    classification=_exc_type,
+                    model=_turn_route_model,
+                    provider=_turn_route_provider,
+                )
+                # #3929 UX: disclose the pause in the error card ONLY when a
+                # pause was actually recorded (credential-pool exhaustion),
+                # keeping the SSE payload hint in sync with the persisted bubble.
+                if _recorded_pause:
+                    _exc_hint = (
+                        (_exc_hint + ' ' if _exc_hint else '')
+                        + 'Automatic retries for this conversation are paused until you '
+                        + 'send a message, switch the model/provider, or fix the credentials.'
+                    )
+                    _error_payload['hint'] = _exc_hint
+            _turn_duration = _terminal_turn_duration(s)
+            # Keep the canonical one-argument error-settlement shape pinned
+            # by #1361/#2136. The helper derives the same stream-owned turn
+            # token from active_stream_id + pending_started_at when the
+            # explicit identity is omitted, so repeated prompts remain
+            # fenced without weakening pending-turn durability.
+            _materialize_pending_user_turn_before_error(s)
+            s.active_stream_id = None
+            s.pending_user_message = None
+            s.pending_attachments = []
+            s.pending_started_at = None
+            s.pending_user_source = None
+            try:
+                _snapshot_and_append_partial_on_error(
+                    s,
+                    stream_id,
+                    active_turn_identity=ctx.active_turn_identity,
+                )
+                _append_result_partial_on_error(
+                    s,
+                    ctx.result,
+                    ctx.result_partial_pre_call_context,
+                    ctx.msg_text,
+                    active_turn_identity=ctx.active_turn_identity,
+                )
+            except Exception:
+                logger.debug("Failed to snapshot partials on error for %s", stream_id, exc_info=True)
+            _error_message = {
+                'role': 'assistant',
+                'content': f'**{_exc_label}:** {_error_payload.get("message") or err_str}' + (f'\n\n*{_exc_hint}*' if _exc_hint else ''),
+                'timestamp': int(time.time()),
+                '_error': True,
+            }
+            if _turn_duration is not None:
+                _error_message['_turnDuration'] = _turn_duration
+            if _exc_type == 'compression_exhausted':
+                _recovery = stamp_compression_exhausted_recovery(
+                    s,
+                    message=_error_payload.get('message') or err_str,
+                    details=_error_payload.get('details') or '',
+                )
+                _error_message['_compressionRecovery'] = _recovery
+                _error_payload['compression_recovery'] = _recovery
+                _error_payload['recommended_recovery_action'] = _recovery.get('recommended_action')
+            if _error_payload.get('details'):
+                _error_message['provider_details'] = _error_payload['details']
+            if _exc_type == 'cancelled':
+                _error_message['provider_details_label'] = 'Cancellation details'
+            elif _exc_type == 'interrupted':
+                _error_message['provider_details_label'] = 'Interruption details'
+            s.messages.append(_error_message)
+            try:
+                s.save()
+            except Exception:
+                logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
+                pass
+            if not ephemeral:
+                try:
+                    append_turn_journal_event_for_stream(
+                        s.session_id,
+                        stream_id,
+                        {
+                            "event": "interrupted",
+                            "created_at": time.time(),
+                            "reason": _exc_type,
+                        },
+                    )
+                except Exception:
+                    logger.debug("Failed to append interrupted turn journal event", exc_info=True)
+        _error_payload['session_id'] = getattr(s, 'session_id', session_id)
+        _error_payload['old_session_id'] = session_id
+    put('apperror', _error_payload)
+
+
+def _phase_teardown_stream(ctx: StreamTurnContext) -> None:
+    """Tear down stream metrics, checkpointing, registries, and thread context."""
+    stream_id = ctx.stream_id
+    session_id = ctx.session_id
+    # #4633/#2476: symmetric metering teardown. begin_session() (top of the
+    # outer try) had no paired end_session(), so zero-token turns leaked a
+    # _sessions[stream_id] entry that get_stats() pruning never reclaims (its
+    # criterion requires first_token_ts > 0). end_session() is idempotent —
+    # it just pops _sessions[stream_id]; the metering payload is unchanged.
+    # _metering_stop.set() deterministically stops the ticker (the inner
+    # finally also sets it on the normal path; setting twice is harmless).
+    try:
+        # 0: end_session() currently ignores final_output_tokens — it only
+        # pops _sessions[stream_id]. If it is ever extended to consume the
+        # count (e.g. persisting final output tokens to a billing ledger),
+        # this teardown caller will need to supply the real total; the outer
+        # finally doesn't have easy access to it today.
+        meter().end_session(stream_id, 0)
+    except Exception:
+        logger.debug("Failed to end metering session for stream %s", stream_id, exc_info=True)
+    if ctx.usage_collector:
+        ctx.usage_collector.metering_stop.set()
+    # Stop the periodic checkpoint thread before the final recovery path.
+    # The checkpoint thread also uses the per-session lock; joining it first
+    # avoids contending with checkpoint writes during stale-pending repair.
+    _checkpoint_stop = ctx.checkpoint_stop
+    _ckpt_thread = ctx.ckpt_thread
+    if _checkpoint_stop is not None:
+        _checkpoint_stop.set()
+    if _ckpt_thread is not None:
+        _ckpt_thread.join(timeout=15)
+    s = ctx.s
+    _agent_lock = ctx.agent_lock or _get_session_agent_lock(getattr(s, 'session_id', session_id))
+    if (s is not None
+            and getattr(s, 'active_stream_id', None) == stream_id
+            and getattr(s, 'pending_user_message', None)):
+        update_active_run(stream_id, phase="finalizing")
+        _last_resort_sync_from_core(s, stream_id, _agent_lock)
+    _clear_thread_env()  # TD1: always clear thread-local context
+    _streaming_cron_profile_home_token = ctx.streaming_cron_profile_home_token
+    if _streaming_cron_profile_home_token is not None:
+        _STREAMING_CRON_PROFILE_HOME.reset(_streaming_cron_profile_home_token)
+    _restore_streaming_skill_home_modules = ctx.restore_streaming_skill_home_modules
+    _streaming_skill_home_snapshot = ctx.streaming_skill_home_snapshot
+    if _restore_streaming_skill_home_modules and _streaming_skill_home_snapshot is not None:
+        with _ENV_LOCK:
+            try:
+                from api.profiles import restore_skill_home_modules
+                if restore_skill_home_modules is not None:
+                    restore_skill_home_modules(_streaming_skill_home_snapshot)
+            except Exception:
+                logger.debug("Failed to restore skill module state for streaming profile", exc_info=True)
+            ctx.streaming_skill_home_snapshot = None
+            ctx.restore_streaming_skill_home_modules = False
+    _acquired_streaming_skill_home_patch_lock = ctx.acquired_streaming_skill_home_patch_lock
+    if _acquired_streaming_skill_home_patch_lock:
+        try:
+            from api.profiles import _SKILL_HOME_MODULE_PATCH_LOCK
+            if _SKILL_HOME_MODULE_PATCH_LOCK is not None:
+                _SKILL_HOME_MODULE_PATCH_LOCK.release()
+        except Exception:
+            pass
+        ctx.acquired_streaming_skill_home_patch_lock = False
+    _streaming_hermes_home_override_ctx = ctx.streaming_hermes_home_override_ctx
+    _reset_streaming_hermes_home_override(*_streaming_hermes_home_override_ctx)
+    # xsession wakeup misroute root fix (Option 1): restore the per-turn
+    # session-identity context-locals (reset-token semantics). MUST run on
+    # every exit path so a reused thread-pool worker leaks no identity and
+    # CLI/cron env fallback resumes — same lifecycle slot as the env
+    # restore above.
+    _turn_session_identity_tokens = ctx.turn_session_identity_tokens
+    _reset_turn_session_identity(_turn_session_identity_tokens)
+    with STREAMS_LOCK:
+        STREAMS.pop(stream_id, None)
+        CANCEL_FLAGS.pop(stream_id, None)
+        AGENT_INSTANCES.pop(stream_id, None)  # Clean up agent instance reference
+        STREAM_PARTIAL_TEXT.pop(stream_id, None)  # Clean up partial text buffer (#893)
+        STREAM_REASONING_TEXT.pop(stream_id, None)  # Clean up reasoning trace (#1361 §A)
+        STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)  # Clean up tool calls (#1361 §B)
+        STREAM_GOAL_RELATED.pop(stream_id, None)  # Clean up goal-related flag (#1932)
+        STREAM_LAST_EVENT_ID.pop(stream_id, None)  # Clean up event_id pointer (stage-364)
+        unregister_active_run(stream_id)
+        # Clean up the stream-owner registry so stale stream_id→session_id
+        # mappings do not accumulate over thousands of completed streams (#6351).
+        unregister_stream_owner(stream_id)
+        # Release the session's writeback-ownership entry only while this
+        # stream still owns it (#6623 re-gate): a successor admitted after
+        # cancel must keep its registry claim.
+        try:
+            clear_session_writeback_owner_if_owned(session_id, stream_id)
+        except Exception:
+            logger.debug(
+                "Failed to clear session writeback owner for stream %s", stream_id,
+                exc_info=True,
+            )
+        # NOTE: do NOT discard PENDING_GOAL_CONTINUATION here. The marker
+        # is set by goal_continue (line ~3328) inside the SAME function
+        # call and consumed atomically by `_start_chat_stream_for_session`
+        # in routes.py (around line 6522) when the next stream starts.
+        # Discarding here in the streaming worker's `finally` would
+        # almost always race ahead of the frontend's SSE-receive →
+        # POST /api/chat/start round-trip and erase the marker before
+        # the next stream can read it, breaking the goal-continuation
+        # chain. Stage-326 critical fix per Opus advisor review.
+
+    # ── Defer-path fix: turn-teardown idle-hook ────────────────────────
+    # The session has just transitioned active→idle: unregister_active_run
+    # above cleared this stream's ACTIVE_RUNS row (under ACTIVE_RUNS_LOCK,
+    # independent of STREAMS_LOCK), so _session_has_active_turn() is now
+    # False for this session unless a *different* stream is still active
+    # (cancel/reconnect — drain_deferred_wakeups_for_session guards on
+    # that and leaves the marker for the later teardown). A FAST
+    # background task that completed while this turn was tearing down was
+    # deferred by api/background_process._process_one (it could not start
+    # a turn → would 409) and its wakeup_prompt persisted in
+    # DEFERRED_PROCESS_WAKEUPS. For an autonomous agent there is no next
+    # user turn, so the PR #2279 next-turn drain never runs; without this
+    # hook the deferred wakeup is lost forever (the Test B failure). This
+    # makes the busy-at-completion case symmetric with the idle case:
+    # idle now → fire now (Option Z idle branch); busy now → fire here at
+    # turn-end. claim_deferred_wakeups pops atomically, so this is
+    # idempotent with the next-turn drain (no double-fire) and the wakeup
+    # turn's own teardown finds nothing claimed (no wakeup loop). The
+    # drain spawns its own daemon thread, so teardown never blocks.
+    try:
+        from api.background_process import drain_deferred_wakeups_for_session
+
+        drain_deferred_wakeups_for_session(session_id)
+    except Exception:
+        logger.debug(
+            "turn-teardown deferred-wakeup drain failed for session %s",
+            session_id,
+            exc_info=True,
+        )
+
+
 def _run_agent_streaming(
     session_id,
     msg_text,
@@ -11995,6 +12555,7 @@ def _run_agent_streaming(
                 exc_info=True,
             )
         return
+
     register_active_run(
         stream_id,
         session_id=session_id,
@@ -12010,6 +12571,7 @@ def _run_agent_streaming(
     except Exception:
         run_journal = None
         logger.debug("Failed to initialize run journal for stream %s", stream_id, exc_info=True)
+
     if not ephemeral:
         try:
             append_turn_journal_event_for_stream(
@@ -12019,22 +12581,6 @@ def _run_agent_streaming(
             )
         except Exception:
             logger.debug("Failed to append worker_started turn journal event", exc_info=True)
-    s = None
-    _rt = {}
-    old_cwd = None
-    old_exec_ask = None
-    old_session_key = None
-    old_session_id = None
-    old_session_platform = None
-    old_hermes_home = None
-    old_profile_env = {}
-    result = None
-    _result_partial_pre_call_context = []
-
-    # MCP discovery moved to AFTER the per-profile HERMES_HOME mutation below
-    # (was here at v0.51.30) — the previous placement always read the default
-    # profile's mcp_servers because os.environ['HERMES_HOME'] hadn't been
-    # rewritten yet.  See https://github.com/nesquena/hermes-webui/issues/1968.
 
     # Sprint 10: create a cancel event for this stream
     cancel_event = threading.Event()
@@ -12043,8 +12589,6 @@ def _run_agent_streaming(
         STREAM_PARTIAL_TEXT[stream_id] = ''  # start accumulating partial text (#893)
         STREAM_REASONING_TEXT[stream_id] = ''  # start accumulating reasoning trace (#1361 §A)
         STREAM_LIVE_TOOL_CALLS[stream_id] = []  # start accumulating tool calls (#1361 §B)
-
-    agent = None
 
     ctx = StreamTurnContext(
         session_id=session_id,
@@ -12065,24 +12609,14 @@ def _run_agent_streaming(
     )
     usage_collector = StreamingUsageCollector(
         ctx,
-        agent_getter=lambda: agent,
-        session_getter=lambda: s,
+        agent_getter=lambda: ctx.agent,
+        session_getter=lambda: ctx.s,
     )
     ctx.usage_collector = usage_collector
 
-    # Bind closures to usage_collector for backward-compatibility with downstream phases
-    _live_usage_snapshot = usage_collector.snapshot
-    _seed_live_prompt_estimate = usage_collector.seed_live_prompt_estimate
-    _bump_live_prompt_estimate = usage_collector.bump_live_prompt_estimate
-    _live_prompt_estimate_seen_ids = usage_collector.seen_tool_call_ids
-    _metering_stop = usage_collector.metering_stop
-    _metering_thread = usage_collector.metering_thread
-
-    _success_writeback_committed = False
-
     def put(event, data):
         # If cancelled, drop all further events except the cancel event itself
-        if cancel_event.is_set() and not _success_writeback_committed and event not in ('cancel', 'apperror'):
+        if cancel_event.is_set() and not ctx.success_writeback_committed and event not in ('cancel', 'apperror'):
             return
         event_id = None
         if run_journal is not None:
@@ -12110,115 +12644,18 @@ def _run_agent_streaming(
             logger.debug("Failed to put event to queue")
     ctx.put = put
 
-    # #5940: capture a terminal (non-retryable) provider error the Agent emits via
-    # its lifecycle status_callback. The Agent aborts a non-retryable API error
-    # (e.g. HTTP 400 "invalid model / no credentials") with
-    # `_emit_status("❌ Non-retryable error (HTTP <code>): <detail>")` but the run
-    # result / agent._last_error are empty for that path, so turn-completion below
-    # fell through to the misleading `no_response` "silent rate limit, try again"
-    # message. Stash the emitted terminal error here (single-element list = closure
-    # write without nonlocal) so it can seed `_last_err` and let the classifier
-    # surface the real, actionable cause (model_not_found / auth_mismatch).
-    _captured_terminal_error = ctx.captured_terminal_error
-    _agent_status_callback = _make_agent_status_callback(ctx)
-
-    _turn_session_identity_tokens = None
-    _streaming_cron_profile_home_token = None
-    _turn_pending_source = 'webui'
-    _streaming_hermes_home_override_ctx = (None, None, False)
-    _streaming_skill_home_snapshot = None
-    _restore_streaming_skill_home_modules = False
-    _acquired_streaming_skill_home_patch_lock = False
-    _checkpoint_stop = None
-    _ckpt_thread = None
-    _agent_lock = None
     try:
         meter().begin_session(stream_id)
-        _metering_thread.start()
+        if ctx.usage_collector:
+            ctx.usage_collector.metering_thread.start()
         try:
             if not _phase_prepare_context(ctx):
                 return
-
-            # Expose to current scope for downstream phases
-            s = ctx.s
-            agent = ctx.agent
-            _agent_lock = ctx.agent_lock
-            _checkpoint_stop = ctx.checkpoint_stop
-            _ckpt_thread = ctx.ckpt_thread
-            _run_conversation_kwargs = ctx.run_conversation_kwargs
-            _active_turn_identity = ctx.active_turn_identity
-            _persistent_state_before = ctx.persistent_state_before
-            _previous_messages = ctx.previous_messages
-            _previous_owner_context_messages = ctx.previous_owner_context_messages
-            _previous_context_messages = ctx.previous_context_messages
-            _conversation_history_revision = ctx.conversation_history_revision
-            _pre_compression_count = ctx.pre_compression_count
-            _turn_started_at = ctx.turn_started_at
-            _resolved_profile_name = ctx.resolved_profile_name
-            _profile_home = ctx.profile_home
-            _cfg = ctx.cfg
-            resolved_model = ctx.resolved_model
-            resolved_provider = ctx.resolved_provider
-            resolved_base_url = ctx.resolved_base_url
-            configured_base_url = resolved_base_url
-            resolved_api_key = ctx.resolved_api_key
-            _session_requested_provider = ctx.session_requested_provider
-            _approval_registered = ctx.approval_registered
-            _unreg_notify = ctx.unreg_notify
-            _cleanup_gateway_pending_mirror = ctx.cleanup_gateway_pending_mirror
-            _clarify_registered = ctx.clarify_registered
-            _unreg_clarify_notify = ctx.unreg_clarify_notify
-            _state_db_path = ctx.state_db_path
-            user_message = ctx.user_message
-            workspace_system_msg = ctx.workspace_system_msg
-            _agent_params = ctx.agent_params
-            _agent_kwargs = ctx.agent_kwargs
-            _agent_sig = ctx.agent_sig
-            _AIAgent = ctx.ai_agent_cls
-            callbacks = ctx.callbacks
-            on_token = callbacks.on_token
-            on_reasoning = callbacks.on_reasoning
-            on_interim_assistant = callbacks.on_interim_assistant
-            on_tool = callbacks.on_tool
-            on_tool_start = callbacks.on_tool_start
-            on_tool_complete = callbacks.on_tool_complete
-            _flush_reasoning_buffer = callbacks.flush_reasoning_buffer
-            _reasoning_segments = callbacks.reasoning_segments
-            _live_tool_calls = callbacks.live_tool_calls
-            _checkpoint_activity = ctx.checkpoint_activity
-            _token_sent = callbacks.token_sent
-            old_cwd = ctx.old_cwd
-            old_exec_ask = ctx.old_exec_ask
-            old_agy_exec_ask = ctx.old_agy_exec_ask
-            old_session_key = ctx.old_session_key
-            old_agy_session_key = ctx.old_agy_session_key
-            old_session_id = ctx.old_session_id
-            old_agy_session_id = ctx.old_agy_session_id
-            old_session_platform = ctx.old_session_platform
-            old_agy_session_platform = ctx.old_agy_session_platform
-            old_session_chat_id = ctx.old_session_chat_id
-            old_agy_session_chat_id = ctx.old_agy_session_chat_id
-            old_hermes_home = ctx.old_hermes_home
-            old_profile_env = ctx.old_profile_env
-            _turn_session_identity_tokens = ctx.turn_session_identity_tokens
-            _streaming_cron_profile_home_token = ctx.streaming_cron_profile_home_token
-            _turn_pending_source = ctx.turn_pending_source
-            _streaming_hermes_home_override_ctx = ctx.streaming_hermes_home_override_ctx
-            _streaming_skill_home_snapshot = ctx.streaming_skill_home_snapshot
-            _restore_streaming_skill_home_modules = ctx.restore_streaming_skill_home_modules
-            _acquired_streaming_skill_home_patch_lock = ctx.acquired_streaming_skill_home_patch_lock
-            _result_partial_pre_call_context = ctx.result_partial_pre_call_context
-            _self_healed = ctx.self_healed
-
-            def _refresh_context_and_revision_from_state_db():
-                return _refresh_context_and_revision_from_state_db_helper(ctx)
             if ctx.ephemeral:
                 _phase_execute_ephemeral(ctx)
                 return
-
             if not _phase_execute_agent(ctx):
                 return
-
             _phase_finalize_writeback(ctx)
         finally:
             # #4729: guaranteed-exit flush of any reasoning tail still buffered. On the
@@ -12228,554 +12665,20 @@ def _run_agent_streaming(
             # loses its last coalesced chunk. Runs before stream teardown; STREAM_REASONING_TEXT
             # already mirrors the full text for persistence regardless.
             try:
-                _flush_reasoning_buffer()
+                if ctx.callbacks:
+                    ctx.callbacks.flush_reasoning_buffer()
             except Exception:
                 logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
                 pass
             # Stop the live metering ticker
-            _metering_stop.set()
+            if ctx.usage_collector:
+                ctx.usage_collector.metering_stop.set()
             _phase_teardown_env_and_callbacks(ctx)
 
     except Exception as e:
-        logging.exception("[webui] stream error")
-        err_str = str(e)
-        # Sanitize HTML from provider error responses — some providers return
-        # full HTML pages (e.g. nginx "404 page not found") instead of JSON errors.
-        # Strip HTML tags to avoid rendering raw markup in the chat message.
-        _stripped = re.sub(r'<[^>]+>', ' ', err_str)
-        _stripped = re.sub(r'\s+', ' ', _stripped).strip()
-        if _stripped != err_str:
-            err_str = _stripped
-        _exc_lower = err_str.lower()
-        _classification = _classify_provider_error(err_str, e)
-        _exc_is_credential_pool_empty = _classification['type'] == 'credential_pool_empty'
-        if cancel_event.is_set():
-            if s is not None:
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                if _ckpt_thread is not None:
-                    _ckpt_thread.join(timeout=15)
-                _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-                with _lock_ctx:
-                    if (
-                        not ephemeral
-                        and _turn_pending_source == 'process_wakeup'
-                        and _exc_is_credential_pool_empty
-                    ):
-                        # Merge the pause into the CURRENT session object under
-                        # the canonical lock. The worker-held ``s`` may be a
-                        # detached snapshot (LRU-evicted + replaced by a
-                        # distinct object through which a successor was
-                        # admitted); saving it would serialize stale state over
-                        # the successor even though the generation-guarded
-                        # finalizer below later no-ops. The pause is
-                        # session-wide suppression metadata that must survive
-                        # regardless of stream ownership (#6623 re-gate).
-                        _wakeup_pause_recorded = _merge_process_wakeup_pause_into_current_session(
-                            s,
-                            classification=_classification['type'],
-                            model=_turn_route_model,
-                            provider=_turn_route_provider,
-                        )
-                    _finalize_cancelled_turn(s, ephemeral=ephemeral, stream_id=stream_id)
-                    if not ephemeral:
-                        try:
-                            append_turn_journal_event_for_stream(
-                                s.session_id,
-                                stream_id,
-                                {
-                                    "event": "interrupted",
-                                    "created_at": time.time(),
-                                    "reason": "cancelled",
-                                },
-                            )
-                        except Exception:
-                            logger.debug("Failed to append cancelled turn journal event", exc_info=True)
-            put('cancel', _cancel_event_payload('Cancelled by user'))
-            return
-        _exc_is_quota = _classification['type'] == 'quota_exhausted'
-        # Exception quota text still includes: 'more credits' in _exc_lower, 'can only afford' in _exc_lower, 'fewer max_tokens' in _exc_lower.
-        # Rate-limit detection remains guarded as: (not _exc_is_quota).
-        _exc_is_rate_limit = (_classification['type'] == 'rate_limit') and (not _exc_is_quota)
-        _exc_is_auth = _classification['type'] == 'auth_mismatch'  # detects '401' and 'unauthorized' via _classify_provider_error.
-        _exc_is_not_found = _classification['type'] == 'model_not_found'  # detects '404', 'not found', 'does not exist', and 'invalid model'.
-        _exc_is_cancelled = _classification['type'] == 'cancelled'
-        _exc_is_interrupted = _classification['type'] == 'interrupted'
-        _exc_is_compression_exhausted = _classification['type'] == 'compression_exhausted'
-        _exc_is_compression_snapshot_stale = (
-            _classification['type'] == 'compression_snapshot_stale'
-        )
-
-        # The user hint still points to Settings / `hermes model` from _classify_provider_error().
-        if _exc_is_quota:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_credential_pool_empty:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_rate_limit:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_auth:
-            _heal_stale_classification = None
-            if not _self_healed:
-                # ── Credential self-heal on 401 (#1401) ──
-                # Bind the session's profile so the self-heal re-resolve AND the
-                # custom-provider override below read one profile-owned snapshot
-                # (finding #3): otherwise a named profile's endpoint pairs with
-                # the default profile's key.
-                from api import profiles as _profiles_api
-                with _profiles_api.profile_scope_for_detached_worker(
-                    _resolved_profile_name, "credential self-heal", logger_override=logger
-                ):
-                    _heal_rt = _attempt_credential_self_heal(
-                        resolved_provider or '', session_id, _agent_lock,
-                        target_model=resolved_model,
-                    )
-                if _heal_rt is not None:
-                    logger.info('[webui] self-heal (except path): retrying stream after credential refresh')
-                    _self_healed = True
-                    # Rebuild runtime variables
-                    _rt = _heal_rt
-                    resolved_api_key = _heal_rt.get('api_key')
-                    if not resolved_provider:
-                        resolved_provider = _heal_rt.get('provider')
-                    resolved_base_url = _runtime_preferred_base_url(
-                        _heal_rt, resolved_provider, configured_base_url
-                    )
-                    # Preserve the session's original pre-canonicalization provider
-                    # identity (captured at first resolve) so a named custom:slug
-                    # retry can still select its exact vision-capability entry.
-                    # Only initialize when empty.
-                    if not _session_requested_provider:
-                        _session_requested_provider = resolved_provider
-                    resolved_provider, resolved_api_key, resolved_base_url = _resolve_custom_provider_runtime_overrides(
-                        resolved_provider, resolved_api_key, resolved_base_url,
-                        profile_name=_resolved_profile_name,
-                    )
-                    # Build a fresh agent with the new credentials
-                    _heal_kwargs = dict(_agent_kwargs) if '_agent_kwargs' in dir() else {}
-                    _heal_kwargs['api_key'] = resolved_api_key
-                    _heal_kwargs['base_url'] = resolved_base_url
-                    _heal_kwargs['model'] = resolved_model
-                    _heal_kwargs['provider'] = resolved_provider
-                    _replace_session_db_in_kwargs(_heal_kwargs, _state_db_path)
-                    if 'credential_pool' in _agent_params:
-                        _heal_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
-                    _heal_agent = _AIAgent(**_heal_kwargs)
-                    with STREAMS_LOCK:
-                        AGENT_INSTANCES[stream_id] = _heal_agent
-                    from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
-                    with _SAC2_L:
-                        _SAC2[session_id] = (_heal_agent, _agent_sig)
-                        _SAC2.move_to_end(session_id)
-                    # Retry the conversation
-                    callbacks.token_sent = False
-                    _token_sent = False
-                    try:
-                        (
-                            _heal_context_messages,
-                            _heal_conversation_history_revision,
-                        ) = _refresh_context_and_revision_from_state_db()
-                        _heal_kwargs2 = _build_run_conversation_kwargs(
-                            _heal_agent.run_conversation,
-                            user_message=user_message,
-                            system_message=workspace_system_msg,
-                            conversation_history=_sanitize_messages_for_agent(
-                                _heal_context_messages,
-                                cfg=_cfg,
-                                effective_model=resolved_model,
-                                effective_provider=resolved_provider,
-                                effective_base_url=resolved_base_url,
-                                requested_provider=(_session_requested_provider or ""),
-                            ),
-                            conversation_history_revision=(
-                                _heal_conversation_history_revision
-                            ),
-                            task_id=session_id,
-                            persist_user_message=msg_text,
-                            persist_user_timestamp=getattr(s, 'pending_started_at', None),
-                        )
-                        if moa_config is not None:
-                            _heal_kwargs2["moa_config"] = moa_config
-                        _result_partial_pre_call_context = list(
-                            _heal_context_messages
-                        )
-                        _heal_result = _heal_agent.run_conversation(**_heal_kwargs2)
-                        _active_turn_identity = _resolve_active_turn_authority(
-                            _active_turn_identity,
-                            result=_heal_result,
-                            agent=_heal_agent,
-                        )
-                        _heal_stale_classification = None
-                        if _result_reports_compression_snapshot_stale(_heal_result):
-                            _heal_stale_classification = _classify_provider_error(
-                                '',
-                                result=_heal_result,
-                            )
-                            result = _heal_result
-                        elif _self_heal_result_succeeded(
-                            _heal_result,
-                            _heal_context_messages,
-                            _active_turn_identity,
-                            msg_text,
-                        ):
-                            # Retry succeeded — persist the result normally.
-                            _done_session_payload = None
-                            if s is not None:
-                                if _checkpoint_stop is not None:
-                                    _checkpoint_stop.set()
-                                if _ckpt_thread is not None:
-                                    _ckpt_thread.join(timeout=15)
-                                _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-                                with _lock_ctx:
-                                    if not ephemeral and not _stream_writeback_is_current(s, stream_id):
-                                        logger.info(
-                                            "Skipping stale stream self-heal writeback for session %s stream %s; active_stream_id=%s",
-                                            getattr(s, 'session_id', session_id),
-                                            stream_id,
-                                            getattr(s, 'active_stream_id', None),
-                                        )
-                                        return
-                                    _result_messages = _heal_result.get('messages')
-                                    if _result_messages is None:
-                                        _result_messages = _previous_context_messages
-                                    _result_messages = _settle_result_messages(
-                                        s,
-                                        _previous_messages,
-                                        _previous_owner_context_messages,
-                                        _result_messages,
-                                        msg_text,
-                                        _turn_pending_source,
-                                        _active_turn_identity,
-                                    )
-                                    # Terminal self-heal success must finalize the
-                                    # turn exactly once: clear the pending markers
-                                    # so the last-resort recovery sync in the outer
-                                    # ``finally`` cannot re-materialize this user
-                                    # turn and append a spurious "Response
-                                    # interrupted" marker after the settled answer.
-                                    s.tool_calls = _extract_tool_calls_from_messages(
-                                        s.messages,
-                                        live_tool_calls=_live_tool_calls,
-                                    )
-                                    s.active_stream_id = None
-                                    s.pending_user_message = None
-                                    s.pending_attachments = []
-                                    s.pending_started_at = None
-                                    s.pending_user_source = None
-                                    s.save()
-                                    _done_session_payload = redact_session_data(
-                                        _session_payload_with_full_messages(
-                                            s, tool_calls=s.tool_calls
-                                        )
-                                    )
-                            if _done_session_payload is not None:
-                                put('done', {
-                                    'session': _done_session_payload,
-                                    'usage': {'input_tokens': 0, 'output_tokens': 0},
-                                })
-                                put('stream_end', {'session_id': session_id})
-                            logger.info('[webui] self-heal (except path): retry succeeded')
-                            return  # skip error emission
-                    except Exception as _retry_exc2:
-                        logger.warning('[webui] self-heal (except path): retry failed: %s', _retry_exc2)
-                        # Fall through to emit the original error
-            if _heal_stale_classification is not None:
-                _exc_label = _heal_stale_classification['label']
-                _exc_type = _heal_stale_classification['type']
-                _exc_hint = _heal_stale_classification['hint']
-                _exc_is_compression_snapshot_stale = True
-            else:
-                # Self-heal didn't apply or retry failed — emit the auth error.
-                _exc_label, _exc_type, _exc_hint = (
-                    'Authentication error', 'auth_mismatch',
-                    'The selected model may not be supported by your configured provider. '
-                    'Run `hermes model` in your terminal to switch providers, then restart the WebUI.',
-                )
-        elif _exc_is_not_found:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_cancelled or _exc_is_interrupted:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_compression_snapshot_stale:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_compression_exhausted:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        else:
-            _exc_label, _exc_type, _exc_hint = 'Error', 'error', ''
-
-        if _exc_is_compression_snapshot_stale:
-            # The typed exception may carry expected/observed revision details for
-            # diagnostics. Keep those out of the persisted transcript and SSE UI.
-            err_str = (
-                'The conversation changed while context compression was being prepared.'
-            )
-        _error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)
-        if s is not None:
-            if _checkpoint_stop is not None:
-                _checkpoint_stop.set()
-            if _ckpt_thread is not None:
-                _ckpt_thread.join(timeout=15)
-            # Persist the error so it survives page reload.
-            # _error=True ensures _sanitize_messages_for_api excludes it from subsequent
-            # API calls so the LLM never sees its own error as prior context on the next turn.
-            _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-            with _lock_ctx:
-                if not ephemeral and not _stream_writeback_is_current(s, stream_id):
-                    if _turn_pending_source == 'process_wakeup':
-                        # #6623 re-gate: merge the pause into the CURRENT
-                        # session object under the canonical lock — never save
-                        # the worker's detached snapshot. The helper fails
-                        # closed (no write) when the current object cannot be
-                        # resolved.
-                        _merge_process_wakeup_pause_into_current_session(
-                            s,
-                            classification=_exc_type,
-                            model=_turn_route_model,
-                            provider=_turn_route_provider,
-                        )
-                    logger.info(
-                        "Skipping stale stream error writeback for session %s stream %s; active_stream_id=%s",
-                        getattr(s, 'session_id', session_id),
-                        stream_id,
-                        getattr(s, 'active_stream_id', None),
-                    )
-                    return
-
-                if _turn_pending_source == 'process_wakeup':
-                    _recorded_pause = record_process_wakeup_provider_unavailable_pause(
-                        s,
-                        classification=_exc_type,
-                        model=_turn_route_model,
-                        provider=_turn_route_provider,
-                    )
-                    # #3929 UX: disclose the pause in the error card ONLY when a
-                    # pause was actually recorded (credential-pool exhaustion),
-                    # keeping the SSE payload hint in sync with the persisted bubble.
-                    if _recorded_pause:
-                        _exc_hint = (
-                            (_exc_hint + ' ' if _exc_hint else '')
-                            + 'Automatic retries for this conversation are paused until you '
-                            + 'send a message, switch the model/provider, or fix the credentials.'
-                        )
-                        _error_payload['hint'] = _exc_hint
-                _turn_duration = _terminal_turn_duration(s)
-                # Keep the canonical one-argument error-settlement shape pinned
-                # by #1361/#2136. The helper derives the same stream-owned turn
-                # token from active_stream_id + pending_started_at when the
-                # explicit identity is omitted, so repeated prompts remain
-                # fenced without weakening pending-turn durability.
-                _materialize_pending_user_turn_before_error(s)
-                s.active_stream_id = None
-                s.pending_user_message = None
-                s.pending_attachments = []
-                s.pending_started_at = None
-                s.pending_user_source = None
-                try:
-                    _snapshot_and_append_partial_on_error(
-                        s,
-                        stream_id,
-                        active_turn_identity=_active_turn_identity,
-                    )
-                    _append_result_partial_on_error(
-                        s,
-                        result,
-                        _result_partial_pre_call_context,
-                        msg_text,
-                        active_turn_identity=_active_turn_identity,
-                    )
-                except Exception:
-                    logger.debug("Failed to snapshot partials on error for %s", stream_id, exc_info=True)
-                _error_message = {
-                    'role': 'assistant',
-                    'content': f'**{_exc_label}:** {_error_payload.get("message") or err_str}' + (f'\n\n*{_exc_hint}*' if _exc_hint else ''),
-                    'timestamp': int(time.time()),
-                    '_error': True,
-                }
-                if _turn_duration is not None:
-                    _error_message['_turnDuration'] = _turn_duration
-                if _exc_type == 'compression_exhausted':
-                    _recovery = stamp_compression_exhausted_recovery(
-                        s,
-                        message=_error_payload.get('message') or err_str,
-                        details=_error_payload.get('details') or '',
-                    )
-                    _error_message['_compressionRecovery'] = _recovery
-                    _error_payload['compression_recovery'] = _recovery
-                    _error_payload['recommended_recovery_action'] = _recovery.get('recommended_action')
-                if _error_payload.get('details'):
-                    _error_message['provider_details'] = _error_payload['details']
-                if _exc_type == 'cancelled':
-                    _error_message['provider_details_label'] = 'Cancellation details'
-                elif _exc_type == 'interrupted':
-                    _error_message['provider_details_label'] = 'Interruption details'
-                s.messages.append(_error_message)
-                try:
-                    s.save()
-                except Exception:
-                    logger.warning("Silent exception in _run_agent_streaming", exc_info=True)
-                    pass
-                if not ephemeral:
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": _exc_type,
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append interrupted turn journal event", exc_info=True)
-            _error_payload['session_id'] = getattr(s, 'session_id', session_id)
-            _error_payload['old_session_id'] = session_id
-        put('apperror', _error_payload)
+        _phase_handle_stream_error(ctx, e)
     finally:
-        # #4633/#2476: symmetric metering teardown. begin_session() (top of the
-        # outer try) had no paired end_session(), so zero-token turns leaked a
-        # _sessions[stream_id] entry that get_stats() pruning never reclaims (its
-        # criterion requires first_token_ts > 0). end_session() is idempotent —
-        # it just pops _sessions[stream_id]; the metering payload is unchanged.
-        # _metering_stop.set() deterministically stops the ticker (the inner
-        # finally also sets it on the normal path; setting twice is harmless).
-        try:
-            # 0: end_session() currently ignores final_output_tokens — it only
-            # pops _sessions[stream_id]. If it is ever extended to consume the
-            # count (e.g. persisting final output tokens to a billing ledger),
-            # this teardown caller will need to supply the real total; the outer
-            # finally doesn't have easy access to it today.
-            meter().end_session(stream_id, 0)
-        except Exception:
-            logger.debug("Failed to end metering session for stream %s", stream_id, exc_info=True)
-        _metering_stop.set()
-        # Stop the periodic checkpoint thread before the final recovery path.
-        # The checkpoint thread also uses the per-session lock; joining it first
-        # avoids contending with checkpoint writes during stale-pending repair.
-        _checkpoint_stop = ctx.checkpoint_stop or _checkpoint_stop
-        _ckpt_thread = ctx.ckpt_thread or _ckpt_thread
-        if _checkpoint_stop is not None:
-            _checkpoint_stop.set()
-        if _ckpt_thread is not None:
-            _ckpt_thread.join(timeout=15)
-        s = ctx.s or s
-        _agent_lock = ctx.agent_lock or _agent_lock
-        if (s is not None
-                and getattr(s, 'active_stream_id', None) == stream_id
-                and getattr(s, 'pending_user_message', None)):
-            update_active_run(stream_id, phase="finalizing")
-            _last_resort_sync_from_core(s, stream_id, _agent_lock)
-        _clear_thread_env()  # TD1: always clear thread-local context
-        _streaming_cron_profile_home_token = ctx.streaming_cron_profile_home_token or _streaming_cron_profile_home_token
-        if _streaming_cron_profile_home_token is not None:
-            _STREAMING_CRON_PROFILE_HOME.reset(_streaming_cron_profile_home_token)
-        _restore_streaming_skill_home_modules = ctx.restore_streaming_skill_home_modules or _restore_streaming_skill_home_modules
-        _streaming_skill_home_snapshot = ctx.streaming_skill_home_snapshot or _streaming_skill_home_snapshot
-        if _restore_streaming_skill_home_modules and _streaming_skill_home_snapshot is not None:
-            with _ENV_LOCK:
-                try:
-                    from api.profiles import restore_skill_home_modules
-                    if restore_skill_home_modules is not None:
-                        restore_skill_home_modules(_streaming_skill_home_snapshot)
-                except Exception:
-                    logger.debug("Failed to restore skill module state for streaming profile", exc_info=True)
-                _streaming_skill_home_snapshot = None
-                _restore_streaming_skill_home_modules = False
-        _acquired_streaming_skill_home_patch_lock = ctx.acquired_streaming_skill_home_patch_lock or _acquired_streaming_skill_home_patch_lock
-        if _acquired_streaming_skill_home_patch_lock:
-            try:
-                from api.profiles import _SKILL_HOME_MODULE_PATCH_LOCK
-                if _SKILL_HOME_MODULE_PATCH_LOCK is not None:
-                    _SKILL_HOME_MODULE_PATCH_LOCK.release()
-            except Exception:
-                pass
-            _acquired_streaming_skill_home_patch_lock = False
-        _streaming_hermes_home_override_ctx = (
-            ctx.streaming_hermes_home_override_ctx
-            if (ctx.streaming_hermes_home_override_ctx[0] is not None or ctx.streaming_hermes_home_override_ctx[2])
-            else _streaming_hermes_home_override_ctx
-        )
-        _reset_streaming_hermes_home_override(*_streaming_hermes_home_override_ctx)
-        # xsession wakeup misroute root fix (Option 1): restore the per-turn
-        # session-identity context-locals (reset-token semantics). MUST run on
-        # every exit path so a reused thread-pool worker leaks no identity and
-        # CLI/cron env fallback resumes — same lifecycle slot as the env
-        # restore above.
-        _turn_session_identity_tokens = ctx.turn_session_identity_tokens or _turn_session_identity_tokens
-        _reset_turn_session_identity(_turn_session_identity_tokens)
-        with STREAMS_LOCK:
-            STREAMS.pop(stream_id, None)
-            CANCEL_FLAGS.pop(stream_id, None)
-            AGENT_INSTANCES.pop(stream_id, None)  # Clean up agent instance reference
-            STREAM_PARTIAL_TEXT.pop(stream_id, None)  # Clean up partial text buffer (#893)
-            STREAM_REASONING_TEXT.pop(stream_id, None)  # Clean up reasoning trace (#1361 §A)
-            STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)  # Clean up tool calls (#1361 §B)
-            STREAM_GOAL_RELATED.pop(stream_id, None)  # Clean up goal-related flag (#1932)
-            STREAM_LAST_EVENT_ID.pop(stream_id, None)  # Clean up event_id pointer (stage-364)
-            unregister_active_run(stream_id)
-            # Clean up the stream-owner registry so stale stream_id→session_id
-            # mappings do not accumulate over thousands of completed streams (#6351).
-            unregister_stream_owner(stream_id)
-            # Release the session's writeback-ownership entry only while this
-            # stream still owns it (#6623 re-gate): a successor admitted after
-            # cancel must keep its registry claim.
-            try:
-                clear_session_writeback_owner_if_owned(session_id, stream_id)
-            except Exception:
-                logger.debug(
-                    "Failed to clear session writeback owner for stream %s", stream_id,
-                    exc_info=True,
-                )
-            # NOTE: do NOT discard PENDING_GOAL_CONTINUATION here. The marker
-            # is set by goal_continue (line ~3328) inside the SAME function
-            # call and consumed atomically by `_start_chat_stream_for_session`
-            # in routes.py (around line 6522) when the next stream starts.
-            # Discarding here in the streaming worker's `finally` would
-            # almost always race ahead of the frontend's SSE-receive →
-            # POST /api/chat/start round-trip and erase the marker before
-            # the next stream can read it, breaking the goal-continuation
-            # chain. Stage-326 critical fix per Opus advisor review.
-
-        # ── Defer-path fix: turn-teardown idle-hook ────────────────────────
-        # The session has just transitioned active→idle: unregister_active_run
-        # above cleared this stream's ACTIVE_RUNS row (under ACTIVE_RUNS_LOCK,
-        # independent of STREAMS_LOCK), so _session_has_active_turn() is now
-        # False for this session unless a *different* stream is still active
-        # (cancel/reconnect — drain_deferred_wakeups_for_session guards on
-        # that and leaves the marker for the later teardown). A FAST
-        # background task that completed while this turn was tearing down was
-        # deferred by api/background_process._process_one (it could not start
-        # a turn → would 409) and its wakeup_prompt persisted in
-        # DEFERRED_PROCESS_WAKEUPS. For an autonomous agent there is no next
-        # user turn, so the PR #2279 next-turn drain never runs; without this
-        # hook the deferred wakeup is lost forever (the Test B failure). This
-        # makes the busy-at-completion case symmetric with the idle case:
-        # idle now → fire now (Option Z idle branch); busy now → fire here at
-        # turn-end. claim_deferred_wakeups pops atomically, so this is
-        # idempotent with the next-turn drain (no double-fire) and the wakeup
-        # turn's own teardown finds nothing claimed (no wakeup loop). The
-        # drain spawns its own daemon thread, so teardown never blocks.
-        try:
-            from api.background_process import drain_deferred_wakeups_for_session
-
-            drain_deferred_wakeups_for_session(session_id)
-        except Exception:
-            logger.debug(
-                "turn-teardown deferred-wakeup drain failed for session %s",
-                session_id,
-                exc_info=True,
-            )
+        _phase_teardown_stream(ctx)
 
 # ============================================================
 # SECTION: HTTP Request Handler
