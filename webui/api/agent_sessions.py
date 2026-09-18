@@ -4,39 +4,31 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+try:
+    from api import webui_session_db
+except ImportError:
+    try:
+        from webui.api import webui_session_db
+    except ImportError:
+        import webui_session_db
+
 logger = logging.getLogger(__name__)
 
 
 def open_state_db_readonly(db_path: Path, log: logging.Logger | None = None) -> sqlite3.Connection:
     """Open the live agent ``state.db`` read-only for a pure-read projection.
 
-    Same rationale as the session-listing path (#5455): a write-capable handle
-    on the multi-GB, WAL ``state.db`` while the agent streams into it adds
-    needless checkpoint/lock surface. The read-only ``file:...?mode=ro`` URI
-    avoids that. Falls back to a writable connection (and warns) if the
-    read-only open fails, so callers never lose data on exotic filesystems.
-
-    The caller must ensure ``db_path`` exists — this raises ``FileNotFoundError``
-    for a missing path rather than letting the writable fallback below create an
-    empty, writable ``state.db`` there (a ghost DB in the agent's HOME). The
-    fallback is only for an *existing* DB whose read-only open fails on an exotic
-    filesystem, so a real read never loses data.
-
+    Delegates to centralized ``webui_session_db.create_db_connection`` with
+    ``read_only=True``, enforcing existence check (no ghost DB), read-only URI,
+    ``PRAGMA query_only = ON``, and ``PRAGMA busy_timeout = 5000``.
     Callers own the returned connection (wrap it in ``contextlib.closing``).
     """
-    log = log or logger
-    if not db_path.exists():
-        raise FileNotFoundError(f"agent state.db not found: {db_path}")
-    read_only_uri = f"{db_path.resolve().as_uri()}?mode=ro"
-    try:
-        return sqlite3.connect(read_only_uri, uri=True)
-    except sqlite3.Error as exc:
-        log.warning(
-            "agent state.db read-only open failed for %s; falling back to writable connection: %s",
-            db_path,
-            exc,
-        )
-        return sqlite3.connect(str(db_path))
+    return webui_session_db.create_db_connection(
+        db_path,
+        read_only=True,
+        row_factory=True,
+        log=log or logger,
+    )
 
 
 MESSAGING_SOURCES = {
@@ -541,18 +533,7 @@ def read_importable_agent_session_rows(
     # the agent streams into it adds needless checkpoint/lock surface (#5455).
     # The defensive index self-heal below still runs, but through a separate
     # short-lived writable connection on the rare missing-index path only.
-    read_only_uri = f"{db_path.resolve().as_uri()}?mode=ro"
-    try:
-        conn = sqlite3.connect(read_only_uri, uri=True)
-    except sqlite3.Error as exc:
-        log.warning(
-            "agent session listing read-only open failed for %s; falling back to writable connection: %s",
-            db_path,
-            exc,
-        )
-        conn = sqlite3.connect(str(db_path))
-    with closing(conn):
-        conn.row_factory = sqlite3.Row
+    with webui_session_db.open_db_readonly(db_path, log=log) as conn:
         cur = conn.cursor()
 
         # Older Hermes Agent versions may not have source tracking. Without a
@@ -615,7 +596,7 @@ def read_importable_agent_session_rows(
                 # read-only/locked db this fails and we degrade to the
                 # pre-aggregated cron-only path below, exactly as before.
                 try:
-                    with closing(sqlite3.connect(str(db_path))) as _heal:
+                    with webui_session_db.open_db_writable(db_path, log=log) as _heal:
                         _heal.execute(
                             "CREATE INDEX IF NOT EXISTS idx_messages_session "
                             "ON messages(session_id, timestamp)"
