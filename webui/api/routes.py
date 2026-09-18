@@ -13494,35 +13494,10 @@ def _handle_get_session(handler, parsed):
     return None
 
 
-def handle_get(handler, parsed) -> bool:
-    """Handle all GET routes. Returns True if handled, False for 404."""
-    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
-    if proxy_result is not False:
-        return proxy_result
-
-    res = _handle_get_static_and_shell(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_auth(handler, parsed)
-    if res is not None:
-        return res
-
-    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
-        return True
-
-    res = _handle_get_system(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_config_and_models(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_session(handler, parsed)
-    if res is not None:
-        return res
-
+def _handle_get_workspace_and_git(handler, parsed):
+    """Handle workspace projects, prompts, files, git, and rollback routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
         # Default: filter to the active profile. ?all_profiles=1 returns the
@@ -13655,69 +13630,72 @@ def handle_get(handler, parsed) -> bool:
         }
         return j(handler, {"git": info})
 
-    if parsed.path == "/api/commands":
-        return j(handler, {"commands": [
-            {"name": "plan", "description": "Antigravity: Step-by-step implementation planning before coding", "category": "Antigravity"},
-            {"name": "goal", "description": "Antigravity: Autonomous long-running goal execution until completion", "category": "Antigravity"},
-            {"name": "grill-me", "description": "Antigravity: Interactive design interview to stress-test requirements", "category": "Antigravity"},
-            {"name": "learn", "description": "Antigravity: Persist behavioral guidelines & conventions", "category": "Antigravity"},
-            {"name": "schedule", "description": "Antigravity: Schedule recurring or one-shot task timer", "category": "Antigravity"},
-            {"name": "new", "description": "Start a new conversation", "category": "Session"},
-            {"name": "clear", "description": "Clear the active chat view", "category": "Session"},
-            {"name": "theme", "description": "Switch UI theme or skin", "category": "Settings"},
-            {"name": "help", "description": "Show available commands", "category": "Help"}
-        ]})
+    if parsed.path == "/api/media":
+        return _handle_media(handler, parsed)
 
-    if parsed.path == "/api/commands/bundles":
-        return j(handler, {"bundles": []})
+    if parsed.path == "/api/file/raw":
+        return _handle_file_raw(handler, parsed)
 
-    if parsed.path == "/api/commands/moa/resolve":
-        from api.commands import resolve_moa_config
-        try:
-            return j(handler, resolve_moa_config())
-        except RuntimeError as e:
-            return bad(handler, str(e), 503)
+    if parsed.path == "/api/escape/file/raw":
+        return _handle_escape_file_raw(handler, parsed)
 
-    if parsed.path == "/api/updates/check":
-        settings = load_settings()
-        if not settings.get("check_for_updates", True):
-            return j(handler, {"disabled": True})
-        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+    if parsed.path == "/api/folder/download":
+        return _handle_folder_download(handler, parsed)
+
+    if parsed.path == "/api/file":
+        return _handle_file_read(handler, parsed)
+
+    if parsed.path == "/api/escape/file/read":
+        return _handle_escape_file_read(handler, parsed)
+
+    if parsed.path == "/api/diff/file":
+        from api.diff_viewer import get_file_diff_against_head
+        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
+        path = qs.get("path", [""])[0]
+        ws_path = Path("/workspace")
+        if not ws_path.exists():
+            ws_path = Path.cwd()
+        return j(handler, get_file_diff_against_head(ws_path, path))
+
+    # ── Knowledge Vault & Graph Memory (GET) ──
+    if parsed.path == "/api/rollback/list":
         qs = parse_qs(parsed.query)
-        # ?simulate=1 returns fake behind counts for UI testing (localhost only)
-        if (
-            qs.get("simulate", ["0"])[0] == "1"
-            and handler.client_address[0] == "127.0.0.1"
-        ):
-            return j(
-                handler,
-                {
-                    "webui": {
-                        "name": "webui",
-                        "behind": 3,
-                        "current_sha": "abc1234",
-                        "latest_sha": "def5678",
-                        "branch": "master",
-                        "repo_url": "https://github.com/google-deepmind/antigravity",
-                        "compare_url": "https://github.com/google-deepmind/antigravity",
-                    },
-                    "agent": {
-                        "name": "agent",
-                        "behind": 1 if include_agent_updates else 0,
-                        "ignored": not include_agent_updates,
-                        "current_sha": "aaa0001",
-                        "latest_sha": "bbb0002",
-                        "branch": "master",
-                        "repo_url": "https://github.com/google-deepmind/antigravity",
-                        "compare_url": "https://github.com/google-deepmind/antigravity",
-                    },
-                    "checked_at": 0,
-                },
-            )
-        from api.updates import cached_update_status
+        workspace = qs.get("workspace", [""])[0]
+        if not workspace:
+            return bad(handler, "workspace query parameter is required")
+        try:
+            from api.rollback import list_checkpoints
+            return j(handler, list_checkpoints(workspace))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except Exception as e:
+            logger.exception("rollback/list failed")
+            return bad(handler, str(e), status=500)
 
-        return j(handler, cached_update_status(include_agent=include_agent_updates))
+    if parsed.path == "/api/rollback/diff":
+        qs = parse_qs(parsed.query)
+        workspace = qs.get("workspace", [""])[0]
+        checkpoint = qs.get("checkpoint", [""])[0]
+        if not workspace or not checkpoint:
+            return bad(handler, "workspace and checkpoint query parameters are required")
+        try:
+            from api.rollback import get_checkpoint_diff
+            return j(handler, get_checkpoint_diff(workspace, checkpoint))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except Exception as e:
+            logger.exception("rollback/diff failed")
+            return bad(handler, str(e), status=500)
 
+    # ── Plugin shared assets (e.g. /plugins/plugin.css) ──
+    # Restricted to shared plugin assets only — no cross-plugin file access.
+    return None
+
+
+def _handle_get_chat_and_stream(handler, parsed):
+    """Handle chat streaming, terminal output, approvals, and clarifiers routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/chat/stream/status":
         stream_id = parse_qs(parsed.query).get("stream_id", [""])[0]
         if not _stream_id_visible_to_request_profile(handler, stream_id):
@@ -13788,34 +13766,6 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/terminal/output":
         return _handle_terminal_output(handler, parsed)
 
-    if parsed.path == '/api/sessions/gateway/stream':
-        return _handle_gateway_sse_stream(handler, parsed)
-
-    if parsed.path == '/api/sessions/events':
-        return _handle_session_events_stream(handler)
-
-    session_events_session_id = _session_events_path_session_id(parsed.path)
-    if session_events_session_id is not None:
-        return _handle_session_sse_stream_for_session(handler, parsed, session_events_session_id)
-
-    if parsed.path == "/api/media":
-        return _handle_media(handler, parsed)
-
-    if parsed.path == "/api/file/raw":
-        return _handle_file_raw(handler, parsed)
-
-    if parsed.path == "/api/escape/file/raw":
-        return _handle_escape_file_raw(handler, parsed)
-
-    if parsed.path == "/api/folder/download":
-        return _handle_folder_download(handler, parsed)
-
-    if parsed.path == "/api/file":
-        return _handle_file_read(handler, parsed)
-
-    if parsed.path == "/api/escape/file/read":
-        return _handle_escape_file_read(handler, parsed)
-
     if parsed.path == "/api/approval/pending":
         return _handle_approval_pending(handler, parsed)
 
@@ -13861,6 +13811,86 @@ def handle_get(handler, parsed) -> bool:
     # Cron reads are active-profile-scoped by default. The list route now
     # aggregates per visible profile home so the UI can surface hidden-row
     # counts and, when opted in, read-only foreign rows.
+    return None
+
+
+def _handle_get_tools_and_mcp(handler, parsed):
+    """Handle commands, crons, skills, MCP hub, subagents, vault, and plugins routes.
+    Returns True if handled, None if unhandled.
+    """
+    if parsed.path == "/api/commands":
+        return j(handler, {"commands": [
+            {"name": "plan", "description": "Antigravity: Step-by-step implementation planning before coding", "category": "Antigravity"},
+            {"name": "goal", "description": "Antigravity: Autonomous long-running goal execution until completion", "category": "Antigravity"},
+            {"name": "grill-me", "description": "Antigravity: Interactive design interview to stress-test requirements", "category": "Antigravity"},
+            {"name": "learn", "description": "Antigravity: Persist behavioral guidelines & conventions", "category": "Antigravity"},
+            {"name": "schedule", "description": "Antigravity: Schedule recurring or one-shot task timer", "category": "Antigravity"},
+            {"name": "new", "description": "Start a new conversation", "category": "Session"},
+            {"name": "clear", "description": "Clear the active chat view", "category": "Session"},
+            {"name": "theme", "description": "Switch UI theme or skin", "category": "Settings"},
+            {"name": "help", "description": "Show available commands", "category": "Help"}
+        ]})
+
+    if parsed.path == "/api/commands/bundles":
+        return j(handler, {"bundles": []})
+
+    if parsed.path == "/api/commands/moa/resolve":
+        from api.commands import resolve_moa_config
+        try:
+            return j(handler, resolve_moa_config())
+        except RuntimeError as e:
+            return bad(handler, str(e), 503)
+
+    if parsed.path == "/api/updates/check":
+        settings = load_settings()
+        if not settings.get("check_for_updates", True):
+            return j(handler, {"disabled": True})
+        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+        qs = parse_qs(parsed.query)
+        # ?simulate=1 returns fake behind counts for UI testing (localhost only)
+        if (
+            qs.get("simulate", ["0"])[0] == "1"
+            and handler.client_address[0] == "127.0.0.1"
+        ):
+            return j(
+                handler,
+                {
+                    "webui": {
+                        "name": "webui",
+                        "behind": 3,
+                        "current_sha": "abc1234",
+                        "latest_sha": "def5678",
+                        "branch": "master",
+                        "repo_url": "https://github.com/google-deepmind/antigravity",
+                        "compare_url": "https://github.com/google-deepmind/antigravity",
+                    },
+                    "agent": {
+                        "name": "agent",
+                        "behind": 1 if include_agent_updates else 0,
+                        "ignored": not include_agent_updates,
+                        "current_sha": "aaa0001",
+                        "latest_sha": "bbb0002",
+                        "branch": "master",
+                        "repo_url": "https://github.com/google-deepmind/antigravity",
+                        "compare_url": "https://github.com/google-deepmind/antigravity",
+                    },
+                    "checked_at": 0,
+                },
+            )
+        from api.updates import cached_update_status
+
+        return j(handler, cached_update_status(include_agent=include_agent_updates))
+
+    if parsed.path == '/api/sessions/gateway/stream':
+        return _handle_gateway_sse_stream(handler, parsed)
+
+    if parsed.path == '/api/sessions/events':
+        return _handle_session_events_stream(handler)
+
+    session_events_session_id = _session_events_path_session_id(parsed.path)
+    if session_events_session_id is not None:
+        return _handle_session_sse_stream_for_session(handler, parsed, session_events_session_id)
+
     if parsed.path == "/api/crons":
         # #4768: in split-container / minimal Docker deployments the WebUI image may
         # not ship the agent's `cron` package on its import path. Degrade gracefully
@@ -14119,16 +14149,6 @@ def handle_get(handler, parsed) -> bool:
         return _handle_artifacts_list(handler, parsed)
     if parsed.path == "/api/artifacts/content":
         return _handle_artifact_content(handler, parsed)
-    if parsed.path == "/api/diff/file":
-        from api.diff_viewer import get_file_diff_against_head
-        qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
-        path = qs.get("path", [""])[0]
-        ws_path = Path("/workspace")
-        if not ws_path.exists():
-            ws_path = Path.cwd()
-        return j(handler, get_file_diff_against_head(ws_path, path))
-
-    # ── Knowledge Vault & Graph Memory (GET) ──
     if parsed.path in ("/api/vault/graph", "/api/vault/data"):
         from api.vault import scan_vault, get_vault_dir
         qs = parse_qs(parsed.query) if getattr(parsed, "query", None) else {}
@@ -14200,37 +14220,6 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, compute_efficiency_metrics(session_id=sid))
 
     # ── Checkpoints / Rollback (GET) ──
-    if parsed.path == "/api/rollback/list":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        if not workspace:
-            return bad(handler, "workspace query parameter is required")
-        try:
-            from api.rollback import list_checkpoints
-            return j(handler, list_checkpoints(workspace))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/list failed")
-            return bad(handler, str(e), status=500)
-
-    if parsed.path == "/api/rollback/diff":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        checkpoint = qs.get("checkpoint", [""])[0]
-        if not workspace or not checkpoint:
-            return bad(handler, "workspace and checkpoint query parameters are required")
-        try:
-            from api.rollback import get_checkpoint_diff
-            return j(handler, get_checkpoint_diff(workspace, checkpoint))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/diff failed")
-            return bad(handler, str(e), status=500)
-
-    # ── Plugin shared assets (e.g. /plugins/plugin.css) ──
-    # Restricted to shared plugin assets only — no cross-plugin file access.
     if parsed.path.startswith("/plugins/"):
         from api.plugins import _get_plugin_base
         plugin_base = _get_plugin_base()
@@ -14353,7 +14342,53 @@ def handle_get(handler, parsed) -> bool:
                     handler.wfile.write(html_content)
                     return True
 
+    return None
+
+
+def handle_get(handler, parsed) -> bool:
+    """Handle all GET routes. Returns True if handled, False for 404."""
+    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
+    if proxy_result is not False:
+        return proxy_result
+
+    res = _handle_get_static_and_shell(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_auth(handler, parsed)
+    if res is not None:
+        return res
+
+    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
+        return True
+
+    res = _handle_get_system(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_config_and_models(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_session(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_workspace_and_git(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_chat_and_stream(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_tools_and_mcp(handler, parsed)
+    if res is not None:
+        return res
+
     return False  # 404
+
+
 
 
 # ── POST auth helpers
