@@ -33,7 +33,7 @@ Guidelines enforced across the CAGY project:
   - See [[architecture/cagy_unified]] for execution namespace details.
 
 > [!NOTE]
-> **Tiered Context Diet Active**: Space knowledge (26.5 KB) exceeds the full-text limit (20.0 KB). Compiled into a high-density Decision Matrix and Executive Abstracts Map to optimize prompt efficiency. To retrieve complete notes on-demand, run `python3 skills/knowledge-vault/scripts/recall_vault.py "<query>"`.
+> **Tiered Context Diet Active**: Space knowledge (31.4 KB) exceeds the full-text limit (20.0 KB). Compiled into a high-density Decision Matrix and Executive Abstracts Map to optimize prompt efficiency. To retrieve complete notes on-demand, run `python3 skills/knowledge-vault/scripts/recall_vault.py "<query>"`.
 
 ## Architectural Decisions Matrix
 | ADR | Title | Status | Summary & Key Decision |
@@ -43,6 +43,7 @@ Guidelines enforced across the CAGY project:
 | [[decisions/adr_004_git_checkpoints_and_zero_risk_rollback|ADR 004]] | ADR 004: Native Git Checkpoints and Zero-Risk Auto-Stash Rollback | `Accepted` | **Option 3 was chosen**: - Built backend endpoints in `webui/api/spaces.py`: - `GET /api/spaces/checkpoints`: Returns recent Git commits, active branch, author, and dirty working tree status. - `GET... |
 | [[decisions/adr_002_knowledge_vault_second_brain|ADR 002]] | ADR 002: Adopt Obsidian-Compatible Knowledge Vault & Active Learning Model | `Accepted` | **Option 3 was chosen**: - All knowledge is stored as atomic Markdown files in `/workspace/knowledge/`. - Pre-turn compilation automatically injects prioritized vault notes into `.gemini/rules/knowledge_vault.md`,... |
 | [[decisions/adr_006_streaming_step_decomposition|ADR 006]] | ADR 006: Streaming Step-Decomposition & Phase Decoupling | `Accepted` | **Option 3 was chosen** and implemented across 6 low-risk micro-sprints: 1. **Sprint D1 (`StreamTurnContext` & `StreamingUsageCollector`)**: Encapsulated state, default lock factories, live prompt estimation, and... |
+| [[decisions/adr_007_routes_decomposition|ADR 007]] | ADR 007: HTTP Route Dispatcher Modularization & Domain Decomposition | `Accepted` | **Option 3 was chosen** and implemented across 8 incremental sprints: 1. **Sprint R1 (`tests/test_routes_dispatch.py`)**: Built a comprehensive HTTP route dispatch test suite covering 9 architectural domains (Shell,... |
 | [[decisions/adr_005_workspace_destination_export_and_sandboxing|ADR 005]] | ADR 005: Workspace Destination Export & Session Sandboxing | `Accepted` | **Option 3 was chosen**: - Built backend endpoints in `webui/api/session.py`: - `POST /api/session/export/workspace`: Resolves subfolder relative to target workspace, validates canonical root boundary, sanitizes... |
 
 ### Key Architectural Decision Abstracts
@@ -51,6 +52,7 @@ Guidelines enforced across the CAGY project:
 - **[[decisions/adr_004_git_checkpoints_and_zero_risk_rollback|ADR 004: Native Git Checkpoints and Zero-Risk Auto-Stash Rollback]]** (`Accepted`): **Option 3 was chosen**: - Built backend endpoints in `webui/api/spaces.py`: - `GET /api/spaces/checkpoints`: Returns recent Git commits, active branch, author, and dirty working tree status. - `GET...
 - **[[decisions/adr_002_knowledge_vault_second_brain|ADR 002: Adopt Obsidian-Compatible Knowledge Vault & Active Learning Model]]** (`Accepted`): **Option 3 was chosen**: - All knowledge is stored as atomic Markdown files in `/workspace/knowledge/`. - Pre-turn compilation automatically injects prioritized vault notes into `.gemini/rules/knowledge_vault.md`,...
 - **[[decisions/adr_006_streaming_step_decomposition|ADR 006: Streaming Step-Decomposition & Phase Decoupling]]** (`Accepted`): **Option 3 was chosen** and implemented across 6 low-risk micro-sprints: 1. **Sprint D1 (`StreamTurnContext` & `StreamingUsageCollector`)**: Encapsulated state, default lock factories, live prompt estimation, and...
+- **[[decisions/adr_007_routes_decomposition|ADR 007: HTTP Route Dispatcher Modularization & Domain Decomposition]]** (`Accepted`): **Option 3 was chosen** and implemented across 8 incremental sprints: 1. **Sprint R1 (`tests/test_routes_dispatch.py`)**: Built a comprehensive HTTP route dispatch test suite covering 9 architectural domains (Shell,...
 - **[[decisions/adr_005_workspace_destination_export_and_sandboxing|ADR 005: Workspace Destination Export & Session Sandboxing]]** (`Accepted`): **Option 3 was chosen**: - Built backend endpoints in `webui/api/session.py`: - `POST /api/session/export/workspace`: Resolves subfolder relative to target workspace, validates canonical root boundary, sanitizes...
 
 ## Architectural Principles & System Design (Abstracts)
