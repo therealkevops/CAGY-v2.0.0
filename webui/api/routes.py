@@ -34,6 +34,13 @@ from contextlib import closing
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
+try:
+    from api import webui_session_db
+except ImportError:
+    try:
+        from webui.api import webui_session_db
+    except ImportError:
+        import webui_session_db
 from api.agent_runtime import (
     AgentRuntimeChangedError,
     ensure_agent_runtime_current,
@@ -318,8 +325,7 @@ def _latest_cron_session_info_for_jobs(
     if not db_path or not Path(db_path).exists():
         return {jid: {"session_id": "", "message_count": None} for jid in requested}
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
-            conn.row_factory = sqlite3.Row
+        with webui_session_db.open_db_readonly(db_path) as conn:
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(sessions)")
             session_cols = {row[1] for row in cur.fetchall()}
@@ -8148,8 +8154,7 @@ def _state_db_session_source(sid: str) -> str:
         db_path = _active_state_db_path()
         if not db_path or not Path(db_path).exists():
             return ""
-        import sqlite3 as _sqlite
-        with closing(_sqlite.connect(str(db_path))) as _conn:
+        with webui_session_db.open_db_readonly(db_path) as _conn:
             row = _conn.execute(
                 "SELECT source FROM sessions WHERE id = ?", (sid,)
             ).fetchone()
@@ -8411,9 +8416,7 @@ def _claim_or_synthesize_cli_session(sid: str, cli_meta: dict = None):
         from api.models import _active_state_db_path
         db_path = _active_state_db_path()
         if db_path and Path(db_path).exists():
-            import sqlite3 as _sqlite
-            with closing(_sqlite.connect(str(db_path))) as _conn:
-                _conn.row_factory = _sqlite.Row
+            with webui_session_db.open_db_readonly(db_path) as _conn:
                 _row = _conn.execute(
                     "SELECT source, title, model, cwd, started_at, ended_at "
                     "FROM sessions WHERE id = ?", (sid,)
@@ -9327,11 +9330,7 @@ def _display_merge_cache_key(
 def _state_db_target_session_signature(db_path, session_id):
     """Hash every target-session row without materialising display dictionaries."""
     try:
-        uri_path = quote(str(Path(db_path).resolve()), safe="/")
-        with closing(
-            sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=5.0)
-        ) as conn:
-            conn.execute("PRAGMA query_only=ON")
+        with webui_session_db.open_db_readonly(db_path, timeout=5.0, row_factory=False) as conn:
             columns = [str(row[1]) for row in conn.execute("PRAGMA table_info(messages)")]
             if "session_id" not in columns or "id" not in columns:
                 return None
@@ -9409,12 +9408,12 @@ def _state_db_target_session_revision(db_path, session_id):
         "archived",
     )
     try:
-        uri_path = quote(str(Path(db_path).resolve()), safe="/")
-        with closing(
-            sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=0.25)
+        with webui_session_db.open_db_readonly(
+            db_path,
+            timeout=0.25,
+            busy_timeout_ms=250,
+            row_factory=False,
         ) as conn:
-            conn.execute("PRAGMA query_only=ON")
-            conn.execute("PRAGMA busy_timeout=250")
             message_columns = {
                 str(row[1]) for row in conn.execute("PRAGMA table_info(messages)")
             }
@@ -11355,8 +11354,7 @@ def _handle_insights(handler, parsed) -> bool:
         from api.models import _active_state_db_path
         db_path = _active_state_db_path()
         if db_path and db_path.exists():
-            with closing(sqlite3.connect(str(db_path))) as conn:
-                conn.row_factory = sqlite3.Row
+            with webui_session_db.open_db_readonly(db_path) as conn:
                 cur = conn.cursor()
                 # cache_read_tokens may not exist on older agent state DBs;
                 # fall back to a query without it if the column is missing.
@@ -11677,18 +11675,7 @@ def _deep_health_checks(stream_check: dict | None = None) -> tuple[dict, bool]:
     t0 = time.time()
     try:
         db_path = _active_state_db_path()
-        if not db_path.exists():
-            checks["state_db"] = {
-                "status": "missing",
-                "ms": round((time.time() - t0) * 1000, 1),
-            }
-        else:
-            with closing(sqlite3.connect(str(db_path))) as conn:
-                conn.execute("PRAGMA schema_version").fetchone()
-            checks["state_db"] = {
-                "status": "ok",
-                "ms": round((time.time() - t0) * 1000, 1),
-            }
+        checks["state_db"] = webui_session_db.check_db_healthy(db_path)
     except Exception as exc:
         logger.debug("Silent exception in _deep_health_checks", exc_info=True)
         checks["state_db"] = {
@@ -26718,7 +26705,7 @@ def _persist_handoff_summary_to_state_db(sid: str, message: dict) -> bool:
 
     marker_payload = _extract_handoff_summary_payload(message)
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with webui_session_db.open_db_writable(db_path) as conn:
             try:
                 if marker_payload is not None:
                     cur = conn.execute(

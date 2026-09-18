@@ -21,6 +21,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Iterable
 
+from api import webui_session_db
+
 
 def _safe_int(value, default: int = 0) -> int:
     try:
@@ -103,8 +105,7 @@ def _read_state_db(state_db_path: Path | None) -> dict[str, dict]:
     if state_db_path is None or not state_db_path.exists():
         return {}
     try:
-        with closing(sqlite3.connect(f"file:{state_db_path}?mode=ro", uri=True)) as conn:
-            conn.row_factory = sqlite3.Row
+        with webui_session_db.open_db_readonly(state_db_path) as conn:
             tables = {row[0] for row in conn.execute("select name from sqlite_master where type='table'")}
             if "sessions" not in tables:
                 return {}
