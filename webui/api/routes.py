@@ -12506,27 +12506,10 @@ def _handle_get_system(handler, parsed):
     return None
 
 
-def handle_get(handler, parsed) -> bool:
-    """Handle all GET routes. Returns True if handled, False for 404."""
-    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
-    if proxy_result is not False:
-        return proxy_result
-
-    res = _handle_get_static_and_shell(handler, parsed)
-    if res is not None:
-        return res
-
-    res = _handle_get_auth(handler, parsed)
-    if res is not None:
-        return res
-
-    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
-        return True
-
-    res = _handle_get_system(handler, parsed)
-    if res is not None:
-        return res
-
+def _handle_get_config_and_models(handler, parsed):
+    """Handle model discovery, providers, settings, plugins, and appearance routes.
+    Returns True if handled, None if unhandled.
+    """
     if parsed.path == "/api/models":
         force = False
         if getattr(parsed, "query", None):
@@ -12721,7 +12704,7 @@ def handle_get(handler, parsed) -> bool:
             from api.updates import channel_version_badge, _read_update_channel
             channel = _read_update_channel()
             settings["update_channel"] = channel
-            settings["update_channel_version"] = channel_version_badge(channel)
+            settings["update_channel_version"] = channel_version_badge()
         except Exception:
             logger.warning("Silent exception in handle_get", exc_info=True)
             pass
@@ -12768,6 +12751,33 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path.startswith("/static/"):
         return _serve_static(handler, parsed)
 
+    return None
+
+
+def handle_get(handler, parsed) -> bool:
+    """Handle all GET routes. Returns True if handled, False for 404."""
+    proxy_result = _handle_extension_sidecar_proxy(handler, parsed, "GET")
+    if proxy_result is not False:
+        return proxy_result
+
+    res = _handle_get_static_and_shell(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_auth(handler, parsed)
+    if res is not None:
+        return res
+
+    if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
+        return True
+
+    res = _handle_get_system(handler, parsed)
+    if res is not None:
+        return res
+
+    res = _handle_get_config_and_models(handler, parsed)
+    if res is not None:
+        return res
 
     if parsed.path == "/api/session/worktree/status":
         query = parse_qs(parsed.query)
