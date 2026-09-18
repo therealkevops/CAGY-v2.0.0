@@ -133,6 +133,29 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertIn("UI_THEME_JS_OK", proc.stdout)
 
 
+    def test_ui_notifications_js_module(self):
+        """Verify ui-notifications.js exports expected notification and dialog functions and constants."""
+        import subprocess
+
+        test_node_script = """
+        const notifMod = require('./webui/static/ui-notifications.js');
+        const { TOAST_DEFAULT_MS, TOAST_ERROR_DEFAULT_MS, showToast, dismissToast, showConfirmDialog, showPromptDialog, showAlertDialog } = notifMod;
+        
+        if (typeof TOAST_DEFAULT_MS !== 'number' || TOAST_DEFAULT_MS !== 2800) throw new Error('Invalid TOAST_DEFAULT_MS');
+        if (typeof TOAST_ERROR_DEFAULT_MS !== 'number' || TOAST_ERROR_DEFAULT_MS !== 20000) throw new Error('Invalid TOAST_ERROR_DEFAULT_MS');
+        if (typeof showToast !== 'function') throw new Error('showToast is not a function');
+        if (typeof dismissToast !== 'function') throw new Error('dismissToast is not a function');
+        if (typeof showConfirmDialog !== 'function') throw new Error('showConfirmDialog is not a function');
+        if (typeof showPromptDialog !== 'function') throw new Error('showPromptDialog is not a function');
+        if (typeof showAlertDialog !== 'function') throw new Error('showAlertDialog is not a function');
+        
+        console.log('UI_NOTIFICATIONS_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("UI_NOTIFICATIONS_JS_OK", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
 
