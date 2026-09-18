@@ -101,6 +101,38 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertIn("API_JS_OK", proc.stdout)
 
 
+    def test_ui_theme_js_module(self):
+        """Verify ui-theme.js exports expected theme functions and normalizes properly."""
+        import subprocess
+
+        test_node_script = """
+        const themeMod = require('./webui/static/ui-theme.js');
+        const { _THEMES, _SKINS, _normalizeAppearance, _sanitizeSkinTokens, _sanitizeSkinScheme } = themeMod;
+        
+        if (!Array.isArray(_THEMES) || _THEMES.length < 3) throw new Error('Invalid _THEMES');
+        if (!Array.isArray(_SKINS) || _SKINS.length < 4) throw new Error('Invalid _SKINS');
+        
+        const norm = _normalizeAppearance('light', 'slate');
+        if (norm.theme !== 'light' || norm.skin !== 'slate') throw new Error('Appearance normalization failed');
+        
+        const normLegacy = _normalizeAppearance('solarized', '');
+        if (normLegacy.theme !== 'dark' || normLegacy.skin !== 'slate') throw new Error('Legacy appearance mapping failed');
+        
+        const cleanScheme = _sanitizeSkinScheme('DARK');
+        if (cleanScheme !== 'dark') throw new Error('Scheme sanitization failed');
+        
+        const tokens = _sanitizeSkinTokens({ '--bg': '#121212', '--invalid': 'expression(bad)', '--accent': 'rgb(255, 0, 0)' });
+        if (tokens['--bg'] !== '#121212' || tokens['--accent'] !== 'rgb(255, 0, 0)' || tokens['--invalid']) {
+            throw new Error('Token sanitization failed: ' + JSON.stringify(tokens));
+        }
+        
+        console.log('UI_THEME_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("UI_THEME_JS_OK", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
 
