@@ -19,7 +19,6 @@ const LARGE_TEXT_PASTE_LINE_THRESHOLD = 100;
 let _composerLockState = null;
 let _compressionPlaceholderSaved = null;
 let _composerStatusTimer = null;
-let _imeComposing = false;
 
 function _getEl(id) {
   if (typeof $ === 'function') return $(id);
@@ -304,7 +303,10 @@ function autoResizeTextarea(ta) {
 }
 
 function _isImeEnter(e) {
-  return e.isComposing || e.keyCode === 229 || _imeComposing;
+  if (!e) return false;
+  const ime = (typeof _imeComposing !== 'undefined' && _imeComposing) ||
+              (typeof window !== 'undefined' && window._imeComposing);
+  return Boolean(e.isComposing || e.keyCode === 229 || ime);
 }
 
 function _hasFinePointerCoexisting() {

@@ -80,6 +80,53 @@ class TestSyntaxAndImports(unittest.TestCase):
             with self.subTest(script_src=src):
                 self.assertTrue(target.exists(), f"index.html references non-existent script: {src} -> {target}")
 
+    def test_static_scripts_no_lexical_scope_collisions(self):
+        """Verify that scripts loaded in index.html have no top-level lexical declaration collisions (let/const/class)."""
+        import re
+        import subprocess
+
+        static_dir = WEBUI_DIR / "static"
+        index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+        script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', index_html)
+
+        local_files = []
+        for src in script_srcs:
+            if src.startswith("http://") or src.startswith("https://"):
+                continue
+            clean_src = src.split("?")[0]
+            if clean_src.startswith("static/"):
+                clean_src = clean_src.replace("static/", "", 1)
+            target = static_dir / clean_src
+            if target.exists() and target.suffix == ".js":
+                local_files.append(str(target))
+
+        node_checker = """
+        const fs = require('fs');
+        const vm = require('vm');
+        const files = process.argv.slice(1);
+        let combined = '';
+        for (const file of files) {
+            combined += '\\n/* --- ' + file + ' --- */\\n' + fs.readFileSync(file, 'utf8');
+        }
+        try {
+            new vm.Script(combined);
+            process.exit(0);
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+        """
+        proc = subprocess.run(
+            ["node", "-e", node_checker, *local_files],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"Lexical scope collision among static scripts in index.html: {proc.stderr}",
+        )
+
     def test_api_js_module(self):
         """Verify api.js exports apiFetch and ApiError and behaves as expected in Node."""
         import subprocess
