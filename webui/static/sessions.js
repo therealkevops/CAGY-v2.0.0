@@ -1571,6 +1571,7 @@ async function _switchProfileForSessionLoad(profile){
 
 async function loadSession(sid){
   const opts = arguments[1] || {};
+  console.log('[sessions] loadSession starting for:', sid, opts);
   // Resolve canonical lineage SID BEFORE both the direct and sidebar preload
   // notifications so extensions always see the canonical session id, not the
   // raw sidebar click id (which may differ after lineage folding).
@@ -1591,23 +1592,20 @@ async function loadSession(sid){
   const forceReload = !!opts.force;
   const currentSid = S.session ? S.session.session_id : null;
   const sameSessionForceReload = forceReload && currentSid===sid;
-  // Clicking the already-open session in the sidebar is a no-op. Reloading it
-  // tears down active pane state and can reset the long-session scroll window
-  // to the top even though the user did not navigate anywhere. Explicit
-  // refresh paths pass {force:true} when external state.db changes arrive.
-  // Do not no-op a same-session click while another load is in flight: the
-  // previous transcript may already have been cleared for the pending switch.
-  // Static force-reload invariant: if(currentSid===sid && !forceReload) return;
-  // #2971: idempotent re-arm before the no-op guard revives a stream a prior
-  // failed loadSession killed; no-ops on real switches.
+  // Clicking the already-open session in the sidebar is a no-op when already properly
+  // rendered. But if the UI is stuck on emptyState, has 0 loaded messages, or shows
+  // an error placeholder, re-selecting the session MUST reload it.
   _rearmActiveSessionStream();
-  // #6999: same-session force-reload coordination lives in the refresh paths
-  // (refreshActiveSessionIfExternallyUpdated guard + session-updated SSE
-  // handler in messages.js), NOT here: a second loadSession(sid,{force:true})
-  // for the same sid is a legitimate supersede (generation bump below) that
-  // cross-session ordering tests rely on. Coalescing at the entry point would
-  // drop the superseding fetch and leave a stale first load in charge.
-  if(currentSid===sid && !forceReload && (!_loadingSessionId || _loadingSessionId===sid)){
+  const emptyStateVisible = Boolean($('emptyState') && $('emptyState').style.display !== 'none');
+  const noRenderedMessages = !S.messages || S.messages.length === 0;
+  const msgInnerNeedsRecovery = Boolean($('msgInner') && (
+    $('msgInner').textContent.includes('Loading') ||
+    $('msgInner').textContent.includes('Failed') ||
+    $('msgInner').textContent.includes('not available')
+  ));
+  const needsFullReload = forceReload || emptyStateVisible || noRenderedMessages || msgInnerNeedsRecovery;
+
+  if(currentSid===sid && !needsFullReload && (!_loadingSessionId || _loadingSessionId===sid)){
     // Re-selecting the already-open session is a no-op for transcript/scroll, but
     // it is still a *visit*: clear a stale sidebar unread dot (e.g. one a
     // background completion left on the open, unfocused pane) before returning.
@@ -2385,6 +2383,7 @@ async function _ensureSidebarSessionProfile(session){
 
 async function _openSidebarSession(session, loadOpts={}){
   if(!session||!session.session_id) return;
+  console.log('[sessions] _openSidebarSession called for:', session.session_id);
   const _sidebarNotifyOpenFn=(typeof _agyNotifySessionOpen==='function'?_agyNotifySessionOpen:(typeof _hermesNotifySessionOpen==='function'?_hermesNotifySessionOpen:null));
   if(!loadOpts.skipExtHooks && _sidebarNotifyOpenFn){
     var _preResult=_sidebarNotifyOpenFn(session.session_id, null, {preload:true, opts:loadOpts});
@@ -2392,13 +2391,22 @@ async function _openSidebarSession(session, loadOpts={}){
   }
   // #5409: close mobile sidebar AFTER veto guard passes — only close if open proceeds.
   if(typeof closeMobileSidebar==='function')closeMobileSidebar();
+  if(typeof switchPanel==='function' && typeof _currentPanel!=='undefined' && _currentPanel!=='chat'){
+    await switchPanel('chat');
+  }
   if(_isExternalSession(session)){
     try{await api('/api/session/import_cli',{method:'POST',body:JSON.stringify(_externalImportPayload(session))});}
     catch(_e){ /* import failed -- fall through to read-only view */ }
   }
   await _ensureSidebarSessionProfile(session);
+  const emptyStateVisible = Boolean($('emptyState') && $('emptyState').style.display !== 'none');
+  const noRenderedMessages = !S.messages || S.messages.length === 0;
+  const mergedOpts = Object.assign({}, loadOpts, {
+    _preloadNotified: true,
+    force: !!(loadOpts.force || (emptyStateVisible && noRenderedMessages))
+  });
   // Tell loadSession to skip its pre-hook — we already ran it above.
-  await loadSession(session.session_id, Object.assign({}, loadOpts, {_preloadNotified:true}));
+  await loadSession(session.session_id, mergedOpts);
   renderSessionListFromCache();
 }
 
@@ -8554,8 +8562,8 @@ function renderSessionListFromCache(){
       if(dx>8&&dx>dy*1.1) _swipeTracking=true;
     };
     const _promoteSessionDrag=(dx,dy)=>{
-      if(_gestureState!=='pressing'||(dx<=5&&dy<=5)) return;
-      if(dy>8||dx>10) _clearLongPressTimer();
+      if(_gesturePointerType==='mouse'||_gestureState!=='pressing'||(dx<=12&&dy<=12)) return;
+      if(dy>14||dx>16) _clearLongPressTimer();
       _gestureState='dragging';
       el.classList.add('dragging');
       if(_clearDragTimer){clearTimeout(_clearDragTimer);_clearDragTimer=null;}
@@ -8725,6 +8733,7 @@ function renderSessionListFromCache(){
       clearTimeout(_tapTimer);
       const delay=pointerType==='mouse'?0:300;
       if(pointerType!=='mouse') el.classList.add('loading');
+      _lastTouchHandledTime=Date.now();
       _tapTimer=setTimeout(async()=>{
         _tapTimer=null;
         _lastTapTime=0;
@@ -8738,9 +8747,39 @@ function renderSessionListFromCache(){
       }, delay);
       return false;
     };
+    let _lastTouchHandledTime=0;
+    el.onclick=async(e)=>{
+      if(e&&e.button!==0&&typeof e.button==='number') return;
+      if(_renamingSid) return;
+      if(_isSessionActionTarget(e.target)) return;
+      if(e.target&&e.target.closest&&e.target.closest('.session-child-count,.session-child-sessions,.session-child-session,.session-lineage-count,.session-lineage-segments,.session-lineage-segment')) return;
+      if(_sessionActionMenu&&!_sessionActionMenu.contains(e.target)){
+        closeSessionActionMenu();
+        return;
+      }
+      if(_sessionSelectMode){
+        if(!readOnly) toggleSessionSelect(s.session_id);
+        return;
+      }
+      if(_gestureState==='committed'||_gestureState==='dragging'||_swipeTracking) return;
+      if(_lastTouchHandledTime&&Date.now()-_lastTouchHandledTime<500) return;
+      try{
+        if(($('sessionSearch').value||'').trim()) _hideSearchPreviewsAfterSelect=true;
+        await _openSidebarSession(s);
+      }catch(err){
+        console.error('[sessions] Failed to open session on click:', err);
+      }
+    };
+    el.setAttribute('tabindex','0');
+    el.onkeydown=(e)=>{
+      if((e.key==='Enter'||e.key===' ')&&!_renamingSid){
+        if(_isSessionActionTarget(e.target)) return;
+        e.preventDefault();
+        el.click();
+      }
+    };
     el.onpointerdown=(e)=>{
-      if(e.pointerType==='touch') return;
-      if(e.pointerType==='mouse' && e.button!==0) return;
+      if(e.pointerType==='touch'||e.pointerType==='mouse') return;
       if(_isSessionActionTarget(e.target)) return;
       _beginSessionGesture(e.clientX,e.clientY,e.pointerType||'');
       if(e.pointerType==='pen'){
@@ -8748,22 +8787,21 @@ function renderSessionListFromCache(){
       }
     };
     el.onpointermove=(e)=>{
-      if(e.pointerType==='touch') return;
+      if(e.pointerType==='touch'||e.pointerType==='mouse') return;
       // Plain hover also dispatches pointermove. Only mark a row as dragging
       // after an actual press starts on this row; otherwise hovered rows stay
       // faded until the next sidebar rerender clears their DOM nodes.
       _updateSessionGesture(e.clientX,e.clientY);
     };
     el.onpointercancel=(e)=>{
-      if(e.pointerType==='touch') return;
+      if(e.pointerType==='touch'||e.pointerType==='mouse') return;
       _clearPointerDragState();
     };
     el.onpointerleave=()=>{
-      if(_gesturePointerType==='mouse'&&_gestureState!=='idle') _clearPointerDragState();
+      if(_gesturePointerType!=='mouse'&&_gestureState!=='idle') _clearPointerDragState();
     };
     el.onpointerup=(e)=>{
-      if(e.pointerType==='touch') return;
-      if(e.pointerType==='mouse' && e.button!==0) return;  // ignore right/middle click
+      if(e.pointerType==='touch'||e.pointerType==='mouse') return;
       if(_finishSessionGesture(e.clientX,e.clientY,e.target,e.pointerType)) e.stopPropagation();
     };
     // Add ondblclick for more reliable double-click detection

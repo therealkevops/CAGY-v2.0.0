@@ -3,7 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-WEBUI_VERSION = "2.0.1-agy"
+WEBUI_VERSION = "2.0.2-agy"
 AGENT_VERSION = "2.0"
 
 
