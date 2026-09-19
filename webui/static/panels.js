@@ -1,4 +1,5 @@
 let _currentPanel = 'chat';
+if (typeof window !== 'undefined') window._currentPanel = _currentPanel;
 let _renamingAppTitlebar = false;  // guard against re-entrant rename
 let _skillsData = null; // cached skills list
 let _currentWorkspaceDetail = null; // { path, name, is_default }
@@ -355,6 +356,7 @@ function _syncMobileSidebarPanelFromMainView(){
   const panelEl=$('panel'+panel.charAt(0).toUpperCase()+panel.slice(1));
   if(!panelEl)return _currentPanel||'chat';
   _currentPanel=panel;
+  if (typeof window !== 'undefined') window._currentPanel = _currentPanel;
   document.querySelectorAll('[data-panel]').forEach(t=>t.classList.toggle('active',t.dataset.panel===panel));
   document.querySelectorAll('.panel-view').forEach(p=>p.classList.remove('active'));
   panelEl.classList.add('active');
@@ -387,6 +389,7 @@ async function switchPanel(name, opts = {}) {
   if (!opts.bypassSettingsGuard && !_beforePanelSwitch(nextPanel)) return false;
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   _currentPanel = nextPanel;
+  if (typeof window !== 'undefined') window._currentPanel = _currentPanel;
   // Mobile drawer visibility: a rail/tab click on a phone should surface the
   // panel synchronously, NOT after the panel's async data load. If the re-open
   // stayed at the bottom of this function, a form opened from inside the drawer

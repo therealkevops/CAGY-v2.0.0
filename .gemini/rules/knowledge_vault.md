@@ -33,7 +33,7 @@ Guidelines enforced across the CAGY project:
   - See [[architecture/cagy_unified]] for execution namespace details.
 
 > [!NOTE]
-> **Tiered Context Diet Active**: Space knowledge (63.5 KB) exceeds the full-text limit (20.0 KB). Compiled into a high-density Decision Matrix and Executive Abstracts Map to optimize prompt efficiency. To retrieve complete notes on-demand, run `python3 skills/knowledge-vault/scripts/recall_vault.py "<query>"`.
+> **Tiered Context Diet Active**: Space knowledge (68.1 KB) exceeds the full-text limit (20.0 KB). Compiled into a high-density Decision Matrix and Executive Abstracts Map to optimize prompt efficiency. To retrieve complete notes on-demand, run `python3 skills/knowledge-vault/scripts/recall_vault.py "<query>"`.
 
 ## Architectural Decisions Matrix
 | ADR | Title | Status | Summary & Key Decision |
@@ -51,6 +51,7 @@ Guidelines enforced across the CAGY project:
 | [[decisions/adr_002_knowledge_vault_second_brain|ADR 002]] | ADR 002: Adopt Obsidian-Compatible Knowledge Vault & Active Learning Model | `Accepted` | **Option 3 was chosen**: - All knowledge is stored as atomic Markdown files in `/workspace/knowledge/`. - Pre-turn compilation automatically injects prioritized vault notes into `.gemini/rules/knowledge_vault.md`,... |
 | [[decisions/adr_013_sidebar_session_selection_and_gesture_isolation|ADR 013]] | ADR 013: Sidebar Session Selection and Pointer Gesture Isolation | `Accepted` | Users experienced an intermittent failure where selecting a session from the sidebar in the WebUI (`http://localhost:8989`) completely failed to load the conversation into the chat interface. Server logs revealed... |
 | [[decisions/adr_005_workspace_destination_export_and_sandboxing|ADR 005]] | ADR 005: Workspace Destination Export & Session Sandboxing | `Accepted` | **Option 3 was chosen**: - Built backend endpoints in `webui/api/session.py`: - `POST /api/session/export/workspace`: Resolves subfolder relative to target workspace, validates canonical root boundary, sanitizes... |
+| [[decisions/adr_014_composer_state_hardening_and_cross_module_s_exposure|ADR 014]] | ADR 014: Composer State Hardening and Cross-Module S Object Exposure | `Accepted` | Following the sidebar gesture isolation refactor in ADR 013, the WebUI chat interface became completely unresponsive in the browser, and clicking sidebar sessions failed to open conversations. Through end-to-end... |
 
 ### Key Architectural Decision Abstracts
 - **[[decisions/adr_008_frontend_ui_decomposition|ADR 008: Frontend Modernization & UI Domain Extraction]]** (`Accepted`): **Option 3 was chosen** and executed across 5 methodical sprints: 1. **Sprint F1 — Shared `apiFetch` Network Transport (`webui/static/api.js`)**: - Implemented `ApiError` class capturing HTTP status, status text,...
@@ -66,6 +67,7 @@ Guidelines enforced across the CAGY project:
 - **[[decisions/adr_002_knowledge_vault_second_brain|ADR 002: Adopt Obsidian-Compatible Knowledge Vault & Active Learning Model]]** (`Accepted`): **Option 3 was chosen**: - All knowledge is stored as atomic Markdown files in `/workspace/knowledge/`. - Pre-turn compilation automatically injects prioritized vault notes into `.gemini/rules/knowledge_vault.md`,...
 - **[[decisions/adr_013_sidebar_session_selection_and_gesture_isolation|ADR 013: Sidebar Session Selection and Pointer Gesture Isolation]]** (`Accepted`): Users experienced an intermittent failure where selecting a session from the sidebar in the WebUI (`http://localhost:8989`) completely failed to load the conversation into the chat interface. Server logs revealed...
 - **[[decisions/adr_005_workspace_destination_export_and_sandboxing|ADR 005: Workspace Destination Export & Session Sandboxing]]** (`Accepted`): **Option 3 was chosen**: - Built backend endpoints in `webui/api/session.py`: - `POST /api/session/export/workspace`: Resolves subfolder relative to target workspace, validates canonical root boundary, sanitizes...
+- **[[decisions/adr_014_composer_state_hardening_and_cross_module_s_exposure|ADR 014: Composer State Hardening and Cross-Module S Object Exposure]]** (`Accepted`): Following the sidebar gesture isolation refactor in ADR 013, the WebUI chat interface became completely unresponsive in the browser, and clicking sidebar sessions failed to open conversations. Through end-to-end...
 
 ## Architectural Principles & System Design (Abstracts)
 - **[[architecture/cagy_unified|CAGY Architecture & Execution Model]]**: The Containerized Antigravity (CAGY) platform bridges the official Google Antigravity Linux binary (`agy`) with an agentic WebUI running inside a unified Debian container. - **Execution Namespace**: Docker container `agy-unified`...

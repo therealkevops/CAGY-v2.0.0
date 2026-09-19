@@ -2391,7 +2391,10 @@ async function _openSidebarSession(session, loadOpts={}){
   }
   // #5409: close mobile sidebar AFTER veto guard passes — only close if open proceeds.
   if(typeof closeMobileSidebar==='function')closeMobileSidebar();
-  if(typeof switchPanel==='function' && typeof _currentPanel!=='undefined' && _currentPanel!=='chat'){
+  const activePanel = (typeof window !== 'undefined' && typeof window._currentPanel !== 'undefined')
+    ? window._currentPanel
+    : (typeof _currentPanel !== 'undefined' ? _currentPanel : 'chat');
+  if(typeof switchPanel==='function' && activePanel !== 'chat'){
     await switchPanel('chat');
   }
   if(_isExternalSession(session)){

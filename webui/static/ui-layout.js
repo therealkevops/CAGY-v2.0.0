@@ -40,9 +40,16 @@ function _getEl(id) {
 }
 
 function _getState() {
+  if (typeof S !== 'undefined' && S) return S;
   if (typeof window !== 'undefined' && window.S) return window.S;
   if (typeof global !== 'undefined' && global.S) return global.S;
-  return null;
+  if (typeof window !== 'undefined') {
+    if (!window._fallbackComposerState) {
+      window._fallbackComposerState = { session: null, messages: [], busy: false, pendingFiles: [], toolCalls: [], activeStreamId: null };
+    }
+    return window._fallbackComposerState;
+  }
+  return { session: null, messages: [], busy: false, pendingFiles: [], toolCalls: [], activeStreamId: null };
 }
 
 function _uiText(key, fallback) {

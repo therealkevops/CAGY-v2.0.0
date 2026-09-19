@@ -6,6 +6,8 @@
 // against old servers (Phase 1 may not yet be deployed everywhere).
 // See api/todo_state.py for the wire contract.
 const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default',activeProfileIsDefault:true,showHiddenWorkspaceFiles:false,todos:[],todoStateMeta:null,_pendingSessionToolsets:null};
+if (typeof window !== 'undefined') window.S = S;
+if (typeof global !== 'undefined') global.S = S;
 
 function assistantDisplayName(){
   return window._botName||'AGY';

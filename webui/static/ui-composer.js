@@ -28,7 +28,15 @@ function _getEl(id) {
 
 function _getState() {
   if (typeof S !== 'undefined' && S) return S;
-  return { busy: false, pendingFiles: [] };
+  if (typeof window !== 'undefined' && window.S) return window.S;
+  if (typeof global !== 'undefined' && global.S) return global.S;
+  if (typeof window !== 'undefined') {
+    if (!window._fallbackComposerState) {
+      window._fallbackComposerState = { session: null, messages: [], busy: false, pendingFiles: [], toolCalls: [], activeStreamId: null };
+    }
+    return window._fallbackComposerState;
+  }
+  return { session: null, messages: [], busy: false, pendingFiles: [], toolCalls: [], activeStreamId: null };
 }
 
 function _tr(key, fb) {
@@ -102,8 +110,8 @@ function unlockComposerForClarify() {
 
 function _composerHasContent() {
   const msg = _getEl('msg');
-  const S = _getState();
-  const pending = S.pendingFiles || [];
+  const S = _getState() || {};
+  const pending = (S && S.pendingFiles) || [];
   return !!((msg && msg.value.trim().length > 0) || pending.length > 0 || (typeof window !== 'undefined' && typeof window._hasPendingSelections === 'function' && window._hasPendingSelections()));
 }
 
@@ -115,13 +123,13 @@ function _getExplicitBusyCommandAction(text) {
   const args = body.slice(name.length).trim();
   if (!args) return null;
   if (name === 'queue') return 'queue';
-  const S = _getState();
+  const S = _getState() || {};
   if (name === 'steer') {
-    if (S.activeStreamId && typeof _trySteer === 'function') return 'steer';
+    if (S && S.activeStreamId && typeof _trySteer === 'function') return 'steer';
     return 'queue';
   }
   if (name === 'interrupt') {
-    if (S.activeStreamId && typeof cancelStream === 'function') return 'interrupt';
+    if (S && S.activeStreamId && typeof cancelStream === 'function') return 'interrupt';
     return 'queue';
   }
   return null;
@@ -133,11 +141,11 @@ function getComposerPrimaryAction() {
   const locked = !!(msg && msg.disabled);
   if (locked) return 'disabled';
   const compressionRunning = typeof isCompressionUiRunning === 'function' && isCompressionUiRunning();
-  const S = _getState();
-  const isBusy = !!S.busy || compressionRunning;
+  const S = _getState() || {};
+  const isBusy = !!(S && S.busy) || compressionRunning;
   if (!isBusy) return hasContent ? 'send' : 'disabled';
   if (!hasContent) {
-    if (S.activeStreamId && typeof cancelStream === 'function') return 'stop';
+    if (S && S.activeStreamId && typeof cancelStream === 'function') return 'stop';
     if (compressionRunning) return 'queue';
     return 'disabled';
   }
@@ -145,11 +153,11 @@ function getComposerPrimaryAction() {
   if (explicitAction) return explicitAction;
   const defaultMessageMode = (typeof window !== 'undefined' && window._defaultMessageMode) || 'steer';
   if (defaultMessageMode === 'steer') {
-    if (S.activeStreamId && typeof _trySteer === 'function') return 'steer';
+    if (S && S.activeStreamId && typeof _trySteer === 'function') return 'steer';
     return 'queue';
   }
   if (defaultMessageMode === 'interrupt') {
-    if (S.activeStreamId && typeof cancelStream === 'function') return 'interrupt';
+    if (S && S.activeStreamId && typeof cancelStream === 'function') return 'interrupt';
     return 'queue';
   }
   return 'queue';
@@ -163,8 +171,8 @@ function _applyBusyComposerPlaceholder() {
   if (_composerHasContent()) return;
   const assistantName = typeof assistantDisplayName === 'function' ? assistantDisplayName() : 'AGY';
   const idlePlaceholder = 'Message ' + assistantName + '\u2026';
-  const S = _getState();
-  if (typeof window !== 'undefined' && (!window._showBusyPlaceholderHint || !S.busy)) {
+  const S = _getState() || {};
+  if (typeof window !== 'undefined' && (!window._showBusyPlaceholderHint || !S || !S.busy)) {
     input.placeholder = idlePlaceholder;
     return;
   }
@@ -254,35 +262,35 @@ async function handleComposerPrimaryAction() {
 }
 
 function setBusy(v) {
-  const S = _getState();
-  S.busy = v;
+  const S = _getState() || {};
+  if (S) S.busy = v;
   updateSendBtn();
   if (!v) {
     if (typeof _clearActivityElapsedTimer === 'function') _clearActivityElapsedTimer();
     if (typeof setStatus === 'function') setStatus('');
     setComposerStatus('');
-    const sid = (typeof _queueDrainSid !== 'undefined' && _queueDrainSid) || (S.session && S.session.session_id);
+    const sid = (typeof _queueDrainSid !== 'undefined' && _queueDrainSid) || (S && S.session && S.session.session_id);
     if (typeof _queueDrainSid !== 'undefined') _queueDrainSid = null;
     if (typeof updateQueueBadge === 'function') updateQueueBadge(sid);
 
-    const _isViewedSid = !S.session || sid === S.session.session_id;
+    const _isViewedSid = !S || !S.session || sid === S.session.session_id;
     const next = sid && _isViewedSid && typeof shiftQueuedSessionMessage === 'function' ? shiftQueuedSessionMessage(sid) : null;
     if (next) {
       if (typeof updateQueueBadge === 'function') updateQueueBadge(sid);
       setTimeout(() => {
-        if (S.session && S.session.session_id !== sid) {
+        if (S && S.session && S.session.session_id !== sid) {
           if (typeof queueSessionMessage === 'function') queueSessionMessage(sid, next);
           if (typeof updateQueueBadge === 'function') updateQueueBadge(sid);
           return;
         }
         const msgEl = _getEl('msg');
         if (msgEl) msgEl.value = next.text || '';
-        S.pendingFiles = Array.isArray(next.files) ? [...next.files] : [];
-        if (next.model && S.session && next.model !== S.session.model) {
+        if (S) S.pendingFiles = Array.isArray(next.files) ? [...next.files] : [];
+        if (next.model && S && S.session && next.model !== S.session.model) {
           S.session.model = next.model;
         }
-        if (next.model_provider && S.session) S.session.model_provider = next.model_provider;
-        if (next.model && S.session) {
+        if (next.model_provider && S && S.session) S.session.model_provider = next.model_provider;
+        if (next.model && S && S.session) {
           if (typeof _applyModelToDropdown === 'function' && _getEl('modelSelect')) {
             _applyModelToDropdown(next.model, _getEl('modelSelect'), S.session.model_provider || null);
           }
@@ -338,8 +346,8 @@ function _largeTextPasteFileName(now) {
   const d = new Date(now || Date.now());
   const p = n => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, '0')}`;
-  const S = _getState();
-  const existing = new Set((S.pendingFiles || []).map(f => f && f.name).filter(Boolean));
+  const S = _getState() || {};
+  const existing = new Set(((S && S.pendingFiles) || []).map(f => f && f.name).filter(Boolean));
   let name = `pasted-text-${stamp}.md`;
   for (let i = 2; existing.has(name); i++) name = `pasted-text-${stamp}-${i}.md`;
   return name;
@@ -385,6 +393,7 @@ if (typeof window !== 'undefined') {
   window._largeTextPasteFile = _largeTextPasteFile;
   window._largeTextPasteFitsUploadLimit = _largeTextPasteFitsUploadLimit;
   window._attachLargePastedText = _attachLargePastedText;
+  window._getState = _getState;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
