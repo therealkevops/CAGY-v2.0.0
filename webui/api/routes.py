@@ -11329,6 +11329,23 @@ def _handle_post_pre_body(handler, parsed, diag=None):
     return None
 
 
+def _handle_process_complete_ack_deprecated(handler):
+    """Handle deprecated /api/process-complete-ack endpoint (410 Gone)."""
+    return j(
+        handler,
+        {
+            "error": (
+                "gone: /api/process-complete-ack was replaced by "
+                "/api/bg-task-complete-ack as part of the "
+                "process_complete -> bg_task_complete event rename"
+            ),
+            "replaced_by": "/api/bg-task-complete-ack",
+        },
+        status=410,
+        extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
+    )
+
+
 def handle_post(handler, parsed) -> bool:
     """Handle all POST routes. Returns True if handled, False for 404."""
     diag = RequestDiagnostics.maybe_start("POST", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
@@ -11340,34 +11357,11 @@ def handle_post(handler, parsed) -> bool:
         finally:
             if diag:
                 diag.finish()
-    # T1 deprecation alias for the legacy ack endpoint that the pre-rename
-    # WebUI used to POST to after handling ``process_complete``. The new
-    # canonical SSE event is ``bg_task_complete`` and the new ack endpoint
-    # will be ``/api/bg-task-complete-ack`` (introduced by PR (b), the WebUI
-    # half of the split). Until PR (b) lands we keep the old path responding
-    # with HTTP 410 Gone + ``X-Replaced-By`` so any stale tab posting under
-    # the old name fails loudly with a discoverable hint. The handler runs
-    # BEFORE the CSRF gate on purpose: an old tab will not carry a CSRF token
-    # for the deprecated path, and surfacing 410 (not 403) is the correct
-    # contract here.
     if parsed.path == "/api/process-complete-ack":
         if diag:
             diag.stage("process_complete_ack_deprecated")
         try:
-            j(
-                handler,
-                {
-                    "error": (
-                        "gone: /api/process-complete-ack was replaced by "
-                        "/api/bg-task-complete-ack as part of the "
-                        "process_complete -> bg_task_complete event rename"
-                    ),
-                    "replaced_by": "/api/bg-task-complete-ack",
-                },
-                status=410,
-                extra_headers={"X-Replaced-By": "/api/bg-task-complete-ack"},
-            )
-            return True
+            return _handle_process_complete_ack_deprecated(handler)
         finally:
             if diag:
                 diag.finish()
