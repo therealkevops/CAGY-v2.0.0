@@ -251,7 +251,7 @@ def _json_response_body(payload, *, pretty: bool = True) -> bytes:
     return _json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
 
 
-def j(handler, payload, status: int=200, extra_headers: dict=None, *, pretty: bool = True) -> None:
+def j(handler, payload, status: int=200, extra_headers: dict=None, *, pretty: bool = True) -> bool:
     """Send a JSON response.
 
     *extra_headers*: optional dict of additional headers to include
@@ -277,6 +277,7 @@ def j(handler, payload, status: int=200, extra_headers: dict=None, *, pretty: bo
         for k, v in extra_headers.items():
             handler.send_header(k, v)
     _safe_write(handler, body)
+    return True
 
 
 def t(
@@ -285,7 +286,7 @@ def t(
     status: int=200,
     content_type: str='text/plain; charset=utf-8',
     extra_headers: dict=None,
-) -> None:
+) -> bool:
     """Send a plain text or HTML response."""
     body = payload if isinstance(payload, bytes) else str(payload).encode('utf-8')
     handler.send_response(status)
@@ -298,6 +299,7 @@ def t(
             handler.send_header(k, v)
     flush_pending_auth_cookies(handler)
     _safe_write(handler, body)
+    return True
 
 
 MAX_BODY_BYTES = 20 * 1024 * 1024  # 20MB limit for non-upload POST bodies

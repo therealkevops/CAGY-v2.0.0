@@ -14339,39 +14339,39 @@ def handle_get(handler, parsed) -> bool:
         return proxy_result
 
     res = _handle_get_static_and_shell(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_auth(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
         return True
 
     res = _handle_get_system(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_config_and_models(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_session(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_workspace_and_git(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_chat_and_stream(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_get_tools_and_mcp(handler, parsed)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     return False  # 404
 
@@ -17272,8 +17272,8 @@ def handle_post(handler, parsed) -> bool:
         return proxy_result
 
     res = _handle_post_pre_body(handler, parsed, diag=diag)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     if diag:
         diag.stage("read_body")
@@ -17295,28 +17295,28 @@ def handle_post(handler, parsed) -> bool:
         return True
 
     res = _handle_post_auth(handler, parsed, body)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_post_session(handler, parsed, body)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_post_chat_and_stream(handler, parsed, body, diag=diag)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_post_workspace_and_git(handler, parsed, body)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_post_config_and_settings(handler, parsed, body)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     res = _handle_post_tools_and_mcp(handler, parsed, body, diag=diag)
-    if res is not None:
-        return res
+    if res is not None or getattr(handler, "_response_sent", False):
+        return True if getattr(handler, "_response_sent", False) else res
 
     return False  # 404
 

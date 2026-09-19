@@ -415,6 +415,31 @@ class TestRoutesDispatch(unittest.TestCase):
             self.assertEqual(headers.get("Access-Control-Allow-Origin"), origin)
             self.assertIn("Access-Control-Allow-Methods", headers)
 
+    def test_http_keepalive_consecutive_requests(self):
+        """Verify that persistent HTTP/1.1 connections do not receive spurious 404s or desynchronize."""
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            endpoints = [
+                "/api/projects",
+                "/api/sessions",
+                "/api/models",
+                "/api/settings",
+                "/api/vault/health",
+            ]
+            for endpoint in endpoints:
+                conn.request("GET", endpoint)
+                resp = conn.getresponse()
+                body = resp.read()
+                self.assertEqual(
+                    resp.status,
+                    200,
+                    f"Expected 200 for {endpoint} on persistent connection, got {resp.status} with body: {body[:100]}"
+                )
+                self.assertNotEqual(resp.status, 404)
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

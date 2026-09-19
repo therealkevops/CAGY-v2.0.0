@@ -371,7 +371,12 @@ class Handler(BaseHTTPRequestHandler):
         record = _json.dumps(record_data)
         self._safe_webui_print(f'[webui] {record}')
 
+    def send_response(self, code, message=None) -> None:
+        self._response_sent = True
+        super().send_response(code, message)
+
     def do_GET(self) -> None:
+        self._response_sent = False
         self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
         if cookie_profile:
@@ -380,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             if not check_auth(self, parsed): return
             result = handle_get(self, parsed)
-            if result is False:
+            if result is False and not getattr(self, '_response_sent', False):
                 return j(self, {'error': 'not found'}, status=404)
         except _CLIENT_DISCONNECT_ERRORS:
             # Expected disconnect path; do not convert it into a misleading server 500.
@@ -388,7 +393,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._safe_webui_print(f'[webui] ERROR {self.command} {self.path}\n' + traceback.format_exc())
             try:
-                j(self, {'error': 'Internal server error'}, status=500)
+                if not getattr(self, '_response_sent', False):
+                    j(self, {'error': 'Internal server error'}, status=500)
             except _CLIENT_DISCONNECT_ERRORS:
                 pass
             except Exception:
@@ -397,6 +403,7 @@ class Handler(BaseHTTPRequestHandler):
             clear_request_profile()
 
     def _handle_write(self, route_func) -> None:
+        self._response_sent = False
         self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
         if cookie_profile:
@@ -408,7 +415,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             if not _is_csp_report_post and not check_auth(self, parsed): return
             result = route_func(self, parsed)
-            if result is False:
+            if result is False and not getattr(self, '_response_sent', False):
                 return j(self, {'error': 'not found'}, status=404)
         except _CLIENT_DISCONNECT_ERRORS:
             # Expected disconnect path; do not convert it into a misleading server 500.
@@ -416,7 +423,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._safe_webui_print(f'[webui] ERROR {self.command} {self.path}\n' + traceback.format_exc())
             try:
-                j(self, {'error': 'Internal server error'}, status=500)
+                if not getattr(self, '_response_sent', False):
+                    j(self, {'error': 'Internal server error'}, status=500)
             except _CLIENT_DISCONNECT_ERRORS:
                 pass
             except Exception:
