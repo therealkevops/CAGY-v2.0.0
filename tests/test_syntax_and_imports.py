@@ -310,6 +310,34 @@ class TestSyntaxAndImports(unittest.TestCase):
         // UI text fallback
         if (_uiText('unknown_key', 'Fallback') !== 'Fallback') throw new Error('_uiText fallback failed');
 
+        // Verify browser window._workspacePanelMode setter/getter non-recursion
+        const fs = require('fs');
+        const vm = require('vm');
+        const layoutCode = fs.readFileSync('./webui/static/ui-layout.js', 'utf8');
+        const context = {
+            window: {},
+            document: {
+                documentElement: { classList: { add: () => {}, remove: () => {}, contains: () => false }, dataset: {}, style: { setProperty: () => {}, removeProperty: () => {} } },
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                getElementById: () => null
+            },
+            localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+            matchMedia: () => ({ matches: false }),
+            addEventListener: () => {},
+            console: console
+        };
+        context.window = context;
+        vm.createContext(context);
+        vm.runInContext(layoutCode, context);
+
+        if (context.window._workspacePanelMode !== 'closed') throw new Error('Initial mode failed in browser simulation');
+        context.window._workspacePanelMode = 'browse';
+        if (context.window._workspacePanelMode !== 'browse') throw new Error('Setting browse failed in browser simulation');
+        context.window.setWorkspacePanelMode('preview');
+        if (context.window._workspacePanelMode !== 'preview') throw new Error('Setting preview failed in browser simulation');
+        context.window.syncWorkspacePanelState();
+
         console.log('UI_LAYOUT_JS_OK');
         """
         proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)

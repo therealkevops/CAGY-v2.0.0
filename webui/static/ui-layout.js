@@ -230,7 +230,12 @@ function setWorkspacePanelMode(mode) {
   const { layout, panel } = _workspacePanelEls();
   _workspacePanelMode = (mode === 'browse' || mode === 'preview') ? mode : 'closed';
   if (typeof window !== 'undefined') {
-    window._workspacePanelMode = _workspacePanelMode;
+    try {
+      const desc = Object.getOwnPropertyDescriptor(window, '_workspacePanelMode');
+      if (!desc || (!desc.get && !desc.set)) {
+        window._workspacePanelMode = _workspacePanelMode;
+      }
+    } catch (_) {}
   }
   if (!layout || !panel) return _workspacePanelMode;
   const open = _workspacePanelMode !== 'closed';
