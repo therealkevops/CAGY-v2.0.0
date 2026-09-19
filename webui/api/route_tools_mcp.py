@@ -5,6 +5,7 @@ Extracted from routes.py as part of routes decomposition (Sprint R5).
 import html
 import logging
 import os
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -538,3 +539,342 @@ def _handle_get_tools_and_mcp(handler, parsed):
                     return True
 
     return None
+
+
+def _handle_post_tools_and_mcp(handler, parsed, body, diag=None):
+    """Handle POST tools, MCP, updates, extensions, crons, skills, memory, and gateway routes.
+    Returns True/response if handled, None if unhandled.
+    """
+    from api import routes as _routes
+
+    _ensure_agent_cron_import_path = _routes._ensure_agent_cron_import_path
+    _handle_cron_create = _routes._handle_cron_create
+    _handle_cron_update = _routes._handle_cron_update
+    _handle_cron_delete = _routes._handle_cron_delete
+    _handle_cron_run = _routes._handle_cron_run
+    _handle_cron_pause = _routes._handle_cron_pause
+    _handle_cron_resume = _routes._handle_cron_resume
+    _sanitize_error = _routes._sanitize_error
+    _handle_skill_save = _routes._handle_skill_save
+    _handle_skill_delete = _routes._handle_skill_delete
+    _handle_skill_toggle = _routes._handle_skill_toggle
+    _handle_memory_write = _routes._handle_memory_write
+    _handle_gateway_lifecycle = _routes._handle_gateway_lifecycle
+    ensure_agent_runtime_current = _routes.ensure_agent_runtime_current
+    require_ai_agent_class = _routes.require_ai_agent_class
+    if parsed.path == "/api/updates/check":
+        settings = load_settings()
+        if not settings.get("check_for_updates", True):
+            force = bool(body.get("force", False)) if isinstance(body, dict) else False
+            if force:
+                pass
+            else:
+                return j(handler, {"disabled": True})
+        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+        force = bool(body.get("force", False))
+        channel = body.get("channel") if isinstance(body, dict) else None
+        if channel not in ("stable", "experimental"):
+            channel = settings.get("update_channel")
+        from api.updates import check_for_updates
+
+        logger.info("checking for updates (force=%s, include_agent=%s, channel=%s)", force, include_agent_updates, channel)
+        try:
+            payload = check_for_updates(force=force, include_agent=include_agent_updates, channel=channel)
+        except Exception:
+            logger.exception("update check failed unexpectedly (defensive guard caught exception)")
+            return bad(handler, "Update check failed, see server log for details", status=500)
+        logger.info("update check completed")
+        return j(handler, payload)
+
+    if parsed.path == "/api/extensions/toggle":
+        from api.extensions import ExtensionToggleError, set_extension_user_enabled
+
+        try:
+            return j(
+                handler,
+                set_extension_user_enabled(body.get("id"), body.get("enabled")),
+            )
+        except ExtensionToggleError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension toggle failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/sidecar-proxy-consent":
+        from api.extensions import (
+            ExtensionSidecarProxyError,
+            set_extension_sidecar_proxy_consent,
+        )
+
+        try:
+            return j(
+                handler,
+                set_extension_sidecar_proxy_consent(
+                    body.get("id"),
+                    body.get("approved"),
+                ),
+            )
+        except ExtensionSidecarProxyError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension sidecar proxy consent update failed")
+            return bad(handler, "Failed to update extension state", status=500)
+
+    if parsed.path == "/api/extensions/install":
+        from api.extensions import ExtensionInstallError, install_extension
+
+        try:
+            return j(
+                handler,
+                install_extension(body.get("id"), body.get("download_url"), body.get("sha256")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension install failed")
+            return bad(handler, "Failed to install extension", status=500)
+
+    if parsed.path == "/api/extensions/uninstall":
+        from api.extensions import ExtensionInstallError, uninstall_extension
+
+        try:
+            return j(
+                handler,
+                uninstall_extension(body.get("id")),
+            )
+        except ExtensionInstallError as exc:
+            return bad(handler, str(exc), status=exc.status)
+        except Exception:
+            logger.exception("extension uninstall failed")
+            return bad(handler, "Failed to uninstall extension", status=500)
+
+    if parsed.path == "/api/crons/create":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_create(handler, body)
+
+    if parsed.path == "/api/crons/update":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_update(handler, body)
+
+    if parsed.path == "/api/crons/delete":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_delete(handler, body)
+
+    if parsed.path == "/api/crons/run":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_run(handler, body)
+
+    if parsed.path == "/api/crons/pause":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_pause(handler, body)
+
+    if parsed.path == "/api/crons/resume":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_resume(handler, body)
+
+    if parsed.path == "/api/commands/bundles/resolve":
+        from api.commands import resolve_bundle_command
+
+        command = str(body.get("command", "") or "").strip()
+        if not command:
+            return bad(handler, "command is required")
+
+        try:
+            return j(handler, resolve_bundle_command(command))
+        except KeyError:
+            return bad(handler, "Bundle command not found", 404)
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+    if parsed.path == "/api/commands/exec":
+        from api.commands import execute_agent_command, execute_plugin_command
+
+        command = str(body.get("command", "") or "").strip()
+        if not command:
+            return bad(handler, "command is required")
+
+        try:
+            return j(handler, {"output": execute_agent_command(command)})
+        except KeyError:
+            pass
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+        try:
+            return j(handler, {"output": execute_plugin_command(command)})
+        except ValueError as e:
+            return bad(handler, str(e), 400)
+        except KeyError:
+            return bad(handler, "Plugin command not found", 404)
+        except RuntimeError as e:
+            return bad(handler, _sanitize_error(e), 500)
+
+    # ── Skills (POST) ──
+    if parsed.path == "/api/skills/save":
+        return _handle_skill_save(handler, body)
+
+    if parsed.path == "/api/skills/delete":
+        return _handle_skill_delete(handler, body)
+
+    if parsed.path == "/api/skills/toggle":
+        return _handle_skill_toggle(handler, body)
+
+    # ── Memory (POST) ──
+    if parsed.path == "/api/memory/write":
+        return _handle_memory_write(handler, body)
+
+    if parsed.path in {"/api/gateway/start", "/api/gateway/stop", "/api/gateway/restart"}:
+        return _handle_gateway_lifecycle(handler, parsed.path.rsplit("/", 1)[-1], body)
+
+    # ── Updates lifecycle (POST) ──
+    if parsed.path == "/api/updates/apply":
+        target = body.get("target", "")
+        if target not in ("webui", "agent"):
+            return bad(handler, 'target must be "webui" or "agent"')
+        _apply_channel = body.get("channel") if isinstance(body, dict) else None
+        if _apply_channel not in ("stable", "experimental"):
+            _apply_channel = None
+        from api.updates import apply_update
+
+        return j(handler, apply_update(target, _apply_channel))
+
+    if parsed.path == "/api/updates/force":
+        target = body.get("target", "")
+        if target not in ("webui", "agent"):
+            return bad(handler, 'target must be "webui" or "agent"')
+        _force_channel = body.get("channel") if isinstance(body, dict) else None
+        if _force_channel not in ("stable", "experimental"):
+            _force_channel = None
+        from api.updates import apply_force_update
+
+        return j(handler, apply_force_update(target, _force_channel))
+
+    if parsed.path == "/api/updates/clear_lock":
+        target = body.get("target", "")
+        if target not in ("webui", "agent"):
+            return bad(handler, 'target must be "webui" or "agent"')
+        from api.updates import apply_clear_lock
+
+        return j(handler, apply_clear_lock(target))
+
+    if parsed.path == "/api/updates/summary":
+        from api.updates import summarize_update_payload
+
+        updates = body.get("updates") if isinstance(body, dict) else {}
+        target = body.get("target") if isinstance(body, dict) else None
+
+        def _llm_update_summary(system_prompt: str, user_prompt: str) -> str:
+            from api import profiles as profiles_api
+
+            active_profile = profiles_api.get_active_profile_name() or "default"
+
+            with profiles_api.profile_env_for_background_worker(
+                active_profile,
+                "update summary",
+                logger_override=logger,
+            ):
+                from api.config import (
+                    get_effective_default_model,
+                    resolve_model_provider,
+                    resolve_custom_provider_connection,
+                )
+
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+
+                _main_model, _main_provider, _main_base_url = resolve_model_provider(get_effective_default_model())
+                _main_api_key = None
+                try:
+                    from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
+                    from hermes_cli.runtime_provider import resolve_runtime_provider
+
+                    _rt = resolve_runtime_provider_with_anthropic_env_lock(
+                        resolve_runtime_provider,
+                        requested=_main_provider,
+                    )
+                    _main_api_key = _rt.get("api_key")
+                    if not _main_provider:
+                        _main_provider = _rt.get("provider")
+                    if not _main_base_url:
+                        _main_base_url = _rt.get("base_url")
+                except Exception as _e:
+                    logger.debug("update summary runtime provider resolution failed: %s", _e)
+                if isinstance(_main_provider, str) and _main_provider.startswith("custom:"):
+                    _cp_key, _cp_base = resolve_custom_provider_connection(_main_provider)
+                    if not _main_api_key and _cp_key:
+                        _main_api_key = _cp_key
+                    if not _main_base_url and _cp_base:
+                        _main_base_url = _cp_base
+
+                main_runtime = {
+                    "provider": _main_provider,
+                    "model": _main_model,
+                    "base_url": _main_base_url,
+                    "api_key": _main_api_key,
+                }
+
+                ensure_agent_runtime_current()
+                try:
+                    from agent.auxiliary_client import get_text_auxiliary_client
+
+                    aux_client, aux_model = get_text_auxiliary_client(
+                        "compression",
+                        main_runtime=main_runtime,
+                    )
+                    if aux_client is not None and aux_model:
+                        response = aux_client.chat.completions.create(
+                            model=aux_model,
+                            messages=messages,
+                        )
+                        return str(response.choices[0].message.content or "").strip()
+                except Exception as _e:
+                    logger.debug("update summary auxiliary model failed; falling back to main model: %s", _e)
+
+                AIAgent = require_ai_agent_class()
+
+                agent = AIAgent(
+                    model=_main_model,
+                    provider=_main_provider,
+                    base_url=_main_base_url,
+                    api_key=_main_api_key,
+                    platform="webui",
+                    quiet_mode=True,
+                    enabled_toolsets=[],
+                    session_id=f"updates-summary-{uuid.uuid4().hex[:8]}",
+                )
+                result = agent.run_conversation(
+                    user_message=user_prompt,
+                    system_message=system_prompt,
+                    conversation_history=[],
+                    task_id=f"updates-summary-{uuid.uuid4().hex[:8]}",
+                )
+                return str(result.get("final_response") or "").strip()
+
+        return j(handler, summarize_update_payload(updates, llm_callback=_llm_update_summary, target=target))
+
+    return None
+

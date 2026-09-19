@@ -2,6 +2,7 @@
 
 Extracted from routes.py as part of routes decomposition (Sprint R3).
 """
+import json
 import logging
 import os
 import platform
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from urllib.parse import parse_qs
 
 from api.config import (
@@ -554,3 +556,493 @@ def _handle_get_config_and_models(handler, parsed):
         return _serve_static(handler, parsed)
 
     return None
+
+
+def _handle_post_config_and_settings(handler, parsed, body):
+    """Handle POST configuration, models, providers, profiles, settings, and onboarding routes.
+    Returns True/response if handled, None if unhandled.
+    """
+    from api import routes as _routes
+
+    _load_saved_prompts = _routes._load_saved_prompts
+    _save_saved_prompts = _routes._save_saved_prompts
+    set_hermes_default_model = _routes.set_hermes_default_model
+    set_provider_key = _routes.set_provider_key
+    remove_provider_key = _routes.remove_provider_key
+    set_reasoning_display = _routes.set_reasoning_display
+    set_reasoning_effort = _routes.set_reasoning_effort
+    _sanitize_error = _routes._sanitize_error
+    _onboarding_gate_allows = _routes._onboarding_gate_allows
+    save_settings = _routes.save_settings
+    persisted_speech_settings_keys = _routes.persisted_speech_settings_keys
+    _clear_session_list_cache = _routes._clear_session_list_cache
+    _security_headers = _routes._security_headers
+    start_onboarding_oauth_flow = _routes.start_onboarding_oauth_flow
+    cancel_onboarding_oauth_flow = _routes.cancel_onboarding_oauth_flow
+    apply_onboarding_setup = _routes.apply_onboarding_setup
+    complete_onboarding = _routes.complete_onboarding
+    probe_provider_endpoint = _routes.probe_provider_endpoint
+    if parsed.path == "/api/dashboard/config":
+        from api import dashboard_probe
+
+        try:
+            j(handler, dashboard_probe.save_dashboard_config(body))
+        except ValueError as exc:
+            bad(handler, str(exc), status=400)
+        except Exception as exc:
+            logger.exception("dashboard config save failed")
+            bad(handler, str(exc), status=500)
+        return True
+
+    if parsed.path == "/api/prompts":
+        text = str(body.get("text") or "").strip()
+        label = str(body.get("label") or "").strip()
+        if not text:
+            return bad(handler, "text is required")
+        if len(text) > 8000:
+            return bad(handler, "text too long (max 8000 chars)")
+        prompts = _load_saved_prompts()
+        if len(prompts) >= 200:
+            return bad(handler, "saved prompts limit reached (max 200)")
+        new_prompt = {"id": uuid.uuid4().hex[:12], "label": label or text[:60], "text": text, "created_at": time.time()}
+        prompts.append(new_prompt)
+        _save_saved_prompts(prompts)
+        return j(handler, {"ok": True, "prompt": new_prompt})
+
+    if parsed.path == "/api/default-model":
+        try:
+            advanced = body.get("advanced") if isinstance(body, dict) else None
+            provider = body.get("provider") if isinstance(body, dict) else None
+            if str(provider or "").strip().lower() == "auto":
+                provider = None
+            return j(handler, set_hermes_default_model(body.get("model"), provider=provider, advanced=advanced))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    # ── Auxiliary model set (POST) ──
+    if parsed.path == "/api/model/set":
+        scope = str(body.get("scope") or "").strip()
+        task = str(body.get("task") or "").strip()
+        provider = str(body.get("provider") or "auto").strip()
+        model = str(body.get("model") or "").strip()
+        advanced = body.get("advanced") if isinstance(body, dict) else None
+        if scope == "auxiliary":
+            from api.config import set_auxiliary_model
+            try:
+                return j(handler, set_auxiliary_model(task, provider, model, advanced=advanced))
+            except Exception as exc:
+                logger.warning("Silent exception in handle_post", exc_info=True)
+                return bad(handler, str(exc), status=400)
+        if scope == "main":
+            try:
+                main_provider = provider if provider != "auto" else None
+                return j(handler, set_hermes_default_model(model, provider=main_provider, advanced=advanced))
+            except ValueError as exc:
+                return bad(handler, str(exc), status=400)
+        return bad(handler, f"unknown scope: {scope}", status=400)
+
+    # ── Providers (POST) ──
+    if parsed.path == "/api/providers":
+        provider_id = (body.get("provider") or "").strip().lower()
+        api_key = body.get("api_key")
+        if not provider_id:
+            return bad(handler, "provider is required")
+        if api_key is not None:
+            api_key = str(api_key).strip() or None
+        result = set_provider_key(provider_id, api_key)
+        if not result.get("ok"):
+            return bad(handler, result.get("error", "Unknown error"))
+        return j(handler, result)
+
+    if parsed.path == "/api/providers/delete":
+        provider_id = (body.get("provider") or "").strip().lower()
+        if not provider_id:
+            return bad(handler, "provider is required")
+        result = remove_provider_key(provider_id)
+        if not result.get("ok"):
+            return bad(handler, result.get("error", "Unknown error"))
+        return j(handler, result)
+
+    if parsed.path == "/api/providers/self-hosted":
+        try:
+            from api.onboarding import apply_self_hosted_provider_setup
+            return j(handler, apply_self_hosted_provider_setup(body))
+        except ValueError as exc:
+            return bad(handler, str(exc), 400)
+
+    if parsed.path == "/api/models/refresh":
+        provider_id = (body.get("provider") or "").strip().lower()
+        if not provider_id:
+            return bad(handler, "provider is required")
+        from api.config import invalidate_provider_models_cache
+        invalidate_provider_models_cache(provider_id)
+        return j(handler, {"ok": True, "provider": provider_id})
+
+    if parsed.path == "/api/reasoning":
+        try:
+            display = body.get("display")
+            effort = body.get("effort")
+            if display is not None:
+                flag = str(display).strip().lower()
+                if flag in ("show", "on", "true", "1"):
+                    return j(handler, set_reasoning_display(True))
+                if flag in ("hide", "off", "false", "0"):
+                    return j(handler, set_reasoning_display(False))
+                return bad(handler, f"display must be show|hide|on|off (got '{display}')")
+            if effort is not None:
+                model_id = str(body.get("model") or "").strip() or None
+                provider_id = str(body.get("provider") or "").strip() or None
+                base_url = str(body.get("base_url") or "").strip() or None
+                return j(
+                    handler,
+                    set_reasoning_effort(
+                        effort,
+                        model_id=model_id,
+                        provider_id=provider_id,
+                        base_url=base_url,
+                    ),
+                )
+            return bad(handler, "reasoning: must supply 'display' or 'effort'")
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/admin/reload":
+        import importlib
+        from api import models as _models
+        importlib.reload(_models)
+        import api.routes as _routes
+        _routes.get_session = _models.get_session
+        _routes.Session = _models.Session
+        return j(handler, {"status": "ok", "reloaded": "api.models"})
+
+    # ── Profile API (POST) ──
+    if parsed.path == "/api/profile/switch":
+        name = body.get("name", "").strip()
+        if not name:
+            return bad(handler, "name is required")
+        try:
+            from api.auth import ensure_trusted_auth_session
+            from api.profiles import switch_profile, _validate_profile_name
+            from api.helpers import build_profile_cookie
+            if name != 'default':
+                _validate_profile_name(name)
+            session_info = ensure_trusted_auth_session(handler)
+            if getattr(handler, '_trusted_auth_session_rejected', False):
+                return bad(handler, 'Authentication required', 401)
+            bound_profile = str((session_info or {}).get("bound_profile") or "").strip() or None
+            if bound_profile and name != bound_profile:
+                return bad(handler, "Profile is bound to the current session", 403)
+            result = switch_profile(name, process_wide=False)
+            from api.config import invalidate_models_cache
+            invalidate_models_cache()
+            try:
+                from api.gateway_watcher import restart_watcher_for_profile
+                restart_watcher_for_profile(name)
+            except Exception as exc:
+                logger.warning("Failed to restart gateway watcher for profile %s: %s", name, exc)
+            session_cookie_value = getattr(handler, '_trusted_auth_session_cookie_value', None)
+            if session_cookie_value:
+                if bound_profile and name == bound_profile:
+                    return j(handler, result)
+                extra_header = build_profile_cookie(name, session_cookie_value=session_cookie_value)
+            else:
+                extra_header = build_profile_cookie(name, handler)
+            return j(handler, result, extra_headers={
+                'Set-Cookie': extra_header,
+            })
+        except PermissionError as e:
+            return bad(handler, _sanitize_error(e), 403)
+        except (ValueError, FileNotFoundError) as e:
+            return bad(handler, _sanitize_error(e), 404)
+        except RuntimeError as e:
+            return bad(handler, str(e), 409)
+
+    if parsed.path == "/api/profile/create":
+        name = body.get("name", "").strip()
+        if not name:
+            return bad(handler, "name is required")
+        import re as _re
+
+        if not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", name):
+            return bad(
+                handler,
+                "Invalid profile name: lowercase letters, numbers, hyphens, underscores only",
+            )
+        clone_from = body.get("clone_from")
+        if clone_from is not None:
+            clone_from = str(clone_from).strip()
+            if not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", clone_from):
+                return bad(handler, "Invalid clone_from name")
+        base_url = body.get("base_url", "").strip() if body.get("base_url") else None
+        api_key = body.get("api_key", "").strip() if body.get("api_key") else None
+        default_model = body.get("default_model", "").strip() if body.get("default_model") else None
+        model_provider = body.get("model_provider", "").strip() if body.get("model_provider") else None
+        if base_url and not base_url.startswith(("http://", "https://")):
+            return bad(handler, "base_url must start with http:// or https://")
+        try:
+            from api.profiles import create_profile_api
+
+            result = create_profile_api(
+                name,
+                clone_from=clone_from,
+                clone_config=bool(body.get("clone_config", False)),
+                base_url=base_url,
+                api_key=api_key,
+                default_model=default_model,
+                model_provider=model_provider,
+            )
+            return j(handler, {"ok": True, "profile": result})
+        except PermissionError as e:
+            return bad(handler, _sanitize_error(e), 403)
+        except (ValueError, FileExistsError, RuntimeError) as e:
+            return bad(handler, str(e))
+
+    if parsed.path == "/api/profile/delete":
+        name = body.get("name", "").strip()
+        if not name:
+            return bad(handler, "name is required")
+        try:
+            from api.profiles import delete_profile_api, _validate_profile_name
+
+            _validate_profile_name(name)
+            result = delete_profile_api(name)
+            return j(handler, result)
+        except PermissionError as e:
+            return bad(handler, _sanitize_error(e), 403)
+        except (ValueError, FileNotFoundError) as e:
+            return bad(handler, _sanitize_error(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 409)
+
+    # ── Antigravity (AGY) Settings (POST) ──
+    if parsed.path == "/api/agy/settings":
+        try:
+            from api.vault import is_deepmode_enabled, sync_deepmode_rule
+            req_body = body if isinstance(body, dict) else {}
+            if "deepmode" in req_body:
+                dm_val = bool(req_body["deepmode"])
+                sync_deepmode_rule(enabled=dm_val)
+            if "effort" in req_body and req_body["effort"] in ("low", "medium", "high"):
+                os.environ["AGY_DEFAULT_EFFORT"] = req_body["effort"]
+            if "mode" in req_body and req_body["mode"] in ("accept-edits", "plan"):
+                os.environ["AGY_DEFAULT_MODE"] = req_body["mode"]
+            return j(handler, {
+                "ok": True,
+                "effort": os.environ.get("AGY_DEFAULT_EFFORT", "medium"),
+                "mode": os.environ.get("AGY_DEFAULT_MODE", "accept-edits"),
+                "deepmode": is_deepmode_enabled()
+            })
+        except Exception as exc:
+            logger.warning("Silent exception in handle_post", exc_info=True)
+            return bad(handler, str(exc), status=400)
+
+    # ── Settings (POST) ──
+    if parsed.path == "/api/settings":
+        from api.auth import (
+            create_session,
+            get_password_hash,
+            is_auth_enabled,
+            parse_cookie,
+            set_auth_cookie,
+            verify_password,
+            verify_session,
+        )
+
+        if "bot_name" in body:
+            body["bot_name"] = (str(body["bot_name"]) or "").strip() or "AGY"
+
+        auth_enabled_before = is_auth_enabled()
+        password_auth_enabled_before = auth_enabled_before and get_password_hash() is not None
+        current_cookie = parse_cookie(handler)
+        logged_in_before = bool(current_cookie and verify_session(current_cookie))
+        requested_password = bool(
+            isinstance(body.get("_set_password"), str)
+            and body.get("_set_password", "").strip()
+        )
+        requested_passwordless = bool(body.pop("_passwordless", False))
+        requested_clear_password = bool(body.get("_clear_password") or requested_passwordless)
+        if requested_passwordless:
+            body["_clear_password"] = True
+
+        current_password = body.pop("_current_password", None)
+
+        if requested_password or requested_clear_password:
+            active_env_var = "AGY_WEBUI_PASSWORD" if os.getenv("AGY_WEBUI_PASSWORD", "").strip() else ("HERMES_WEBUI_PASSWORD" if os.getenv("HERMES_WEBUI_PASSWORD", "").strip() else None)
+            if active_env_var:
+                return bad(
+                    handler,
+                    f"{active_env_var} env var is set — it overrides the settings password. "
+                    "Unset the env var and restart the server before changing the password here.",
+                    409,
+                )
+
+        max_tokens_provided = "max_tokens" in body
+        max_tokens_status = None
+        max_tokens_value = body.pop("max_tokens", None) if max_tokens_provided else None
+
+        if requested_password and not auth_enabled_before:
+            if not _onboarding_gate_allows(handler, auth_enabled_before):
+                return bad(
+                    handler,
+                    "First password setup is only available from local networks when auth is not enabled. "
+                    "To bootstrap this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.",
+                    403,
+                )
+
+        if auth_enabled_before and password_auth_enabled_before and (requested_password or requested_clear_password):
+            if not isinstance(current_password, str) or not current_password:
+                return bad(
+                    handler,
+                    "Current password is required to change or disable authentication.",
+                    403,
+                )
+            if not verify_password(current_password):
+                return bad(
+                    handler,
+                    "Current password is incorrect.",
+                    403,
+                )
+
+        if requested_passwordless:
+            from api.auth import _passkey_feature_flag_enabled
+            from api.passkeys import registered_credentials
+
+            if not _passkey_feature_flag_enabled():
+                return bad(handler, "Passkey support is disabled. Enable AGY_WEBUI_PASSKEY before going passwordless.", 409)
+            if not registered_credentials():
+                return bad(handler, "Register a passkey before going passwordless.", 409)
+        elif requested_clear_password:
+            from api.passkeys import clear_credentials
+
+            clear_credentials()
+
+        ack = body.pop("_auth_disabled_acknowledged", None)
+        if ack is not None and not is_auth_enabled():
+            body["auth_disabled_acknowledged"] = bool(ack)
+        elif is_auth_enabled() or requested_password:
+            body["auth_disabled_acknowledged"] = False
+
+        from api.config import get_max_tokens_status, set_max_tokens
+
+        saved = save_settings(body)
+        saved["persisted_speech_keys"] = persisted_speech_settings_keys()
+        if max_tokens_provided:
+            max_tokens_status = set_max_tokens(max_tokens_value)
+        saved.pop("password_hash", None)
+        saved.update(max_tokens_status if max_tokens_provided else get_max_tokens_status())
+
+        if any(
+            k in body
+            for k in (
+                "show_cli_sessions",
+                "show_claude_code_sessions",
+                "show_cron_sessions",
+                "show_webhook_sessions",
+                "show_kanban_sessions",
+                "show_previous_messaging_sessions",
+            )
+        ):
+            try:
+                _clear_session_list_cache()
+            except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
+                pass
+            try:
+                from api.models import clear_cli_sessions_cache
+                clear_cli_sessions_cache()
+            except Exception:
+                logger.warning("Silent exception in handle_post", exc_info=True)
+                pass
+
+        auth_enabled_after = is_auth_enabled()
+        auth_just_enabled = bool(
+            requested_password and auth_enabled_after and not auth_enabled_before
+        )
+        logged_in_after = logged_in_before
+        new_cookie = None
+
+        if auth_just_enabled and not logged_in_before:
+            new_cookie = create_session()
+            logged_in_after = True
+
+        saved["auth_enabled"] = auth_enabled_after
+        saved["password_auth_enabled"] = get_password_hash() is not None
+        saved["logged_in"] = logged_in_after
+        saved["auth_just_enabled"] = auth_just_enabled
+        try:
+            from api.auth import _passkey_feature_flag_enabled as _pffe
+            from api.passkeys import registered_credentials as _rc
+            if _pffe():
+                saved["passkeys_enabled"] = bool(_rc())
+                saved["passwordless_enabled"] = bool(_rc()) and not saved["password_auth_enabled"]
+            else:
+                saved["passkeys_enabled"] = False
+                saved["passwordless_enabled"] = False
+        except Exception:
+            logger.warning("Silent exception in handle_post", exc_info=True)
+            pass
+
+        if not new_cookie:
+            return j(handler, saved)
+
+        response_body = json.dumps(saved, ensure_ascii=False, indent=2).encode("utf-8")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(response_body)))
+        handler.send_header("Cache-Control", "no-store")
+        set_auth_cookie(handler, new_cookie)
+        _security_headers(handler)
+        handler.end_headers()
+        handler.wfile.write(response_body)
+        return True
+
+    if parsed.path == "/api/onboarding/oauth/start":
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Onboarding OAuth is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        try:
+            return j(handler, start_onboarding_oauth_flow(body), extra_headers={"Cache-Control": "no-store"})
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/onboarding/oauth/cancel":
+        try:
+            return j(handler, cancel_onboarding_oauth_flow(body), extra_headers={"Cache-Control": "no-store"})
+        except ValueError as e:
+            return bad(handler, str(e))
+
+    if parsed.path == "/api/onboarding/setup":
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Onboarding setup is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        try:
+            return j(handler, apply_onboarding_setup(body))
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/onboarding/complete":
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Onboarding is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        return j(handler, complete_onboarding())
+
+    if parsed.path == "/api/onboarding/probe":
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Onboarding probe is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        provider = str((body or {}).get("provider") or "").strip().lower()
+        base_url = str((body or {}).get("base_url") or "")
+        api_key = str((body or {}).get("api_key") or "").strip() or None
+        try:
+            return j(handler, probe_provider_endpoint(provider, base_url, api_key))
+        except Exception as e:
+            logger.warning("Silent exception in handle_post", exc_info=True)
+            return bad(handler, f"probe failed: {e}", 500)
+
+    return None
+
+

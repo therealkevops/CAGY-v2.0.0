@@ -316,7 +316,7 @@ class TestRoutesDispatch(unittest.TestCase):
         status, yolo_res, _ = self._post("/api/session/yolo", {"session_id": session_id, "enabled": True})
         self.assertEqual(status, 200)
 
-        status, pin_res, _ = self._post("/api/session/pin", {"session_id": session_id, "pinned": True})
+        status, pin_res, _ = self._post("/api/session/pin", {"session_id": session_id, "pinned": False})
         self.assertEqual(status, 200)
 
         status, arch_res, _ = self._post("/api/session/archive", {"session_id": session_id, "archived": False})
