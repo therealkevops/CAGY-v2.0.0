@@ -42,8 +42,8 @@ def _resolve_session_ttl() -> int:
             return val
     s = load_settings()
     v = s.get('session_ttl_seconds')
-    if isinstance(v, int) and 60 <= v <= 86400 * 365:
-        return v
+    if isinstance(v, (int, float)) and 60 <= int(v) <= 86400 * 365:
+        return int(v)
     return SESSION_TTL
 
 
@@ -154,7 +154,7 @@ def _load_sessions() -> dict[str, float | dict]:
             'starting fresh with an empty session table',
         )
         return {}
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
         _warn_auth_persistence_failure(
             'Ignoring malformed auth session store',
             _SESSIONS_FILE,
@@ -164,7 +164,7 @@ def _load_sessions() -> dict[str, float | dict]:
         return {}
     except Exception as e:
         _warn_auth_persistence_failure(
-            'Ignoring malformed auth session store',
+            'Unexpected error reading auth session store',
             _SESSIONS_FILE,
             e,
             'starting fresh with an empty session table',
@@ -207,9 +207,16 @@ def _save_sessions(sessions: dict[str, float | dict]) -> None:
             except OSError:
                 pass
             raise
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         _warn_auth_persistence_failure(
             'Auth session persistence failed',
+            _SESSIONS_FILE,
+            e,
+            'keeping the in-process session table available',
+        )
+    except Exception as e:
+        _warn_auth_persistence_failure(
+            'Unexpected error persisting auth sessions',
             _SESSIONS_FILE,
             e,
             'keeping the in-process session table available',
@@ -246,8 +253,10 @@ def _load_login_attempts() -> dict[str, list[float]]:
                 if fresh:
                     attempts[ip] = fresh
             return attempts
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as e:
         logger.debug("Failed to load login attempts file, starting fresh: %s", e)
+    except Exception as e:
+        logger.warning("Unexpected error loading login attempts file: %s", e, exc_info=True)
     return {}
 
 
@@ -267,8 +276,10 @@ def _save_login_attempts(attempts: dict[str, list[float]]) -> None:
             except OSError:
                 pass
             raise
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logger.debug("Failed to persist login attempts: %s", e)
+    except Exception as e:
+        logger.warning("Unexpected error persisting login attempts: %s", e, exc_info=True)
 
 
 _login_attempts = _load_login_attempts()  # ip -> [timestamp, ...]
@@ -323,9 +334,16 @@ def _load_key(filename: str) -> bytes:
             e,
             'generating a new key and continuing',
         )
+    except (ValueError, TypeError) as e:
+        _warn_auth_persistence_failure(
+            'Auth key content invalid',
+            key_file,
+            e,
+            'generating a new key and continuing',
+        )
     except Exception as e:
         _warn_auth_persistence_failure(
-            'Auth key read failed',
+            'Unexpected error reading auth key',
             key_file,
             e,
             'generating a new key and continuing',
@@ -342,9 +360,16 @@ def _load_key(filename: str) -> bytes:
             e,
             'returning the generated key so startup can continue',
         )
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         _warn_auth_persistence_failure(
             'Auth key persistence failed',
+            key_file,
+            e,
+            'returning the generated key so startup can continue',
+        )
+    except Exception as e:
+        _warn_auth_persistence_failure(
+            'Unexpected error persisting auth key',
             key_file,
             e,
             'returning the generated key so startup can continue',
@@ -354,6 +379,14 @@ def _load_key(filename: str) -> bytes:
 
 _PBKDF2_KEY_CACHE: bytes | None = None
 _SIGNING_KEY_CACHE: bytes | None = None
+
+
+def _reset_auth_caches() -> None:
+    """Reset in-process key and hash caches (useful for tests and key rotation)."""
+    global _PBKDF2_KEY_CACHE, _SIGNING_KEY_CACHE
+    _PBKDF2_KEY_CACHE = None
+    _SIGNING_KEY_CACHE = None
+    _invalidate_password_hash_cache()
 
 
 def _pbkdf2_key() -> bytes:
@@ -469,7 +502,7 @@ def _passkey_feature_flag_enabled() -> bool:
                 return raw
             if isinstance(raw, str):
                 return raw.strip().lower() in {"1", "true", "yes", "on"}
-    except Exception:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError):
         pass
     return False
 
@@ -482,7 +515,7 @@ def are_passkeys_enabled() -> bool:
         from api.passkeys import passkeys_available
 
         return passkeys_available()
-    except Exception as exc:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError) as exc:
         logger.debug("Failed to inspect passkey availability: %s", exc)
         return False
 
@@ -493,7 +526,7 @@ def is_oidc_auth_enabled() -> bool:
         from api.auth_oidc import is_oidc_enabled
 
         return is_oidc_enabled()
-    except Exception as exc:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError) as exc:
         logger.debug("Failed to inspect OIDC availability: %s", exc)
         return False
 
@@ -506,7 +539,7 @@ def get_oidc_startup_warning() -> str | None:
         raw = cfg.get("webui_oidc") if isinstance(cfg, dict) else {}
         if not isinstance(raw, dict):
             raw = {}
-    except Exception:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError):
         logger.debug("Failed to read webui_oidc config", exc_info=True)
         raw = {}
 
@@ -529,7 +562,7 @@ def get_oidc_startup_warning() -> str | None:
 
         normalized_allow_values = auth_oidc._normalize_allow_values(raw_allow)
         allow_values_warning = auth_oidc._ALLOW_VALUES_WHITESPACE_WARNING
-    except Exception:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError):
         logger.debug("Failed to normalize OIDC allow_values", exc_info=True)
     allow_values = bool(normalized_allow_values)
 
@@ -725,7 +758,7 @@ def _trusted_groups_header_value(handler) -> list[str]:
         return []
     try:
         raw = handler.headers.get(header_name, '')
-    except Exception:
+    except (AttributeError, TypeError):
         return []
     if not raw:
         return []
@@ -743,7 +776,7 @@ def _trusted_auth_username(handler) -> str | None:
         return None
     try:
         raw = handler.headers.get(header_name, '')
-    except Exception:
+    except (AttributeError, TypeError):
         return None
     username = str(raw or '').strip()
     return username or None
@@ -807,7 +840,7 @@ def _request_profile_matches_bound(bound_profile: str | None) -> bool:
         from api.profiles import get_active_profile_name, _profiles_match
 
         return _profiles_match(bound_profile, get_active_profile_name())
-    except Exception:
+    except (ImportError, AttributeError, KeyError, ValueError, TypeError):
         return False
 
 
@@ -1012,8 +1045,11 @@ def verify_csrf_token(cookie_value: str, csrf_token: str) -> bool:
     """Verify a submitted CSRF token against the authenticated session."""
     if not cookie_value or not csrf_token or not verify_session(cookie_value):
         return False
+    clean_token = str(csrf_token).strip()
+    if not clean_token:
+        return False
     expected = csrf_token_for_session(cookie_value)
-    return bool(expected and hmac.compare_digest(str(csrf_token), expected))
+    return bool(expected and hmac.compare_digest(clean_token, expected))
 
 
 def invalidate_session(cookie_value) -> None:
@@ -1237,7 +1273,7 @@ def _is_secure_context(handler=None) -> bool:
             return True
         trust_fwd = (os.getenv('AGY_WEBUI_TRUST_FORWARDED_PROTO') or os.getenv('HERMES_WEBUI_TRUST_FORWARDED_PROTO', '')).strip().lower()
         if trust_fwd in ('1', 'true', 'yes'):
-            if handler.headers.get('X-Forwarded-Proto', '') == 'https':
+            if hasattr(handler, 'headers') and handler.headers.get('X-Forwarded-Proto', '') == 'https':
                 return True
     return False
 
