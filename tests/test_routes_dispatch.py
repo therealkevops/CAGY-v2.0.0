@@ -258,9 +258,32 @@ class TestRoutesDispatch(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(sess_res.get("session", {}).get("session_id"), session_id)
 
-        # 3. Session status
+        # 3. Session status, yolo, usage, worktree, compress, background
         status, sess_status, _ = self._get(f"/api/session/status?session_id={session_id}")
         self.assertEqual(status, 200)
+
+        status, yolo_res, _ = self._get(f"/api/session/yolo?session_id={session_id}")
+        self.assertEqual(status, 200)
+        self.assertIn("yolo_enabled", yolo_res)
+
+        status, usage_res, _ = self._get(f"/api/session/usage?session_id={session_id}")
+        self.assertEqual(status, 200)
+
+        status, worktree_res, _ = self._get(f"/api/session/worktree/status?session_id={session_id}")
+        self.assertIn(status, (200, 400))
+
+        status, compress_res, _ = self._get(f"/api/session/compress/status?session_id={session_id}")
+        self.assertEqual(status, 200)
+
+        status, bg_res, _ = self._get(f"/api/background/status?session_id={session_id}")
+        self.assertEqual(status, 200)
+
+        status, lineage_res, _ = self._get(f"/api/session/lineage/report?session_id={session_id}")
+        self.assertIn(status, (200, 404))
+
+        status, sessions_res, _ = self._get("/api/sessions")
+        self.assertEqual(status, 200)
+        self.assertIn("sessions", sessions_res)
 
         # 4. Rename session
         status, rename_res, _ = self._post("/api/session/rename", {"session_id": session_id, "title": "Renamed Session"})
