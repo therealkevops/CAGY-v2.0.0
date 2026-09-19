@@ -155,6 +155,15 @@ class TestRoutesDispatch(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(data.get("ok"))
 
+    def test_post_auth_passkeys_and_logout(self):
+        """POST /api/auth/passkeys and /api/auth/logout."""
+        status, data, _ = self._post("/api/auth/passkeys", {})
+        self.assertEqual(status, 200)
+
+        status, data, _ = self._post("/api/auth/logout", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+
     def test_post_process_complete_ack_deprecated(self):
         """POST /api/process-complete-ack returns 410 Gone with X-Replaced-By header."""
         status, data, headers = self._post("/api/process-complete-ack", {})
@@ -297,6 +306,42 @@ class TestRoutesDispatch(unittest.TestCase):
         status, repair, _ = self._post("/api/session/recovery/repair-safe", {})
         self.assertIn(status, (200, 409))
 
+        # 6. Session draft, toolsets, yolo, pin, archive
+        status, draft_res, _ = self._post("/api/session/draft", {"session_id": session_id, "text": "Draft note"})
+        self.assertEqual(status, 200)
+
+        status, toolsets_res, _ = self._post("/api/session/toolsets", {"session_id": session_id, "toolsets": ["general"]})
+        self.assertEqual(status, 200)
+
+        status, yolo_res, _ = self._post("/api/session/yolo", {"session_id": session_id, "enabled": True})
+        self.assertEqual(status, 200)
+
+        status, pin_res, _ = self._post("/api/session/pin", {"session_id": session_id, "pinned": True})
+        self.assertEqual(status, 200)
+
+        status, arch_res, _ = self._post("/api/session/archive", {"session_id": session_id, "archived": False})
+        self.assertEqual(status, 200)
+
+        # 7. Session duplicate, branch, clear, delete
+        status, dup_res, _ = self._post("/api/session/duplicate", {"session_id": session_id})
+        self.assertEqual(status, 200)
+        dup_sid = dup_res.get("session", {}).get("session_id")
+        self.assertIsNotNone(dup_sid)
+
+        status, branch_res, _ = self._post("/api/session/branch", {"session_id": session_id, "title": "Branched"})
+        self.assertEqual(status, 200)
+        branch_sid = branch_res.get("session_id")
+        self.assertIsNotNone(branch_sid)
+
+        status, clear_res, _ = self._post("/api/session/clear", {"session_id": dup_sid})
+        self.assertEqual(status, 200)
+
+        status, del_dup, _ = self._post("/api/session/delete", {"session_id": dup_sid})
+        self.assertEqual(status, 200)
+
+        status, del_branch, _ = self._post("/api/session/delete", {"session_id": branch_sid})
+        self.assertEqual(status, 200)
+
     # ─────────────────────────────────────────────────────────────
     # Domain 6: Workspaces, Git, & Projects
     # ─────────────────────────────────────────────────────────────
@@ -412,6 +457,14 @@ class TestRoutesDispatch(unittest.TestCase):
 
         status, cla_pending, _ = self._get("/api/clarify/pending")
         self.assertEqual(status, 200)
+
+    def test_post_chat_and_stream(self):
+        """POST /api/bg-task-complete-ack, /api/chat/steer."""
+        status, ack_res, _ = self._post("/api/bg-task-complete-ack", {"task_id": "test_task"})
+        self.assertIn(status, (200, 400, 404))
+
+        status, steer_res, _ = self._post("/api/chat/steer", {"stream_id": "invalid_stream_id", "instruction": "stop"})
+        self.assertIn(status, (200, 400, 404, 422))
 
     # ─────────────────────────────────────────────────────────────
     # Domain 9: Negative Fallbacks & CORS Preflights

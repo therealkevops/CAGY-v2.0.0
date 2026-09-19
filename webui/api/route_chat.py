@@ -132,3 +132,57 @@ def _handle_get_chat_and_stream(handler, parsed):
             return bad(handler, str(e), 404)
 
     return None
+
+
+def _handle_post_chat_and_stream(handler, parsed, body, diag=None):
+    """Handle chat execution, streaming, steer commands, approvals, and terminal routes.
+    Returns True if handled, None if unhandled.
+    """
+    from api import routes as _routes
+
+    if parsed.path == "/api/btw":
+        return _routes._handle_btw(handler, body)
+
+    if parsed.path == "/api/background":
+        return _routes._handle_background(handler, body)
+
+    if parsed.path == "/api/goal":
+        return _routes._handle_goal_command(handler, body)
+
+    if parsed.path == "/api/bg-task-complete-ack":
+        return _routes._handle_bg_task_complete_ack(handler, body)
+
+    if parsed.path == "/api/chat/start":
+        return _routes._handle_chat_start(handler, body, diag=diag)
+
+    if parsed.path == "/api/chat":
+        return _routes._handle_chat_sync(handler, body)
+
+    if parsed.path == "/api/chat/steer":
+        from api.streaming import _handle_chat_steer
+        return _handle_chat_steer(handler, body)
+
+    if parsed.path == "/api/terminal/start":
+        return _routes._handle_terminal_start(handler, body)
+
+    if parsed.path == "/api/terminal/input":
+        return _routes._handle_terminal_input(handler, body)
+
+    if parsed.path == "/api/terminal/resize":
+        return _routes._handle_terminal_resize(handler, body)
+
+    if parsed.path == "/api/terminal/close":
+        return _routes._handle_terminal_close(handler, body)
+
+    # ── Cron API (POST) ──
+    # See GET-side comment above: wrap in cron_profile_context so writes go
+    # to the TLS-active profile's jobs.json instead of the process default.
+    if parsed.path == "/api/approval/respond":
+        return _routes._handle_approval_respond(handler, body)
+
+    # ── Clarify (POST) ──
+    if parsed.path == "/api/clarify/respond":
+        return _routes._handle_clarify_respond(handler, body)
+
+    # ── Commands (POST) ──
+    return None
