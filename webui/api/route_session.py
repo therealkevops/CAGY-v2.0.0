@@ -27,12 +27,48 @@ from api.agent_runtime import (
     require_ai_agent_class,
 )
 from api.agent_sessions import read_session_lineage_report
-from api.config import LOCK, SESSIONS, SESSION_DIR, _resolve_cli_toolsets, load_settings
-from api.helpers import _sanitize_error, bad, j, public_session_projection, redact_session_data, require
-from api.models import Session, _active_state_db_path, count_conversation_rounds, get_cli_session_messages, get_session
+from api.session_workspace_export import (
+    export_session_to_workspace,
+    validate_workspace_file_for_import,
+)
+from api.config import (
+    DEFAULT_MODEL,
+    DEFAULT_WORKSPACE,
+    LOCK,
+    SESSIONS,
+    SESSION_DIR,
+    _resolve_cli_toolsets,
+    load_settings,
+)
+from api.helpers import (
+    _redact_text,
+    _sanitize_error,
+    bad,
+    j,
+    public_session_projection,
+    redact_session_data,
+    require,
+    strip_public_internal_fields,
+)
+from api.models import (
+    Session,
+    _active_state_db_path,
+    _evict_sessions_over_cap,
+    _profile_has_user_projects,
+    count_conversation_rounds,
+    ensure_cron_project,
+    get_cli_session_messages,
+    get_session,
+    get_session_for_scan,
+    is_cron_session,
+    title_from,
+)
+from api.profiles import _is_isolated_profile_mode, _profiles_match, get_active_profile_name
 from api.request_diagnostics import RequestDiagnostics
 from api.route_approvals import is_session_yolo_enabled
+from api.session_events import publish_session_list_changed
 from api.todo_state import attach_todo_state
+from api.workspace import get_last_workspace, resolve_trusted_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -827,10 +863,6 @@ def _handle_post_session(handler, parsed, body):
     _worktree_retained_payload = _routes._worktree_retained_payload
     get_active_profile_name = _routes.get_active_profile_name
     _profiles_match = _routes._profiles_match
-    _handle_session_import = _routes._handle_session_import
-    _handle_session_export_workspace = _routes._handle_session_export_workspace
-    _handle_session_import_workspace = _routes._handle_session_import_workspace
-    _handle_session_import_cli = _routes._handle_session_import_cli
     if parsed.path == "/api/session/recovery/repair-safe":
         from api.session_recovery import repair_safe_session_recovery
         result = repair_safe_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path())
@@ -3393,3 +3425,694 @@ def _handle_handoff_summary(handler, body):
             "fallback": True,
             "warning": f"Summary generation used local fallback: {_sanitize_error(e)}",
         })
+
+
+# ── Session Export & Search Handlers (Sprint M6.2) ───────────────────────────
+def _all_profiles_enabled(parsed):
+    from api import routes as _routes
+    return _routes._all_profiles_enabled(parsed)
+
+
+def _all_sessions():
+    from api import routes as _routes
+    return _routes.all_sessions()
+
+
+def _publish_session_list_changed(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._publish_session_list_changed(*args, **kwargs)
+
+
+def _queue_generated_title_for_imported_session(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._queue_generated_title_for_imported_session(*args, **kwargs)
+
+
+def _import_cli_session_call(*args, **kwargs):
+    from api import routes as _routes
+    return _routes.import_cli_session(*args, **kwargs)
+
+
+def _redact_sidebar_title_fields(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._redact_sidebar_title_fields(*args, **kwargs)
+
+
+def _normalize_import_profile_value(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._normalize_import_profile_value(*args, **kwargs)
+
+
+def _request_wants_all_profiles_import(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._request_wants_all_profiles_import(*args, **kwargs)
+
+
+def _session_visible_to_active_profile(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._session_visible_to_active_profile(*args, **kwargs)
+
+
+def _resolve_cli_import_metadata(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._resolve_cli_import_metadata(*args, **kwargs)
+
+
+def _is_subagent_child_session_id(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._is_subagent_child_session_id(*args, **kwargs)
+
+
+def _handle_session_export(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    try:
+        s = get_session(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    active_profile = get_active_profile_name()
+    if not _profiles_match(getattr(s, "profile", None), active_profile):
+        return bad(handler, "Session not found", 404)
+    # ``public_session_projection`` supersedes the narrower
+    # ``redact_session_data`` path so export context_messages uses the same
+    # alias-stripping boundary as the visible transcript.
+    safe = public_session_projection(s.__dict__)
+    qs = parse_qs(parsed.query)
+    fmt = qs.get("format", ["json"])[0].lower()
+    if fmt == "html":
+        from api.session_export_html import render_session_html
+        theme = qs.get("theme", ["dark"])[0].lower()
+        palette: dict | None = None
+        raw_palette = qs.get("palette", [""])[0]
+        if raw_palette:
+            try:
+                import base64 as _b64
+                decoded = _b64.b64decode(raw_palette, validate=False).decode("utf-8")
+                parsed_palette = json.loads(decoded)
+                if isinstance(parsed_palette, dict):
+                    # Cap payload so a hostile client can't blow up the response.
+                    if len(parsed_palette) <= 64:
+                        palette = parsed_palette
+            except Exception:
+                logger.warning("Silent exception in _handle_session_export", exc_info=True)
+                palette = None
+        payload = render_session_html(safe, theme=theme, palette=palette)
+        content_type = "text/html; charset=utf-8"
+        ext = "html"
+    else:
+        payload = json.dumps(safe, ensure_ascii=False, indent=2)
+        content_type = "application/json; charset=utf-8"
+        ext = "json"
+    handler.send_response(200)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header(
+        "Content-Disposition", f'attachment; filename="agy-{sid}.{ext}"'
+    )
+    handler.send_header("Content-Length", str(len(payload.encode("utf-8"))))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(payload.encode("utf-8"))
+    return True
+
+
+def _handle_session_export_workspace(handler, body):
+    """Export a session directly to the workspace filesystem."""
+    if not body or not isinstance(body, dict):
+        return bad(handler, "Request body must be a JSON object")
+    sid = body.get("session_id", "")
+    if not sid:
+        return bad(handler, "session_id is required")
+    try:
+        s = get_session(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    active_profile = get_active_profile_name()
+    if not _profiles_match(getattr(s, "profile", None), active_profile):
+        return bad(handler, "Session not found", 404)
+    safe = public_session_projection(s.__dict__)
+
+    workspace = body.get("workspace") or getattr(s, "workspace", None)
+    subfolder = body.get("subfolder", "transcripts")
+    fmt = body.get("format", "md")
+    filename = body.get("filename")
+    content = body.get("content")
+    theme = body.get("theme", "dark")
+    palette = body.get("palette")
+    if not isinstance(palette, dict):
+        palette = None
+
+    try:
+        from api.session_workspace_export import export_session_to_workspace
+        res = export_session_to_workspace(
+            session_data=safe,
+            workspace_path=workspace,
+            subfolder=subfolder,
+            format=fmt,
+            filename=filename,
+            content=content,
+            theme=theme,
+            palette=palette,
+        )
+        return j(handler, res)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        logger.exception("Failed to export session to workspace")
+        return bad(handler, f"Failed to export session: {e}", 500)
+
+
+def _session_search_message_text(message):
+    content = message.get("content") if isinstance(message, dict) else ""
+    if isinstance(content, list):
+        return " ".join(
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return str(content or "")
+
+
+def _session_search_preview(text, query, max_len=124):
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    q = re.sub(r"\s+", " ", str(query or "")).strip()
+    if not normalized or not q:
+        return ""
+    idx = normalized.lower().find(q.lower())
+    if idx < 0:
+        return ""
+
+    max_len = max(32, int(max_len or 124))
+    if len(normalized) <= max_len:
+        return normalized
+
+    context = max(12, (max_len - len(q)) // 2)
+    start = max(0, idx - context)
+    end = min(len(normalized), idx + len(q) + context)
+    if start > 0:
+        while start < idx and normalized[start] != " ":
+            start += 1
+        if start >= idx:
+            start = max(0, idx - context)
+    if end < len(normalized):
+        while end > idx + len(q) and normalized[end - 1] != " ":
+            end -= 1
+        if end <= idx + len(q):
+            end = min(len(normalized), idx + len(q) + context)
+    excerpt = normalized[start:end].strip()
+    if start > 0:
+        excerpt = "..." + excerpt
+    if end < len(normalized):
+        excerpt = excerpt + "..."
+    return excerpt
+
+
+def _handle_sessions_search(handler, parsed):
+    qs = parse_qs(parsed.query)
+    q = qs.get("q", [""])[0].lower().strip()
+    content_search = qs.get("content", ["1"])[0] == "1"
+    from api.profiles import get_active_profile_name
+    active_profile = get_active_profile_name()
+    all_profiles = _all_profiles_enabled(parsed)
+    sessions = _all_sessions()
+    if not all_profiles:
+        sessions = [
+            s for s in sessions
+            if _profiles_match(s.get("profile"), active_profile)
+        ]
+    # Reject a malformed depth instead of letting int() raise ValueError and
+    # surface as a confusing 500. Clamp to >= 0 so a negative value can't reach
+    # the messages[:depth] slice below — messages[:-n] would silently exclude
+    # the most recent messages from the content search instead of capping it.
+    # (depth == 0 keeps its existing meaning: search the full transcript.)
+    try:
+        depth = max(0, int(qs.get("depth", ["5"])[0]))
+    except (ValueError, TypeError):
+        depth = 5
+    # Read the redaction setting ONCE for the whole response (mirrors the
+    # /api/sessions read-once optimization, #4662) and thread it through every
+    # branch + the shared title-field redactor so search rows redact the same
+    # fields as the sidebar list.
+    try:
+        _search_redact_enabled = bool(load_settings().get("api_redact_enabled", True))
+    except Exception:
+        logger.warning("Silent exception in _handle_sessions_search", exc_info=True)
+        _search_redact_enabled = True  # fail safe: redact when settings unreadable
+    if not q:
+        safe_sessions = []
+        for s in sessions:
+            item = dict(s)
+            if isinstance(item.get("title"), str):
+                item["title"] = _redact_text(item["title"], _enabled=_search_redact_enabled)
+            _redact_sidebar_title_fields(item, _search_redact_enabled)
+            safe_sessions.append(item)
+        return j(handler, {
+            "sessions": safe_sessions,
+            "all_profiles": all_profiles,
+            "active_profile": active_profile,
+        })
+    results = []
+    for s in sessions:
+        title_match = q in (s.get("title") or "").lower()
+        if title_match:
+            item = dict(s, match_type="title")
+            if isinstance(item.get("title"), str):
+                item["title"] = _redact_text(item["title"], _enabled=_search_redact_enabled)
+            _redact_sidebar_title_fields(item, _search_redact_enabled)
+            results.append(item)
+            continue
+        if content_search:
+            try:
+                # Scan accessor, not get_session(): a content search walks every
+                # session, and routing that through the LRU would evict the
+                # user's working set on every keystroke-debounced search.
+                sess = get_session_for_scan(s["session_id"])
+                if sess is None:
+                    continue
+                msgs = sess.messages[:depth] if depth else sess.messages
+                for m in msgs:
+                    c = _session_search_message_text(m)
+                    if q in str(c).lower():
+                        item = dict(s, match_type="content")
+                        preview = _session_search_preview(c, q)
+                        if preview:
+                            item["match_preview"] = _redact_text(preview, _enabled=_search_redact_enabled)
+                        if isinstance(item.get("title"), str):
+                            item["title"] = _redact_text(item["title"], _enabled=_search_redact_enabled)
+                        _redact_sidebar_title_fields(item, _search_redact_enabled)
+                        results.append(item)
+                        break
+            except (KeyError, Exception):
+                pass
+    return j(handler, {
+        "sessions": results,
+        "query": q,
+        "count": len(results),
+        "all_profiles": all_profiles,
+        "active_profile": active_profile,
+    })
+
+
+# ── Session Import & Refresh Handlers (Sprint M6.2) ──────────────────────────
+def _normalize_message_for_import_refresh(message: object) -> object:
+    """Normalize message payloads for import refresh prefix checks.
+
+    The strict dict comparison previously failed when existing messages held
+    integer timestamps while refreshed messages held floating-point timestamps.
+    Strip timing keys before comparison so we can safely treat semantic
+    prefixes as equivalent.
+    """
+    if not isinstance(message, dict):
+        return message
+    normalized = dict(message)
+    normalized.pop("timestamp", None)
+    normalized.pop("_ts", None)
+    # These are WebUI/Agent replay bookkeeping aliases at the message's top
+    # level.  Strip only those exact keys; nested business payloads are opaque
+    # and must remain part of the semantic import comparison.
+    for key in ("api_content", "_state_db_row_id", "_db_row_id", "state_db_row_id"):
+        normalized.pop(key, None)
+    return normalized
+
+
+def _message_has_cli_tool_metadata(message: object) -> bool:
+    if not isinstance(message, dict):
+        return False
+    if message.get("role") == "assistant" and message.get("tool_calls"):
+        return True
+    if message.get("role") == "tool" and (message.get("tool_call_id") or message.get("tool_name") or message.get("name")):
+        return True
+    return False
+
+
+def _strip_cli_tool_metadata_for_refresh(message: object) -> object:
+    if not isinstance(message, dict):
+        return _normalize_message_for_import_refresh(message)
+    normalized = _normalize_message_for_import_refresh(message)
+    if not isinstance(normalized, dict):
+        return normalized
+    for key in ("tool_calls", "tool_call_id", "tool_name", "name"):
+        normalized.pop(key, None)
+    return normalized
+
+
+def _is_cli_tool_metadata_enrichment(existing_messages: list, fresh_messages: list) -> bool:
+    """Return True when fresh messages only add CLI tool metadata.
+
+    Older imports from get_cli_session_messages() persisted assistant/tool rows
+    without tool_calls, tool_call_id, or tool_name. After #1772 the refreshed
+    transcript can have the same length but richer metadata, so re-imports must
+    rebuild the stored sidecar even without a new row.
+    """
+    if not isinstance(existing_messages, list) or not isinstance(fresh_messages, list):
+        return False
+    if len(existing_messages) != len(fresh_messages):
+        return False
+    if any(_message_has_cli_tool_metadata(m) for m in existing_messages):
+        return False
+    if not any(_message_has_cli_tool_metadata(m) for m in fresh_messages):
+        return False
+    for idx, existing_message in enumerate(existing_messages):
+        if _strip_cli_tool_metadata_for_refresh(existing_message) != _strip_cli_tool_metadata_for_refresh(fresh_messages[idx]):
+            return False
+    return True
+
+
+def _is_messages_refresh_prefix_match(existing_messages: list, fresh_messages: list) -> bool:
+    """Return True when existing_messages is a prefix of fresh_messages by value.
+
+    This is a semantic comparison intended for import refresh, not deep
+    structural equality. It intentionally ignores timing fields that may differ
+    in type/precision between storage layers.
+    """
+    if not isinstance(existing_messages, list) or not isinstance(fresh_messages, list):
+        return False
+    if len(existing_messages) > len(fresh_messages):
+        return False
+    for idx, existing_message in enumerate(existing_messages):
+        fresh_message = fresh_messages[idx]
+        if _normalize_message_for_import_refresh(existing_message) != _normalize_message_for_import_refresh(fresh_message):
+            return False
+    return True
+
+
+def _handle_session_import_cli(handler, body):
+    """Import a single CLI session into the WebUI store."""
+    try:
+        require(body, "session_id")
+    except ValueError as e:
+        return bad(handler, str(e))
+
+    sid = str(body["session_id"])
+    requested_profile = _normalize_import_profile_value((body or {}).get("profile"))
+    if requested_profile == "":
+        return bad(handler, "invalid profile", 400)
+    allow_all_profiles = _request_wants_all_profiles_import(body)
+    if allow_all_profiles and _is_isolated_profile_mode():
+        return bad(handler, "all_profiles import is not allowed in isolated profile mode", 403)
+    if allow_all_profiles and not requested_profile:
+        return bad(handler, "profile is required for all_profiles import", 400)
+
+    # Check if already imported — refresh messages from CLI store if new ones arrived
+    existing = Session.load(sid)
+    if existing:
+        # Cross-profile boundary: an unqualified (non-all-profiles) request must not
+        # read or refresh a session that belongs to another profile, even though the
+        # WebUI session store (SESSION_DIR) is a single global directory. This mirrors
+        # the /api/session detail and /api/session/export profile-scoping gates.
+        # An explicit all_profiles import is still allowed, but only when the request's
+        # profile matches the stored session's profile.
+        existing_profile = getattr(existing, "profile", None)
+        if allow_all_profiles:
+            if requested_profile and not _profiles_match(existing_profile, requested_profile):
+                return bad(handler, "Session not found in CLI store", 404)
+        elif not _session_visible_to_active_profile(existing_profile, handler):
+            return bad(handler, "Session not found in CLI store", 404)
+        refresh_profile = requested_profile or existing_profile
+        cli_meta = _resolve_cli_import_metadata(
+            sid,
+            requested_profile=refresh_profile,
+            allow_all_profiles=allow_all_profiles,
+        )
+        fresh_msgs = get_cli_session_messages(
+            sid,
+            profile=(cli_meta or {}).get("profile") or refresh_profile,
+        )
+        changed = False
+        if fresh_msgs and len(fresh_msgs) > len(existing.messages):
+            # Prefix-equality guard: only extend if existing messages are a prefix of
+            # the fresh CLI messages. Prevents silently dropping WebUI-added messages
+            # on hybrid sessions (user sent messages via WebUI while CLI continued).
+            if _is_messages_refresh_prefix_match(existing.messages, fresh_msgs):
+                existing.messages = fresh_msgs
+                changed = True
+        elif fresh_msgs and _is_cli_tool_metadata_enrichment(existing.messages, fresh_msgs):
+            # Same row count, richer payload: rebuild sidecars imported before
+            # CLI tool metadata was preserved (#1772).
+            existing.messages = fresh_msgs
+            changed = True
+        if cli_meta:
+            # A subagent child must never be flipped to CLI-classified /
+            # writable on an existing-session refresh either (#5307).
+            _existing_is_sa = (
+                (existing.source_tag or existing.raw_source or "").strip().lower() == "subagent"
+                or (cli_meta.get("source_tag") or cli_meta.get("raw_source") or "").strip().lower() == "subagent"
+                or _is_subagent_child_session_id(sid)
+            )
+            updates = {
+                "is_cli_session": (False if _existing_is_sa else True),
+                "source_tag": existing.source_tag or cli_meta.get("source_tag"),
+                "raw_source": existing.raw_source or cli_meta.get("raw_source") or cli_meta.get("source_tag"),
+                "session_source": existing.session_source or cli_meta.get("session_source"),
+                "source_label": existing.source_label or cli_meta.get("source_label"),
+                "parent_session_id": existing.parent_session_id or cli_meta.get("parent_session_id"),
+            }
+            # A subagent child is view-only: also coerce read_only=True on the
+            # persisted sidecar so a stale writable (pre-fix) sidecar can't be
+            # used to start a WebUI turn (#5307).
+            if _existing_is_sa:
+                updates["read_only"] = True
+            for attr, value in updates.items():
+                if getattr(existing, attr, None) != value:
+                    setattr(existing, attr, value)
+                    changed = True
+        else:
+            _existing_is_sa = (
+                (existing.source_tag or existing.raw_source or "").strip().lower() == "subagent"
+                or _is_subagent_child_session_id(sid)
+            )
+        if changed:
+            existing.save(touch_updated_at=False)
+            publish_session_list_changed(
+                "session_import_cli",
+                profile=getattr(existing, "profile", None),
+            )
+        return j(
+            handler,
+            {
+                "session": public_session_projection(
+                    existing.compact()
+                    | {
+                        "messages": existing.messages,
+                        "is_cli_session": (False if _existing_is_sa else True),
+                        # Greptile #4911 follow-up: read read_only from
+                        # the persisted Session, NOT from cli_meta.  This
+                        # refresh path is for an already-WebUI-owned
+                        # session; the WebUI's persisted view is the
+                        # source of truth for the response, not the
+                        # foreign store's current value.  (Mirrors the
+                        # GET /api/session fix.)
+                        "read_only": bool(getattr(existing, "read_only", False)),
+                    }
+                ),
+                "imported": False,
+            },
+        )
+
+    # Fetch messages from CLI store
+    cli_meta = _resolve_cli_import_metadata(
+        sid,
+        requested_profile=requested_profile,
+        allow_all_profiles=allow_all_profiles,
+    )
+    profile = cli_meta.get("profile") if cli_meta else (requested_profile if allow_all_profiles else None)
+    msgs = get_cli_session_messages(sid, profile=profile)
+    if not msgs:
+        return bad(handler, "Session not found in CLI store", 404)
+
+    # Get profile, model, timestamps, and title from CLI session metadata
+    created_at = cli_meta.get("created_at") if cli_meta else None
+    updated_at = cli_meta.get("updated_at") if cli_meta else None
+    cli_title = cli_meta.get("title") if cli_meta else None
+    cli_source_tag = cli_meta.get("source_tag") if cli_meta else None
+    model = cli_meta.get("model", "unknown") if cli_meta else "unknown"
+    cli_raw_source = cli_meta.get("raw_source") if cli_meta else None
+    cli_session_source = cli_meta.get("session_source") if cli_meta else None
+    cli_source_label = cli_meta.get("source_label") if cli_meta else None
+    cli_user_id = cli_meta.get("user_id") if cli_meta else None
+    cli_chat_id = cli_meta.get("chat_id") if cli_meta else None
+    cli_chat_type = cli_meta.get("chat_type") if cli_meta else None
+    cli_thread_id = cli_meta.get("thread_id") if cli_meta else None
+    cli_session_key = cli_meta.get("session_key") if cli_meta else None
+    cli_platform = cli_meta.get("platform") if cli_meta else None
+    cli_parent_session_id = cli_meta.get("parent_session_id") if cli_meta else None
+    cli_read_only = bool((cli_meta or {}).get("read_only"))
+    # Delegated subagent children (#5307) are recovered VIEW-ONLY: they must
+    # never be materialized as a writable WebUI sidecar via this endpoint, or a
+    # subsequent chat-start/composer write would take ownership of a session
+    # that belongs to the delegate runner. Treat them like an explicitly
+    # read-only source (return the read-only stub payload, do not import), and
+    # keep them out of the _isExternalSession frontend gates (is_cli_session=False).
+    _sa_child = _is_subagent_child_session_id(sid)
+    # Also treat a resolved-metadata subagent source as view-only: with
+    # all_profiles=true, cli_meta is resolved from the requested (possibly
+    # non-active) profile, so the active-profile state.db check (_sa_child)
+    # can miss it (#5307 cross-profile edge).
+    _cli_sa = (cli_source_tag or cli_raw_source or "").strip().lower() == "subagent"
+    _sa_child = _sa_child or _cli_sa
+    _read_only_view = cli_read_only or _sa_child
+
+    # Use the CLI session title if available (e.g., cron job name), otherwise derive from messages
+    title = cli_title or title_from(msgs, "CLI Session")
+
+    # Auto-assign cron sessions to the dedicated "Cron Jobs" project (#1079),
+    # gated on whether this profile has opted into project organization (#5379)
+    cron_project_id = None
+    if is_cron_session(sid, cli_source_tag):
+        cron_project_id = ensure_cron_project(create=_profile_has_user_projects())
+
+    if _read_only_view:
+        session_payload = {
+            "session_id": sid,
+            "title": title,
+            "workspace": str(get_last_workspace()),
+            "model": model,
+            "message_count": len(msgs),
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "last_message_at": updated_at or created_at,
+            "pinned": False,
+            "archived": False,
+            "project_id": None,
+            "profile": profile,
+            # Subagent children (#5307) are recovered view-only and must NOT be
+            # CLI-classified (keeps them out of the frontend _isExternalSession
+            # gates); other explicitly-read-only sources keep is_cli_session=True.
+            "is_cli_session": (False if _sa_child else True),
+            "source_tag": cli_source_tag,
+            "raw_source": cli_raw_source or cli_source_tag,
+            "session_source": cli_session_source,
+            "source_label": cli_source_label,
+            "parent_session_id": cli_parent_session_id,
+            "read_only": True,
+            "messages": msgs,
+            "tool_calls": [],
+        }
+        return j(
+            handler,
+            {
+                "session": public_session_projection(session_payload),
+                "imported": False,
+            },
+        )
+
+    s = _import_cli_session_call(
+        sid,
+        title,
+        msgs,
+        model,
+        profile=profile,
+        created_at=created_at,
+        updated_at=updated_at,
+        parent_session_id=cli_parent_session_id,
+    )
+    if cron_project_id:
+        s.project_id = cron_project_id
+    s.is_cli_session = True
+    s.source_tag = cli_source_tag
+    s.raw_source = cli_raw_source or cli_source_tag
+    s.session_source = cli_session_source
+    s.source_label = cli_source_label
+    s.user_id = cli_user_id
+    s.chat_id = cli_chat_id
+    s.chat_type = cli_chat_type
+    s.thread_id = cli_thread_id
+    s.session_key = cli_session_key
+    s.platform = cli_platform
+    s._cli_origin = sid
+    s.save(touch_updated_at=False)
+    publish_session_list_changed(
+        "session_import_cli",
+        profile=getattr(s, "profile", None),
+    )
+    _queue_generated_title_for_imported_session(
+        s,
+        {
+            "title": cli_title,
+            "source_tag": cli_source_tag,
+            "raw_source": cli_raw_source,
+            "session_source": cli_session_source,
+            "source_label": cli_source_label,
+            "read_only": cli_read_only,
+        },
+    )
+    return j(
+        handler,
+        {
+            "session": public_session_projection(
+                s.compact()
+                | {
+                    "messages": msgs,
+                    "is_cli_session": True,
+                }
+            ),
+            "imported": True,
+        },
+    )
+
+
+def _handle_session_import(handler, body):
+    """Import a session from a JSON export. Creates a new session with a new ID."""
+    if not body or not isinstance(body, dict):
+        return bad(handler, "Request body must be a JSON object")
+    messages = strip_public_internal_fields(
+        body.get("messages"),
+        message_records=True,
+    )
+    if not isinstance(messages, list):
+        return bad(handler, 'JSON must contain a "messages" array')
+    raw_tool_calls = body.get("tool_calls", [])
+    if not isinstance(raw_tool_calls, list):
+        return bad(handler, 'JSON "tool_calls" must be an array')
+    title = body.get("title", "Imported session")
+    try:
+        workspace = str(resolve_trusted_workspace(body.get("workspace", str(DEFAULT_WORKSPACE))))
+    except (TypeError, ValueError):
+        workspace = str(resolve_trusted_workspace(str(DEFAULT_WORKSPACE)))
+    model = body.get("model", DEFAULT_MODEL)
+    s = Session(
+        title=title,
+        workspace=workspace,
+        model=model,
+        messages=messages,
+        tool_calls=strip_public_internal_fields(raw_tool_calls),
+        profile=get_active_profile_name(),
+    )
+    s.pinned = body.get("pinned", False)
+    with LOCK:
+        SESSIONS[s.session_id] = s
+        SESSIONS.move_to_end(s.session_id)
+        _evict_sessions_over_cap()  # #4765: safe LRU eviction (never active/unsaved)
+    s.save()
+    publish_session_list_changed("session_import")
+    return j(
+        handler,
+        {
+            "ok": True,
+            "session": public_session_projection(s.compact() | {"messages": s.messages}),
+        },
+    )
+
+
+def _handle_session_import_workspace(handler, body):
+    """Import a session from a JSON file residing within a trusted workspace."""
+    if not body or not isinstance(body, dict):
+        return bad(handler, "Request body must be a JSON object")
+    file_path = body.get("path")
+    if not file_path:
+        return bad(handler, "path is required")
+    try:
+        from api.session_workspace_export import validate_workspace_file_for_import
+        validated_path = validate_workspace_file_for_import(file_path)
+        with open(validated_path, "r", encoding="utf-8") as f:
+            session_json = json.load(f)
+        if not isinstance(session_json, dict):
+            return bad(handler, "File does not contain a valid JSON session object")
+        return _handle_session_import(handler, session_json)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except json.JSONDecodeError as e:
+        return bad(handler, f"Invalid JSON format in file: {e}", 400)
+    except Exception as e:
+        logger.exception("Failed to import session from workspace file")
+        return bad(handler, f"Failed to import session: {e}", 500)
