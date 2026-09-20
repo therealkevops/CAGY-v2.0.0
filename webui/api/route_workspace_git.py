@@ -22,24 +22,42 @@ from api.agent_runtime import (
     require_ai_agent_class,
 )
 from api.helpers import _sanitize_error, bad, j, require, safe_resolve
-from api.config import MAX_FILE_BYTES
-from api.models import get_session, get_session_for_file_ops, load_projects
+from api.config import MAX_FILE_BYTES, MIME_MAP
+from api.models import (
+    WorkspaceBindingPersistenceError,
+    get_cli_sessions,
+    get_session,
+    get_session_for_file_ops,
+    load_projects,
+    persist_recovered_workspace_binding,
+)
 from api.profiles import _is_isolated_profile_mode, _profiles_match
 from api.workspace import (
+    EscapeAuthorizationExpiredError,
     _home_path,
     _is_blocked_system_path,
     _is_within,
     _strip_surrounding_quotes,
+    authorize_escape_target,
+    dir_signature,
     get_last_workspace,
+    list_authorized_escape_dir,
+    list_dir,
     list_workspace_suggestions,
     load_workspaces,
     make_anchored_dir,
     open_anchored_create_fd,
     open_anchored_fd,
     open_anchored_write_fd,
+    raw_authorized_escape_target,
+    read_authorized_escape_file_content,
+    read_file_content,
     rename_anchored,
+    resolve_implicit_workspace_with_recovery,
+    resolve_trusted_workspace,
     rmtree_anchored,
     save_workspaces,
+    serialize_workspace_entries_for_browser,
     unlink_anchored,
     validate_workspace_to_add,
 )
@@ -122,10 +140,10 @@ def _handle_get_workspace_and_git(handler, parsed):
         return _routes._handle_sessions_search(handler, parsed)
 
     if parsed.path == "/api/list":
-        return _routes._handle_list_dir(handler, parsed)
+        return _handle_list_dir(handler, parsed)
 
     if parsed.path == "/api/escape/list":
-        return _routes._handle_escape_list_dir(handler, parsed)
+        return _handle_escape_list_dir(handler, parsed)
 
     if parsed.path == "/api/git/status":
         return _handle_git_status(handler, parsed)
@@ -191,19 +209,19 @@ def _handle_get_workspace_and_git(handler, parsed):
         return _routes._handle_media(handler, parsed)
 
     if parsed.path == "/api/file/raw":
-        return _routes._handle_file_raw(handler, parsed)
+        return _handle_file_raw(handler, parsed)
 
     if parsed.path == "/api/escape/file/raw":
-        return _routes._handle_escape_file_raw(handler, parsed)
+        return _handle_escape_file_raw(handler, parsed)
 
     if parsed.path == "/api/folder/download":
-        return _routes._handle_folder_download(handler, parsed)
+        return _handle_folder_download(handler, parsed)
 
     if parsed.path == "/api/file":
-        return _routes._handle_file_read(handler, parsed)
+        return _handle_file_read(handler, parsed)
 
     if parsed.path == "/api/escape/file/read":
-        return _routes._handle_escape_file_read(handler, parsed)
+        return _handle_escape_file_read(handler, parsed)
 
     if parsed.path == "/api/diff/file":
         from api.diff_viewer import get_file_diff_against_head
@@ -1576,3 +1594,486 @@ def _handle_workspace_reorder(handler, body):
             reordered.append(w)
     save_workspaces(reordered)
     return j(handler, {"ok": True, "workspaces": reordered})
+
+
+# ── Dynamic Routes Bridge Helpers (Sprint M5.2b) ─────────────────────────────
+def _safe_content_length(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._safe_content_length(*args, **kwargs)
+
+
+def _check_csrf(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._check_csrf(*args, **kwargs)
+
+
+def _csrf_rejection_error(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._csrf_rejection_error(*args, **kwargs)
+
+
+def _serve_inline_html_preview(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._serve_inline_html_preview(*args, **kwargs)
+
+
+def _serve_file_bytes(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._serve_file_bytes(*args, **kwargs)
+
+
+def _content_disposition_value(*args, **kwargs):
+    from api import routes as _routes
+    return _routes._content_disposition_value(*args, **kwargs)
+
+
+# ── Directory Listing & Escape Handlers (Sprint M5.2b) ───────────────────────
+def _handle_list_dir(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    webui_session = None
+    try:
+        s = get_session(sid)
+        webui_session = s
+        workspace = s.workspace
+    except KeyError:
+        # Fallback for CLI sessions not loaded in WebUI memory
+        try:
+            cli_meta = None
+            for cs in get_cli_sessions():
+                if cs["session_id"] == sid:
+                    cli_meta = cs
+                    break
+            if not cli_meta:
+                return bad(handler, "Session not found", 404)
+            workspace = cli_meta.get("workspace", "")
+        except Exception:
+            logger.warning("Silent exception in _handle_list_dir", exc_info=True)
+            return bad(handler, "Session not found", 404)
+    try:
+        if webui_session is None:
+            workspace = resolve_trusted_workspace(workspace)
+            recovered = False
+        else:
+            stored_workspace = workspace
+            workspace, recovered = resolve_implicit_workspace_with_recovery(
+                stored_workspace,
+                get_last_workspace,
+            )
+            if recovered:
+                persisted = persist_recovered_workspace_binding(
+                    webui_session,
+                    workspace,
+                    expected_workspace=stored_workspace,
+                )
+                workspace = Path(persisted.workspace)
+        rel_path = qs.get("path", ["."])[0]
+        entries = list_dir(Path(workspace), rel_path)
+        return j(
+            handler,
+            {
+                "entries": serialize_workspace_entries_for_browser(entries),
+                "signature": dir_signature(Path(workspace), rel_path, entries),
+                "path": rel_path,
+                "workspace": str(workspace),
+                "workspace_recovered": recovered,
+            },
+        )
+    except WorkspaceBindingPersistenceError as e:
+        return bad(handler, _sanitize_error(e), 500)
+    except (FileNotFoundError, ValueError) as e:
+        return bad(handler, _sanitize_error(e), 404)
+
+
+def _read_json_request_body(handler, *, max_bytes: int = 4096) -> dict:
+    try:
+        length = _safe_content_length(handler, max_bytes)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError(_sanitize_error(exc)) from exc
+    raw = handler.rfile.read(length) if length else b"{}"
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        logger.debug("Silent exception in _read_json_request_body", exc_info=True)
+        raise ValueError("invalid JSON body") from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _handle_escape_authorize(handler, parsed, body: dict | None = None):
+    if handler.command != "POST":
+        return bad(handler, "method not allowed", 405)
+    if not handler.headers.get("Origin"):
+        return bad(handler, "browser origin required", 403)
+    if not _check_csrf(handler):
+        return bad(handler, _csrf_rejection_error(handler), 403)
+    if body is None:
+        try:
+            body = _read_json_request_body(handler)
+        except ValueError as exc:
+            return bad(handler, _sanitize_error(exc), 400)
+    qs = parse_qs(parsed.query)
+    sid = str(body.get("session_id") or qs.get("session_id", [""])[0] or "").strip()
+    rel = str(body.get("path") or qs.get("path", [""])[0] or "").strip()
+    token = str(body.get("token") or qs.get("token", [""])[0] or "").strip()
+    if token:
+        return bad(handler, "token must not be provided", 400)
+    if not sid:
+        return bad(handler, "session_id is required")
+    if not rel:
+        return bad(handler, "path is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    try:
+        payload = authorize_escape_target(Path(s.workspace), sid, rel)
+    except ValueError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+    return j(handler, payload)
+
+
+def _handle_escape_list_dir(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    token = qs.get("token", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    if not token:
+        return bad(handler, "token is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    rel_path = qs.get("path", ["."])[0]
+    try:
+        payload = list_authorized_escape_dir(Path(s.workspace), sid, token, rel_path)
+        payload["entries"] = serialize_workspace_entries_for_browser(payload.get("entries"))
+        return j(handler, payload)
+    except FileNotFoundError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+    except EscapeAuthorizationExpiredError as exc:
+        return bad(handler, _sanitize_error(exc), 403)
+    except ValueError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+
+
+def _handle_escape_file_read(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    token = qs.get("token", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    if not token:
+        return bad(handler, "token is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    rel = qs.get("path", [""])[0]
+    try:
+        return j(handler, read_authorized_escape_file_content(Path(s.workspace), sid, token, rel))
+    except FileNotFoundError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+    except EscapeAuthorizationExpiredError as exc:
+        return bad(handler, _sanitize_error(exc), 403)
+    except ImportError as exc:
+        # Optional Office parsers absent on a lean install — mirror
+        # _handle_file_read: a 503 with the install hint, not a 500 traceback.
+        return bad(handler, _sanitize_error(exc), 503)
+    except ValueError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+
+
+def _handle_escape_file_raw(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    token = qs.get("token", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    if not token:
+        return bad(handler, "token is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    rel = qs.get("path", [""])[0]
+    force_download = qs.get("download", [""])[0] == "1"
+    try:
+        anchor_root, target = raw_authorized_escape_target(Path(s.workspace), sid, token, rel)
+    except FileNotFoundError:
+        return j(handler, {"error": "not found"}, status=404)
+    except EscapeAuthorizationExpiredError as exc:
+        return bad(handler, _sanitize_error(exc), 403)
+    except ValueError as exc:
+        return bad(handler, _sanitize_error(exc), 404)
+    if not target.exists() or not target.is_file():
+        return j(handler, {"error": "not found"}, status=404)
+    ext = target.suffix.lower()
+    mime = MIME_MAP.get(ext, "application/octet-stream")
+    inline_preview = qs.get("inline", [""])[0] == "1"
+    dangerous_types = {"text/html", "application/xhtml+xml", "image/svg+xml"}
+    html_inline_ok = inline_preview and mime == "text/html"
+    disposition = "attachment" if force_download or (mime in dangerous_types and not html_inline_ok) else "inline"
+    sandbox_csp = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox"
+    # Content-Security-Policy sandboxing is carried through the csp=sandbox_csp handoff below.
+    csp = sandbox_csp if (inline_preview and not force_download and disposition == "inline") else None
+    if html_inline_ok:
+        return _serve_inline_html_preview(handler, target, "no-store", csp=sandbox_csp, anchor_root=anchor_root)
+    return _serve_file_bytes(handler, target, mime, disposition, "no-store", csp=csp, anchor_root=anchor_root)
+
+
+# ── File Raw, Read & Folder Download Handlers (Sprint M5.2b) ─────────────────
+def _file_raw_target(session, sid: str, rel: str) -> tuple[Path, Path] | None:
+    """Resolve /api/file/raw paths from the workspace or this session's uploads."""
+    workspace_root = Path(session.workspace)
+    try:
+        target = safe_resolve(workspace_root, rel)
+    except ValueError:
+        target = None
+    if target and target.exists() and target.is_file():
+        return workspace_root, target
+
+    # Chat uploads now live in a per-session attachment inbox outside the
+    # workspace. Keep the public URL stable while scoping fallback lookup to
+    # the requesting session's own attachment directory.
+    try:
+        from api.upload import _session_attachment_dir
+
+        attachment_root = _session_attachment_dir(sid)
+        attachment_target = safe_resolve(attachment_root, rel)
+    except Exception:
+        logger.debug("Silent exception in _file_raw_target", exc_info=True)
+        return None
+    if attachment_target.exists() and attachment_target.is_file():
+        return attachment_root, attachment_target
+    return None
+
+
+# ─── /api/folder/download ───────────────────────────────────────────────────
+# Configurable caps. Match the HERMES_WEBUI_MAX_UPLOAD_MB style used elsewhere
+# (api/config.py) so operators have one consistent env-var convention.
+# Bound on per-request wall-clock and bandwidth, not RSS. The zip streams
+# straight into handler.wfile, so peak memory is the per-file read buffer
+# inside zipfile, not the cap value.
+def _folder_zip_max_bytes() -> int:
+    try:
+        mb = int(os.getenv("AGY_WEBUI_FOLDER_ZIP_MAX_MB") or os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_MB", "1024"))
+    except ValueError:
+        mb = 1024
+    return max(1, mb) * 1024 * 1024
+
+
+def _folder_zip_max_files() -> int:
+    try:
+        return max(1, int(os.getenv("AGY_WEBUI_FOLDER_ZIP_MAX_FILES") or os.getenv("HERMES_WEBUI_FOLDER_ZIP_MAX_FILES", "50000")))
+    except ValueError:
+        return 50000
+
+
+def _folder_download_collect(target: Path, workspace_root: Path,
+                              max_bytes: int, max_files: int):
+    """Walk target dir; return (files, total_bytes, hit_limit_reason_or_None).
+
+    files is a list of (filesystem_path, archive_name) tuples. Each filesystem
+    path is reopened through the workspace anchor when streamed into the ZIP.
+    Symlinks escaping the workspace are skipped.
+    """
+    import os as _os
+    files = []
+    total_bytes = 0
+    for root, dirs, names in _os.walk(target, followlinks=False):
+        root_path = Path(root)
+        try:
+            if not root_path.resolve().is_relative_to(workspace_root):
+                dirs[:] = []
+                continue
+        except (ValueError, OSError):
+            dirs[:] = []
+            continue
+        for name in names:
+            fp = root_path / name
+            if fp.is_symlink():
+                try:
+                    if not fp.resolve().is_relative_to(workspace_root):
+                        continue
+                except (ValueError, OSError):
+                    continue
+            try:
+                size = fp.stat().st_size
+            except OSError:
+                continue
+            if len(files) >= max_files:
+                return files, total_bytes, "max_files"
+            if total_bytes + size > max_bytes:
+                return files, total_bytes, "max_bytes"
+            try:
+                arcname = fp.relative_to(target)
+            except ValueError:
+                continue
+            files.append((fp, str(arcname)))
+            total_bytes += size
+    return files, total_bytes, None
+
+
+def _handle_folder_download(handler, parsed):
+    """GET /api/folder/download?session_id=...&path=...
+
+    Streams a zip of <session.workspace>/<path>. Symlinks escaping the
+    workspace are skipped. Empty folders return an empty (valid) zip.
+    Respects HERMES_WEBUI_FOLDER_ZIP_MAX_MB and HERMES_WEBUI_FOLDER_ZIP_MAX_FILES.
+    Pre-flights the walk so size/count failures return a clean 413 with JSON
+    body BEFORE any zip bytes are sent.
+    """
+    import zipfile
+    from urllib.parse import parse_qs
+
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+
+    rel = qs.get("path", [""])[0]
+    try:
+        target = safe_resolve(Path(s.workspace), rel)
+    except ValueError:
+        return bad(handler, "invalid path", 400)
+    if not target.exists():
+        return j(handler, {"error": "not found"}, status=404)
+    if not target.is_dir():
+        return bad(handler, "path must be a directory; use /api/file/raw for single files", 400)
+
+    workspace_root = Path(s.workspace).resolve()
+    max_bytes = _folder_zip_max_bytes()
+    max_files = _folder_zip_max_files()
+
+    files, total_bytes, limit_hit = _folder_download_collect(
+        target, workspace_root, max_bytes, max_files
+    )
+    if limit_hit == "max_files":
+        return j(handler, {
+            "error": "too many files",
+            "limit": max_files,
+            "configure": "HERMES_WEBUI_FOLDER_ZIP_MAX_FILES",
+        }, status=413)
+    if limit_hit == "max_bytes":
+        return j(handler, {
+            "error": "folder too large",
+            "limit_bytes": max_bytes,
+            "configure": "HERMES_WEBUI_FOLDER_ZIP_MAX_MB",
+        }, status=413)
+
+    zip_name = (target.name or "workspace") + ".zip"
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/zip")
+    handler.send_header(
+        "Content-Disposition",
+        _content_disposition_value("attachment", zip_name),
+    )
+    handler.send_header("Cache-Control", "no-store")
+    # Under HTTP/1.1 (Handler.protocol_version, see server.py post-#2836)
+    # a response with no Content-Length and no Transfer-Encoding requires
+    # Connection: close so the client knows the body ends at FIN. The ZIP
+    # is built on-the-fly so we cannot send Content-Length up front; mirror
+    # the SSE-endpoint pattern #2836 uses. Without this header the client
+    # hangs waiting for the next pipelined response after the central
+    # directory bytes finish. Caught by Opus pre-release advisor on
+    # stage-batch11.
+    handler.send_header("Connection", "close")
+    handler.end_headers()
+
+    written = 0
+    with zipfile.ZipFile(handler.wfile, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+        for fp, arcname in files:
+            fd = None
+            try:
+                fd = open_anchored_fd(workspace_root, fp.resolve(), want_dir=False)
+                info = zipfile.ZipInfo(arcname)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                with os.fdopen(fd, "rb", closefd=True) as src:
+                    fd = None
+                    with zf.open(info, "w") as dst:
+                        shutil.copyfileobj(src, dst, length=1024 * 1024)
+                written += 1
+            except (ValueError, OSError, PermissionError) as e:
+                logger.warning("folder-download: skipping %s: %s", fp, e)
+            finally:
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+    logger.info(
+        "folder-download: streamed %d/%d files (~%d bytes) from %s",
+        written, len(files), total_bytes, target,
+    )
+
+
+def _handle_file_raw(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required")
+    try:
+        s = get_session_for_file_ops(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    rel = qs.get("path", [""])[0]
+    force_download = qs.get("download", [""])[0] == "1"
+    resolved = _file_raw_target(s, sid, rel)
+    if resolved is None:
+        return j(handler, {"error": "not found"}, status=404)
+    anchor_root, target = resolved
+    ext = target.suffix.lower()
+    mime = MIME_MAP.get(ext, "application/octet-stream")
+    # Security: force download for dangerous MIME types to prevent XSS.
+    # Exception: ?inline=1 permits text/html to be served inline for the
+    # sandboxed workspace HTML preview iframe (sandbox="allow-scripts" with no
+    # allow-same-origin, so the iframe cannot access parent cookies/storage).
+    inline_preview = qs.get("inline", [""])[0] == "1"
+    dangerous_types = {"text/html", "application/xhtml+xml", "image/svg+xml"}
+    html_inline_ok = inline_preview and mime == "text/html"
+    disposition = "attachment" if force_download or (mime in dangerous_types and not html_inline_ok) else "inline"
+    # Defense-in-depth for ?inline=1 HTML: even though the workspace.js iframe
+    # sets sandbox="allow-scripts", a user could be tricked into opening the
+    # ?inline=1 URL directly in a top-level tab (e.g. via a chat link), which
+    # would render the HTML in the WebUI's origin without iframe sandbox. The
+    # CSP sandbox directive applies the same isolation server-side: without
+    # allow-same-origin, the document is treated as a unique opaque origin and
+    # cannot read WebUI cookies, localStorage, or postMessage to the parent.
+    sandbox_csp = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox"
+    csp = sandbox_csp if (inline_preview and not force_download and disposition == "inline") else None
+    # _serve_file_bytes sends Content-Security-Policy when csp is set.
+    if html_inline_ok:
+        return _serve_inline_html_preview(handler, target, "no-store", csp=sandbox_csp, anchor_root=anchor_root)
+    return _serve_file_bytes(handler, target, mime, disposition, "no-store", csp=csp, anchor_root=anchor_root)
+
+
+def _handle_file_read(handler, parsed):
+    qs = parse_qs(parsed.query)
+    rel = qs.get("path", [""])[0]
+    if not rel:
+        return bad(handler, "path is required")
+    sid = qs.get("session_id", [""])[0]
+    ws_path = Path("/workspace")
+    if sid:
+        try:
+            s = get_session_for_file_ops(sid)
+            if s and hasattr(s, "workspace") and s.workspace:
+                cand = Path(s.workspace)
+                if cand.exists():
+                    ws_path = cand
+        except KeyError:
+            return bad(handler, "Session not found", 404)
+    try:
+        return j(handler, read_file_content(ws_path, rel))
+    except ImportError as e:
+        return bad(handler, str(e), 503)
+    except (FileNotFoundError, ValueError) as e:
+        return bad(handler, _sanitize_error(e), 404)
+
