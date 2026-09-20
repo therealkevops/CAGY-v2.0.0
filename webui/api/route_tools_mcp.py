@@ -2,24 +2,29 @@
 
 Extracted from routes.py as part of routes decomposition (Sprint R5).
 """
+import ast
 import html
 import logging
 import os
 import re
+import shutil
+import sys
 import uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 
 from api.config import (
+    _cfg_lock,
     _get_config_path,
+    _load_yaml_config_file,
     _save_yaml_config_file,
     get_config,
     get_config_for_profile_home,
     load_settings,
     reload_config,
 )
-from api.helpers import _redact_text, bad, j
-from api.profiles import _is_isolated_profile_mode, get_active_agy_home
+from api.helpers import _redact_text, bad, j, require
+from api.profiles import _SKILLS_STATS_CACHE, _is_isolated_profile_mode, get_active_agy_home
 from api.request_diagnostics import RequestDiagnostics
 from api.route_config_models import _dashboard_plugin_enabled
 from api.workspace import get_profile_default_workspace
@@ -177,7 +182,7 @@ def _handle_get_tools_and_mcp(handler, parsed):
     if parsed.path == "/api/skills":
         qs = parse_qs(parsed.query)
         category = qs.get("category", [None])[0]
-        data = _routes._skills_list_from_dir(_routes._active_skills_dir(), category=category)
+        data = _skills_list_from_dir(_active_skills_dir(), category=category)
         skills = list(data.get("skills", []))
         try:
             from api.skills_wizard import list_workspace_rules
@@ -192,7 +197,7 @@ def _handle_get_tools_and_mcp(handler, parsed):
     if parsed.path == "/api/skills/usage":
         from api.skill_usage import read_skill_usage
 
-        raw = read_skill_usage(_routes._active_skills_dir())
+        raw = read_skill_usage(_active_skills_dir())
         usage = {}
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -207,7 +212,7 @@ def _handle_get_tools_and_mcp(handler, parsed):
                 for meta_key in v:
                     if meta_key not in usage[k]:
                         usage[k][meta_key] = v[meta_key]
-        skills_data = _routes._skills_list_from_dir(_routes._active_skills_dir()).get("skills", [])
+        skills_data = _skills_list_from_dir(_active_skills_dir()).get("skills", [])
         skill_names = sorted({s["name"] for s in skills_data})
         total = sum(
             e.get("use_count", 0) + e.get("view_count", 0) + e.get("patch_count", 0)
@@ -245,9 +250,9 @@ def _handle_get_tools_and_mcp(handler, parsed):
 
             if _re.search(r"[*?\[\]]", name):
                 return bad(handler, "Invalid skill name", 400)
-            skills_dir = _routes._active_skills_dir()
-            skill_dir, _skill_md = _routes._find_skill_in_dirs(
-                name, _routes._active_skill_search_dirs(skills_dir)
+            skills_dir = _active_skills_dir()
+            skill_dir, _skill_md = _find_skill_in_dirs(
+                name, _active_skill_search_dirs(skills_dir)
             )
             if not skill_dir:
                 return bad(handler, "Skill not found", 404)
@@ -262,7 +267,7 @@ def _handle_get_tools_and_mcp(handler, parsed):
                 handler,
                 {"content": target.read_text(encoding="utf-8"), "path": file_path},
             )
-        data = _routes._skill_view_from_active_dir(name)
+        data = _skill_view_from_active_dir(name)
         if not isinstance(data.get("linked_files"), dict):
             data["linked_files"] = {}
         return j(handler, data)
@@ -563,9 +568,6 @@ def _handle_post_tools_and_mcp(handler, parsed, body, diag=None):
     _handle_cron_pause = _routes._handle_cron_pause
     _handle_cron_resume = _routes._handle_cron_resume
     _sanitize_error = _routes._sanitize_error
-    _handle_skill_save = _routes._handle_skill_save
-    _handle_skill_delete = _routes._handle_skill_delete
-    _handle_skill_toggle = _routes._handle_skill_toggle
     _handle_memory_write = _routes._handle_memory_write
     _handle_gateway_lifecycle = _routes._handle_gateway_lifecycle
     ensure_agent_runtime_current = _routes.ensure_agent_runtime_current
@@ -1519,4 +1521,552 @@ def _handle_artifact_content(handler, parsed):
     except Exception as e:
         logger.exception("Failed to get artifact content")
         return bad(handler, str(e), status=500)
+
+
+# ── Skills System Handlers & Helpers (Sprint M4.2a) ──────────────────────────
+
+def _active_skills_dir() -> Path:
+    """Return the active skills directory for Antigravity skills."""
+    ws = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+    if not ws.exists():
+        ws = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+    skills_dir = ws / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    return skills_dir
+
+
+def _skill_path_within(base_dir: Path, candidate: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(base_dir.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _skill_category_from_path(
+    skill_md: Path,
+    skills_dirs: list[Path],
+    local_skills_dir: Path | None = None,
+) -> str | None:
+    path_str = str(skill_md)
+    if "builtin" in path_str and "antigravity-cli" in path_str:
+        return "Built-in (AGY)"
+    if "/skills/" in path_str or "skills/nc2-advisor" in path_str or "skills/agy-webui-bridge" in path_str or "/workspace/skills" in path_str:
+        return "Custom (Workspace)"
+    if ".gemini" in path_str:
+        return "Antigravity"
+    if ".hermes" in path_str:
+        return "Antigravity (Global)"
+    return "Custom"
+
+
+def _active_skill_search_dirs(skills_dir: Path) -> list[Path]:
+    dirs = [skills_dir]
+    ws = Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
+    if not ws.exists():
+        ws = Path.cwd().parent if Path.cwd().name == "webui" else Path.cwd()
+
+    candidates = [
+        ws / "skills",
+        ws / ".gemini" / "skills",
+        ws / "workspace" / "skills",
+        Path.home() / ".gemini" / "antigravity-cli" / "builtin" / "skills",
+        Path.home() / ".gemini" / "antigravity-cli" / "skills",
+        Path.home() / ".gemini" / "skills",
+        Path("/workspace/skills"),
+        Path("/workspace/.gemini/skills"),
+        Path.cwd() / "skills",
+        Path.cwd() / ".gemini" / "skills",
+        Path.cwd().parent / "skills",
+        Path.cwd().parent / ".gemini" / "skills",
+    ]
+    for d in candidates:
+        if d.exists() and d not in dirs:
+            dirs.append(d)
+    return [p for p in dirs if p.exists()]
+
+
+def _active_profile_config_path() -> Path:
+    """Return config.yaml for the request's active WebUI profile.
+
+    Skills endpoints are profile-scoped UI actions: both the visible disabled
+    toggle state and toggle writes must follow the cookie/thread-local active
+    Hermes home, not process-global HERMES_HOME or HERMES_CONFIG_PATH values
+    captured at server startup.
+    """
+    test_override_module = getattr(_get_config_path, "__module__", "")
+    if test_override_module != "api.config":
+        return _get_config_path()
+    try:
+        from api.profiles import get_active_agy_home
+
+        return Path(get_active_agy_home()) / "config.yaml"
+    except Exception:
+        logger.debug("Silent exception in _active_profile_config_path", exc_info=True)
+        return _get_config_path()
+
+
+def _get_disabled_skill_names_for_profile() -> set:
+    """Read disabled skill names from the active profile's config.yaml.
+
+    Unlike ``tools.skills_tool._get_disabled_skill_names`` which reads from
+    the process-global ``HERMES_HOME``, this uses ``_get_config_path()`` which
+    resolves against the WebUI's active profile.  Checks
+    ``skills.platform_disabled.webui`` first, falling back to
+    ``skills.disabled``.
+    """
+    config_path = _active_profile_config_path()
+    if not config_path.exists():
+        return set()
+    try:
+        cfg = _load_yaml_config_file(config_path)
+    except Exception:
+        logger.debug("Silent exception in _get_disabled_skill_names_for_profile", exc_info=True)
+        return set()
+    if not isinstance(cfg, dict):
+        return set()
+    skills_cfg = cfg.get("skills")
+    if not isinstance(skills_cfg, dict):
+        return set()
+    # Check platform_disabled.webui first (mirrors agent platform resolution)
+    platform_disabled = skills_cfg.get("platform_disabled")
+    if isinstance(platform_disabled, dict) and "webui" in platform_disabled:
+        return _normalize_disabled_set(platform_disabled["webui"])
+    return _normalize_disabled_set(skills_cfg.get("disabled"))
+
+
+def _parse_config_string_list(value) -> list:
+    """Decode a config value that may hold a JSON-array string into a list.
+
+    ``hermes config set`` (and JSON-mode editor saves) store lists as quoted
+    JSON strings (``'[\"a\",\"b\"]'`` or the Python-literal ``\"['a']\"``), so a
+    disabled list read from ``config.yaml`` can arrive as a single string
+    instead of a YAML list. Treating it as one literal name makes the Skills
+    panel show every skill as enabled and makes the toggle write a destructive
+    single-entry list (hermes-webui#7120).
+
+    Reuses ``agent.skill_utils.parse_config_string_list`` (hermes-agent #86661
+    fix) when the bundled agent source is importable, and mirrors its logic
+    otherwise so the two surfaces cannot drift. A scalar string still means one
+    name.
+    """
+    try:
+        from agent.skill_utils import parse_config_string_list
+
+        return parse_config_string_list(value)
+    except ImportError:
+        pass
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("["):
+            try:
+                parsed = ast.literal_eval(stripped)
+            except (ValueError, SyntaxError):
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        return [value]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [str(item) for item in value]
+    return []
+
+
+def _normalize_disabled_set(values) -> set:
+    """Normalize a YAML disabled list into a set of stripped strings."""
+    if values is None:
+        return set()
+    if isinstance(values, str):
+        values = _parse_config_string_list(values)
+    return {str(v).strip() for v in values if str(v).strip()}
+
+
+MAX_DESCRIPTION_LENGTH = 300
+_EXCLUDED_SKILL_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea"}
+
+
+def _parse_frontmatter(content: str) -> tuple[dict, str]:
+    if not content or not content.startswith("---"):
+        return {}, content
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return {}, content
+    frontmatter_raw = parts[1]
+    body = parts[2]
+    data = {}
+    try:
+        import yaml
+        data = yaml.safe_load(frontmatter_raw) or {}
+    except Exception:
+        logger.debug("Silent exception in _parse_frontmatter", exc_info=True)
+        for line in frontmatter_raw.strip().split("\n"):
+            if ":" in line:
+                k, v = line.split(":", 1)
+                data[k.strip()] = v.strip().strip("'\"")
+    return data if isinstance(data, dict) else {}, body
+
+
+def _parse_tags(raw) -> list[str]:
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    if isinstance(raw, str):
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return []
+
+
+def skill_matches_platform(frontmatter: dict) -> bool:
+    platforms = frontmatter.get("platforms") or frontmatter.get("platform")
+    if not platforms:
+        return True
+    if isinstance(platforms, str):
+        platforms = [p.strip().lower() for p in platforms.split(",")]
+    elif isinstance(platforms, list):
+        platforms = [str(p).strip().lower() for p in platforms]
+    current = "macos" if sys.platform == "darwin" else ("windows" if sys.platform == "win32" else "linux")
+    return current in platforms or "all" in platforms or sys.platform in platforms
+
+
+def _sort_skills(skills: list[dict]) -> list[dict]:
+    return sorted(skills, key=lambda s: s.get("name", "").lower())
+
+
+def iter_skill_index_files(scan_dir: Path, filename: str = "SKILL.md"):
+    if not scan_dir.exists():
+        return
+    try:
+        for path in scan_dir.rglob(filename):
+            if not any(part in _EXCLUDED_SKILL_DIRS for part in path.parts):
+                yield path
+    except Exception:
+        logger.debug("Silent exception in iter_skill_index_files", exc_info=True)
+        pass
+
+
+def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict:
+    """List skills across all search directories."""
+    all_skills = []
+    seen_names: set[str] = set()
+    disabled = _get_disabled_skill_names_for_profile()
+    search_dirs = _active_skill_search_dirs(skills_dir)
+
+    for scan_dir in search_dirs:
+        for skill_md in iter_skill_index_files(scan_dir, "SKILL.md"):
+            if any(part in _EXCLUDED_SKILL_DIRS for part in skill_md.parts):
+                continue
+            skill_dir = skill_md.parent
+            try:
+                content = skill_md.read_text(encoding="utf-8")[:4000]
+                frontmatter, body = _parse_frontmatter(content)
+                if not skill_matches_platform(frontmatter):
+                    continue
+                name = frontmatter.get("name", skill_dir.name)[:64]
+                if name in seen_names:
+                    continue
+                description = frontmatter.get("description", "")
+                if not description:
+                    for line in body.strip().split("\n"):
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            description = line
+                            break
+                if len(description) > MAX_DESCRIPTION_LENGTH:
+                    description = description[: MAX_DESCRIPTION_LENGTH - 3] + "..."
+                seen_names.add(name)
+                all_skills.append(
+                    {
+                        "name": name,
+                        "description": description,
+                        "category": _skill_category_from_path(
+                            skill_md, search_dirs, local_skills_dir=skills_dir
+                        ),
+                        "disabled": name in disabled,
+                    }
+                )
+            except (UnicodeDecodeError, PermissionError) as e:
+                logger.debug("Failed to read skill file %s: %s", skill_md, e)
+            except Exception as e:
+                logger.debug(
+                    "Skipping skill at %s: failed to parse: %s", skill_md, e, exc_info=True
+                )
+
+    if category:
+        all_skills = [s for s in all_skills if s.get("category") == category]
+    all_skills = _sort_skills(all_skills)
+    categories = sorted(set(s.get("category") for s in all_skills if s.get("category")))
+    result = {
+        "success": True,
+        "skills": all_skills,
+        "categories": categories,
+        "count": len(all_skills),
+    }
+    if all_skills:
+        result["hint"] = "Use skill_view(name) to see full content, tags, and linked files"
+    else:
+        result["message"] = "No skills found."
+    return result
+
+
+def _find_skill_in_dirs(name: str, skills_dirs: list[Path]) -> tuple[Path | None, Path | None]:
+    """Resolve a WebUI skill name inside explicit skills directories."""
+    raw_name = str(name or "").strip().strip("/")
+    if not raw_name:
+        return None, None
+
+    candidate_names = [raw_name]
+    if ":" in raw_name:
+        namespace, bare = raw_name.split(":", 1)
+        if namespace and bare:
+            candidate_names.append(f"{namespace}/{bare}")
+
+    for skills_dir in skills_dirs:
+        if not skills_dir.exists():
+            continue
+        for candidate_name in candidate_names:
+            direct_path = skills_dir / candidate_name
+            if not _skill_path_within(skills_dir, direct_path):
+                continue
+            if direct_path.is_dir() and (direct_path / "SKILL.md").exists():
+                return direct_path, direct_path / "SKILL.md"
+            legacy_md = direct_path.with_suffix(".md")
+            if legacy_md.exists() and _skill_path_within(skills_dir, legacy_md):
+                return legacy_md.parent, legacy_md
+
+        for skill_md in iter_skill_index_files(skills_dir, "SKILL.md"):
+            if any(part in _EXCLUDED_SKILL_DIRS for part in skill_md.parts):
+                continue
+            skill_dir = skill_md.parent
+            if skill_dir.name == raw_name:
+                return skill_dir, skill_md
+            try:
+                frontmatter, _ = _parse_frontmatter(skill_md.read_text(encoding="utf-8")[:4000])
+                if frontmatter.get("name") == raw_name:
+                    return skill_dir, skill_md
+            except Exception:
+                logger.debug("Silent exception in _find_skill_in_dirs", exc_info=True)
+                continue
+
+        for legacy_md in skills_dir.rglob("*.md"):
+            if legacy_md.name == "SKILL.md":
+                continue
+            if legacy_md.stem == raw_name and _skill_path_within(skills_dir, legacy_md):
+                return legacy_md.parent, legacy_md
+    return None, None
+
+
+def _find_skill_in_dir(name: str, skills_dir: Path) -> tuple[Path | None, Path | None]:
+    """Resolve a WebUI skill name inside an explicit skills directory."""
+    return _find_skill_in_dirs(name, [skills_dir])
+
+
+def _skill_not_found_payload(name: str, skills_dir: Path) -> dict:
+    available = [s["name"] for s in _skills_list_from_dir(skills_dir).get("skills", [])[:20]]
+    return {
+        "success": False,
+        "error": f"Skill '{name}' not found.",
+        "available_skills": available,
+        "hint": "Use skills_list to see all available skills",
+    }
+
+
+def _linked_files_for_skill(skill_dir: Path | None) -> dict:
+    if not skill_dir or not (skill_dir / "SKILL.md").exists():
+        return {}
+    linked_files: dict[str, list[str]] = {}
+
+    references_dir = skill_dir / "references"
+    if references_dir.exists():
+        refs = [str(f.relative_to(skill_dir)) for f in references_dir.glob("*.md")]
+        if refs:
+            linked_files["references"] = sorted(refs)
+
+    templates_dir = skill_dir / "templates"
+    if templates_dir.exists():
+        templates = []
+        for ext in ["*.md", "*.py", "*.yaml", "*.yml", "*.json", "*.tex", "*.sh"]:
+            templates.extend(str(f.relative_to(skill_dir)) for f in templates_dir.rglob(ext))
+        if templates:
+            linked_files["templates"] = sorted(set(templates))
+
+    assets_dir = skill_dir / "assets"
+    if assets_dir.exists():
+        assets = [str(f.relative_to(skill_dir)) for f in assets_dir.rglob("*") if f.is_file()]
+        if assets:
+            linked_files["assets"] = sorted(assets)
+
+    scripts_dir = skill_dir / "scripts"
+    if scripts_dir.exists():
+        scripts = []
+        for ext in ["*.py", "*.sh", "*.bash", "*.js", "*.ts", "*.rb"]:
+            scripts.extend(str(f.relative_to(skill_dir)) for f in scripts_dir.glob(ext))
+        if scripts:
+            linked_files["scripts"] = sorted(set(scripts))
+
+    return linked_files
+
+
+def _skill_view_from_file(skill_dir: Path | None, skill_md: Path) -> dict:
+    content = skill_md.read_text(encoding="utf-8")
+    frontmatter, _body = _parse_frontmatter(content)
+    if not skill_matches_platform(frontmatter):
+        return {"success": False, "error": "Skill is not available on this platform."}
+
+    metadata = frontmatter.get("metadata")
+    hermes_meta = metadata.get("hermes", {}) if isinstance(metadata, dict) else {}
+    tags = _parse_tags(hermes_meta.get("tags") or frontmatter.get("tags", ""))
+    related_skills = _parse_tags(
+        hermes_meta.get("related_skills") or frontmatter.get("related_skills", "")
+    )
+    try:
+        path = str(skill_md.relative_to((skill_dir or skill_md.parent).parent))
+    except ValueError:
+        path = str(skill_md)
+
+    return {
+        "success": True,
+        "name": frontmatter.get("name", skill_md.stem if not skill_dir else skill_dir.name),
+        "description": frontmatter.get("description", ""),
+        "tags": tags,
+        "related_skills": related_skills,
+        "content": content,
+        "path": path,
+        "skill_dir": str(skill_dir) if skill_dir else None,
+        "linked_files": _linked_files_for_skill(skill_dir),
+    }
+
+
+def _skill_view_from_active_dir(name: str) -> dict:
+    skills_dir = _active_skills_dir()
+    search_dirs = _active_skill_search_dirs(skills_dir)
+    skill_dir, skill_md = _find_skill_in_dirs(name, search_dirs)
+    if not skill_md:
+        return _skill_not_found_payload(name, skills_dir)
+    return _skill_view_from_file(skill_dir, skill_md)
+
+
+def _handle_skill_save(handler, body):
+    try:
+        require(body, "name", "content")
+    except ValueError as e:
+        return bad(handler, str(e))
+    skill_name = body["name"].strip().lower().replace(" ", "-")
+    if not skill_name or "/" in skill_name or ".." in skill_name:
+        return bad(handler, "Invalid skill name")
+    category = body.get("category", "").strip()
+    if category and ("/" in category or ".." in category):
+        return bad(handler, "Invalid category")
+    skills_dir = _active_skills_dir()
+
+    if category:
+        skill_dir = skills_dir / category / skill_name
+    else:
+        skill_dir = skills_dir / skill_name
+    # Validate resolved path stays within the active profile skills dir.
+    try:
+        skill_dir.resolve().relative_to(skills_dir.resolve())
+    except ValueError:
+        return bad(handler, "Invalid skill path")
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / "SKILL.md"
+    if skill_file.is_symlink():
+        return bad(handler, "Cannot save to a symlinked skill file")
+    skill_file.write_text(body["content"], encoding="utf-8")
+    _SKILLS_STATS_CACHE.clear()
+    return j(handler, {"ok": True, "name": skill_name, "path": str(skill_file)})
+
+
+def _handle_skill_delete(handler, body):
+    try:
+        require(body, "name")
+    except ValueError as e:
+        return bad(handler, str(e))
+
+    skill_name = str(body["name"]).strip().lower().replace(" ", "-")
+    if not skill_name or "/" in skill_name or ".." in skill_name:
+        return bad(handler, "Invalid skill name")
+    skills_dir = _active_skills_dir()
+    matches = [p for p in skills_dir.rglob("SKILL.md") if p.parent.name == skill_name]
+    if not matches:
+        return bad(handler, "Skill not found", 404)
+    skill_dir = matches[0].parent
+    shutil.rmtree(str(skill_dir))
+    _SKILLS_STATS_CACHE.clear()
+    return j(handler, {"ok": True, "name": body["name"]})
+
+
+def _normalize_names_list(names) -> list[str]:
+    """Normalize a config value (None/str/list) into a deduplicated str list."""
+    if names is None:
+        return []
+    if isinstance(names, str):
+        names = _parse_config_string_list(names)
+    elif not isinstance(names, list):
+        names = list(names) if names else []
+    return list(dict.fromkeys(str(d).strip() for d in names if str(d).strip()))
+
+
+def _toggle_name_in_list(names, name: str, enabled: bool) -> list[str]:
+    """Add or remove *name* from *names*, returning a new list."""
+    names = _normalize_names_list(names)
+    if enabled:
+        return [d for d in names if d != name]
+    if name not in names:
+        names.append(name)
+    return names
+
+
+def _handle_skill_toggle(handler, body):
+    """Toggle a skill's enabled/disabled state in the active profile's config.yaml.
+
+    Writes through to ``skills.platform_disabled.webui`` when that key exists
+    so the toggle takes effect for WebUI sessions (the agent's
+    ``get_disabled_skill_names`` checks platform-specific lists first when
+    ``HERMES_SESSION_PLATFORM`` is set).
+    """
+    try:
+        require(body, "name", "enabled")
+    except ValueError as e:
+        return bad(handler, str(e))
+
+    name = body["name"].strip()
+    enabled = bool(body["enabled"])
+
+    # Validate the skill exists in the filesystem
+    skills_dir = _active_skills_dir()
+    search_dirs = _active_skill_search_dirs(skills_dir)
+    skill_dir, skill_md = _find_skill_in_dirs(name, search_dirs)
+    if not skill_md:
+        return bad(handler, f"Skill '{name}' not found", 404)
+
+    config_path = _active_profile_config_path()
+    with _cfg_lock:
+        cfg = _load_yaml_config_file(config_path)
+
+        # Ensure skills section exists as a dict
+        if "skills" not in cfg or not isinstance(cfg["skills"], dict):
+            cfg["skills"] = {}
+        skills_cfg = cfg["skills"]
+
+        # Always update the global disabled list
+        skills_cfg["disabled"] = _toggle_name_in_list(
+            skills_cfg.get("disabled"), name, enabled
+        )
+
+        # Write-through to platform_disabled.webui if it exists so that the
+        # toggle takes effect for WebUI sessions (the agent checks the
+        # platform-specific list first when HERMES_SESSION_PLATFORM=webui).
+        platform_disabled = skills_cfg.get("platform_disabled")
+        if isinstance(platform_disabled, dict) and "webui" in platform_disabled:
+            platform_disabled["webui"] = _toggle_name_in_list(
+                platform_disabled["webui"], name, enabled
+            )
+
+        cfg["skills"] = skills_cfg
+        _save_yaml_config_file(config_path, cfg)
+
+    reload_config()  # outside with block — reload_config() acquires the lock itself
+    _SKILLS_STATS_CACHE.clear()
+    return j(handler, {"ok": True, "name": name, "enabled": enabled})
+
 
