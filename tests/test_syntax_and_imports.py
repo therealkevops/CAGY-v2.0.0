@@ -344,6 +344,81 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
         self.assertIn("UI_LAYOUT_JS_OK", proc.stdout)
 
+    def test_ui_media_viewer_js_module(self):
+        """Verify ui-media-viewer.js exports expected media functions and constants."""
+        import subprocess
+
+        test_node_script = """
+        const mod = require('./webui/static/ui-media-viewer.js');
+        const {
+            _MERMAID_VIEWER_MIN_SCALE,
+            _MERMAID_VIEWER_MAX_SCALE,
+            _MERMAID_VIEWER_ZOOM_STEP,
+            _MERMAID_VIEWER_INLINE_MIN_HEIGHT,
+            _IMAGE_EXTS,
+            _PDF_EXTS,
+            _HTML_EXTS,
+            _ARCHIVE_EXTS,
+            _SVG_EXTS,
+            _AUDIO_EXTS,
+            _VIDEO_EXTS,
+            _CSV_EXTS,
+            _EXCALIDRAW_EXTS,
+            MEDIA_PLAYBACK_RATES,
+            MEDIA_PLAYBACK_STORAGE_KEY,
+            _mediaKindForName,
+            _getStoredMediaPlaybackRate,
+            _isSafeDataImageUri,
+            _dataImageHtml,
+            _mdImageHtml,
+        } = mod;
+
+        if (_MERMAID_VIEWER_MIN_SCALE !== 0.25) throw new Error('_MERMAID_VIEWER_MIN_SCALE mismatch');
+        if (_MERMAID_VIEWER_MAX_SCALE !== 8) throw new Error('_MERMAID_VIEWER_MAX_SCALE mismatch');
+        if (_MERMAID_VIEWER_ZOOM_STEP !== 1.2) throw new Error('_MERMAID_VIEWER_ZOOM_STEP mismatch');
+        if (_MERMAID_VIEWER_INLINE_MIN_HEIGHT !== 220) throw new Error('_MERMAID_VIEWER_INLINE_MIN_HEIGHT mismatch');
+
+        if (!(_IMAGE_EXTS instanceof RegExp)) throw new Error('_IMAGE_EXTS not a RegExp');
+        if (!_IMAGE_EXTS.test('photo.png')) throw new Error('_IMAGE_EXTS failed .png');
+        if (!_SVG_EXTS.test('diagram.svg')) throw new Error('_SVG_EXTS failed .svg');
+        if (!_PDF_EXTS.test('doc.pdf')) throw new Error('_PDF_EXTS failed .pdf');
+        if (!_CSV_EXTS.test('data.csv')) throw new Error('_CSV_EXTS failed .csv');
+        if (!_AUDIO_EXTS.test('track.mp3')) throw new Error('_AUDIO_EXTS failed .mp3');
+        if (!_VIDEO_EXTS.test('clip.mp4')) throw new Error('_VIDEO_EXTS failed .mp4');
+        if (!_HTML_EXTS.test('page.html')) throw new Error('_HTML_EXTS failed .html');
+        if (!_ARCHIVE_EXTS.test('archive.zip')) throw new Error('_ARCHIVE_EXTS failed .zip');
+        if (!_EXCALIDRAW_EXTS.test('drawing.excalidraw')) throw new Error('_EXCALIDRAW_EXTS failed .excalidraw');
+
+        if (!Array.isArray(MEDIA_PLAYBACK_RATES)) throw new Error('MEDIA_PLAYBACK_RATES not array');
+        if (!MEDIA_PLAYBACK_RATES.includes(1)) throw new Error('MEDIA_PLAYBACK_RATES missing 1');
+        if (MEDIA_PLAYBACK_STORAGE_KEY !== 'agy-media-playback-rate') throw new Error('MEDIA_PLAYBACK_STORAGE_KEY mismatch');
+
+        if (typeof _mediaKindForName !== 'function') throw new Error('_mediaKindForName not function');
+        if (_mediaKindForName('clip.mp4') !== 'video') throw new Error('_mediaKindForName mp4 failed');
+        if (_mediaKindForName('sound.mp3') !== 'audio') throw new Error('_mediaKindForName mp3 failed');
+        if (_mediaKindForName('pic.png') !== 'image') throw new Error('_mediaKindForName png failed');
+        if (_mediaKindForName('doc.pdf') !== '') throw new Error('_mediaKindForName pdf should return empty');
+
+        if (typeof _getStoredMediaPlaybackRate !== 'function') throw new Error('_getStoredMediaPlaybackRate not function');
+        if (_getStoredMediaPlaybackRate() !== 1) throw new Error('_getStoredMediaPlaybackRate default mismatch');
+
+        if (typeof _isSafeDataImageUri !== 'function') throw new Error('_isSafeDataImageUri not function');
+        if (_isSafeDataImageUri('data:image/png;base64,abc123') !== true) throw new Error('_isSafeDataImageUri png failed');
+        if (_isSafeDataImageUri('data:text/html,<script>') !== false) throw new Error('_isSafeDataImageUri html should be false');
+
+        if (typeof _dataImageHtml !== 'function') throw new Error('_dataImageHtml not function');
+        if (_dataImageHtml('data:text/html,bad') !== null) throw new Error('_dataImageHtml unsafe should return null');
+
+        if (typeof _mdImageHtml !== 'function') throw new Error('_mdImageHtml not function');
+        const imgHtml = _mdImageHtml('test', 'https://example.com/foo.png');
+        if (!imgHtml.includes('msg-media-img')) throw new Error('_mdImageHtml missing class');
+
+        console.log('UI_MEDIA_VIEWER_JS_OK');
+        """
+        proc = subprocess.run(["node", "-e", test_node_script], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
+        self.assertIn("UI_MEDIA_VIEWER_JS_OK", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
