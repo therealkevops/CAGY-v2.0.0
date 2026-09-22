@@ -29,12 +29,16 @@ from api.streaming import (
     StreamTurnContext,
     StreamingCallbacks,
     StreamingUsageCollector,
+    _apply_prefill_context_budget,
     _attempt_stream_credential_retry,
+    _classify_provider_error,
     _compact_for_echo_compare,
     _extract_max_iterations_cfg,
     _extract_max_tokens_cfg,
     _extract_reasoning_config,
     _handle_cancelled_turn,
+    _has_new_assistant_reply,
+    _is_quota_error_text,
     _make_agent_status_callback,
     _parse_fallback_entries,
     _phase_execute_agent,
@@ -43,6 +47,7 @@ from api.streaming import (
     _phase_handle_stream_error,
     _phase_prepare_context,
     _phase_teardown_stream,
+    _prefill_context_char_count,
     _run_agent_streaming,
     _sse,
     _sse_set_write_deadline,
@@ -953,6 +958,103 @@ class TestPhaseHandleStreamErrorAndTeardown(unittest.TestCase):
             self.assertNotIn(stream_id, STREAM_PARTIAL_TEXT)
             self.assertNotIn(stream_id, STREAM_REASONING_TEXT)
             self.assertNotIn(stream_id, STREAM_LIVE_TOOL_CALLS)
+
+
+class TestStreamingCriticalPaths(unittest.TestCase):
+    """Unit tests for critical string-matching gates, budget enforcement, and turn writeback."""
+
+    def test_classify_quota_error(self):
+        """RESOURCE_EXHAUSTED / quota exceeded errors are classified as quota_exhausted."""
+        result = _classify_provider_error("RESOURCE_EXHAUSTED: quota exceeded")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result.get("type"), "quota_exhausted")
+        self.assertTrue(len(str(result.get("hint") or "")) > 0)
+
+    def test_classify_generic_error(self):
+        """Unrecognized error strings fall back to generic error without false positive classifications."""
+        result = _classify_provider_error("some unknown thing went wrong")
+        self.assertIsInstance(result, dict)
+        self.assertNotIn(result.get("type"), ("quota_exhausted", "auth_mismatch", "cancelled"))
+        self.assertEqual(result.get("type"), "error")
+
+    def test_classify_empty_error(self):
+        """Empty or falsy error strings safely return a dictionary payload with 'type' key."""
+        result = _classify_provider_error("")
+        self.assertIsInstance(result, dict)
+        self.assertIn("type", result)
+        self.assertEqual(result.get("type"), "error")
+
+    def test_is_quota_error_text(self):
+        """_is_quota_error_text identifies quota/credit exhaustion while rejecting non-quota errors."""
+        self.assertTrue(_is_quota_error_text("RESOURCE_EXHAUSTED: quota exceeded"))
+        self.assertTrue(_is_quota_error_text("insufficient credits for this operation"))
+        self.assertTrue(_is_quota_error_text("usage limit exceeded"))
+        self.assertFalse(_is_quota_error_text("connection refused"))
+        self.assertFalse(_is_quota_error_text("rate limit exceeded"))
+
+    def test_parse_fallback_entries(self):
+        """_parse_fallback_entries parses valid fallback items and handles malformed data gracefully."""
+        valid_input = [{"model": "gemini-1.5-pro", "provider": "google"}]
+        parsed = _parse_fallback_entries(valid_input)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["model"], "gemini-1.5-pro")
+        self.assertEqual(parsed[0]["provider"], "google")
+
+        # Invalid non-list, non-dict input returns empty list
+        self.assertEqual(_parse_fallback_entries("not-a-list"), [])
+        self.assertEqual(_parse_fallback_entries([]), [])
+        self.assertEqual(_parse_fallback_entries(None), [])
+
+    def test_has_new_assistant_reply(self):
+        """_has_new_assistant_reply verifies presence of new assistant replies beyond prev_count."""
+        # 1. New assistant message appended beyond prev_count=0
+        self.assertTrue(
+            _has_new_assistant_reply([{"role": "assistant", "content": "hi"}], prev_count=0)
+        )
+        # 2. Only user message appended beyond prev_count=0
+        self.assertFalse(
+            _has_new_assistant_reply([{"role": "user", "content": "hi"}], prev_count=0)
+        )
+        # 3. Same message count (no new messages appended)
+        self.assertFalse(
+            _has_new_assistant_reply([{"role": "assistant", "content": "hi"}], prev_count=1)
+        )
+        # 4. Truncation or list shrink (len < prev_count)
+        self.assertFalse(
+            _has_new_assistant_reply([{"role": "assistant", "content": "hi"}], prev_count=2)
+        )
+
+    def test_prefill_context_char_count(self):
+        """_prefill_context_char_count accurately calculates total content characters."""
+        self.assertEqual(_prefill_context_char_count([]), 0)
+        self.assertEqual(_prefill_context_char_count([{"role": "user", "content": "hello"}]), 5)
+        self.assertEqual(
+            _prefill_context_char_count([
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "world"},
+            ]),
+            10,
+        )
+
+    def test_apply_prefill_context_budget_no_truncation(self):
+        """Small prefill context within budget is returned unchanged."""
+        context = {"status": "loaded", "messages": [{"role": "user", "content": "small note"}]}
+        config_data = {"webui_prefill_context_max_chars": 1000}
+        result = _apply_prefill_context_budget(context, config_data)
+        self.assertEqual(result["messages"], context["messages"])
+        self.assertFalse(result.get("compacted", False))
+
+    def test_apply_prefill_context_budget_truncation(self):
+        """Prefill context exceeding budget is compacted into a single notice message."""
+        context = {
+            "status": "loaded",
+            "messages": [{"role": "user", "content": "long message " * 50}],
+        }
+        config_data = {"webui_prefill_context_max_chars": 20}
+        result = _apply_prefill_context_budget(context, config_data)
+        self.assertTrue(result.get("compacted"))
+        self.assertEqual(len(result.get("messages", [])), 1)
+        self.assertIn("budget", result["messages"][0]["content"].lower())
 
 
 if __name__ == "__main__":
