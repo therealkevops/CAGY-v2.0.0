@@ -419,6 +419,24 @@ class TestSyntaxAndImports(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Node verification failed: {proc.stderr}")
         self.assertIn("UI_MEDIA_VIEWER_JS_OK", proc.stdout)
 
+    def test_sessions_js_module(self):
+        """Verify sessions.js parses and passes Node syntax compilation."""
+        import subprocess
+        sessions_path = WEBUI_DIR / "static" / "sessions.js"
+        self.assertTrue(sessions_path.exists(), "sessions.js must exist")
+        proc = subprocess.run(["node", "-c", str(sessions_path)], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"sessions.js syntax check failed: {proc.stderr}")
+
+    def test_sessions_js_syntax(self):
+        """Guard largest remaining JS files (sessions.js, messages.js, panels.js) with explicit Node syntax checks."""
+        import subprocess
+        for fname in ["sessions.js", "messages.js", "panels.js"]:
+            with self.subTest(file=fname):
+                target = WEBUI_DIR / "static" / fname
+                self.assertTrue(target.exists(), f"{fname} must exist")
+                proc = subprocess.run(["node", "-c", str(target)], capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, f"{fname} syntax check failed: {proc.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()
